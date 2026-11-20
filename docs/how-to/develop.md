@@ -14,6 +14,8 @@ make install
 make verify
 ```
 
+The first step fails with a hint to run `make install` if the environments were not installed from the current lockfiles (also once on checkouts made before this check existed).
+
 The gate checks that the locked environments are installed and then runs, in order and stopping at the first failure: the dependency audit (pip-audit, npm audit), ruff, ESLint and Prettier, mypy in strict mode and `tsc`, all tests with coverage (100 % for the data source, pipeline, forecast and API packages), the freshness check of the generated API types, the frontend build with its size budget, and the strict documentation build. Tests never reach the network: a guard fails any test that tries.
 
 ## Work with real data locally
