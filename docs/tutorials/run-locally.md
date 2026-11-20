@@ -31,7 +31,7 @@ docker compose logs -f pipeline
 
 ## The first forecast and backtest
 
-After the history is loaded, the same run issues the forecast for the next delivery day (if it is already past 12:00 in Germany and the hour up to 10:00 is loaded; if that hour is still missing at 20:00, the forecast is issued with the newest data and marked as degraded) and computes the backtest over the last 365 days, which took about five minutes on our machine (4 min 49 s, 256 MB peak memory). Before 12:00 the first forecast follows with the hourly run after noon.
+After the history is loaded, the same run issues the forecast for the next delivery day (if it is already past 12:00 in Germany and the hour up to 10:00 is loaded; if that hour is still missing at 20:00, the forecast is issued with the newest data and marked as degraded in its run details) and computes the backtest over the last 365 days, which took about five minutes on our machine (4 min 49 s, 256 MB peak memory). Before 12:00 the first forecast follows with the hourly run after noon.
 
 Open [http://127.0.0.1:8460](http://127.0.0.1:8460). The page shows the forecast for the next delivery day with the baseline and the SMARD forecast, the backtest accuracy, and the generation mix and prices of the last seven days.
 

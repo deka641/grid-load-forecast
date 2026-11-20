@@ -1,11 +1,12 @@
 """Rolling-origin backtest of the day-ahead forecast.
 
 For each delivery day in the evaluation window the forecast is issued as in
-production: origin 12:00 local on the previous day, features cut off two hours
-earlier. The model is retrained every ``retrain_every`` origins on all delivery
-days that ended before the origin day began (an expanding window with a hard
-cutoff). The baseline and the SMARD load forecast are scored on exactly the
-same hours, namely those where the actual value and all three predictions exist.
+production: origin 12:00 local on the previous day, features from hours that
+ended at least two hours earlier. The model is retrained every ``retrain_every``
+origins on all hours up to the end of the day before the origin day (an
+expanding window with a hard cutoff). The model and the baseline are scored on
+the hours with an actual value and both predictions; the SMARD load forecast on
+the subset of those hours where it exists (see :func:`metrics_for`).
 """
 
 import math

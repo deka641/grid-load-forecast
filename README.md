@@ -18,7 +18,7 @@ From the backtest over the delivery days 2025-11-20 to 2026-11-19 (8760 hours, e
 | Baseline (same hour last week) | 2,814 | 5.30 % |
 | SMARD grid load forecast | 2,075 | 3.92 % |
 
-All values are scored as they are stored today: later corrections to load values are included, and the SMARD forecast is scored with the values SMARD publishes now, without its publication time, so the comparison may favour it. The full report with results per hour and per day type is in [reports/backtest.md](reports/backtest.md), the method in [Forecast and backtest method](docs/explanation/forecast.md). All 86 metrics in this report match a recomputation with scikit-learn in a separate environment (`scripts/crosscheck_metrics.py`).
+All values are scored as they are stored today: later corrections to load values are included, and the SMARD forecast is scored with the values SMARD publishes now, without its publication time, so the comparison may favour it. The full report with results per hour and per day type is in [reports/backtest.md](reports/backtest.md), the method in [Forecast and backtest method](docs/explanation/forecast.md). All 86 metrics in `reports/backtest.json` match a recomputation with scikit-learn in a separate environment (`scripts/crosscheck_metrics.py`).
 
 ## Architecture
 

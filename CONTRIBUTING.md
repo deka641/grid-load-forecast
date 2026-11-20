@@ -16,7 +16,7 @@ Every change must pass the local gate before it is merged:
 make verify
 ```
 
-The gate runs the dependency audit, linters, strict type checks, tests with coverage thresholds, the frontend build with its size budget and the strict documentation build. Steps run in order and the gate stops at the first failure. Tests never reach the network: a guard in `tests/conftest.py` blocks DNS lookups and outbound sockets and fails any test that tries, and the frontend test setup replaces `fetch` with a function that throws. Tests of the data source will use recorded fixtures. `make smoke` is reserved for a separate, non-blocking check against the live source.
+The gate runs the dependency audit, linters, strict type checks, tests with coverage thresholds, the frontend build with its size budget and the strict documentation build. Steps run in order and the gate stops at the first failure. Tests never reach the network: a guard in `tests/conftest.py` blocks DNS lookups and outbound sockets and fails any test that tries, and the frontend test setup replaces `fetch` with a function that throws. Tests of the data source use recorded SMARD responses in `tests/fixtures/smard/`. `make smoke` checks the live source separately and is not part of the gate.
 
 ## Generated API types
 

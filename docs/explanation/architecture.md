@@ -27,7 +27,7 @@ The snapshot leaves out the raw source payloads and keeps the last 30 load runs 
 The pipeline container runs `gridload run` once at start-up and then every hour at minute 5 (UTC), scheduled by supercronic, which never starts a run while the previous one is still active. A run:
 
 1. loads every weekly chunk that is missing, still incomplete, or among the four newest (to pick up corrections);
-2. issues the day-ahead forecast once per delivery day, after 12:00 Europe/Berlin and once the hour up to 10:00 is loaded (if that hour is still missing at 20:00, the forecast is issued with the newest data, provided it is at most 24 hours old, and marked as degraded in its run details);
+2. issues the day-ahead forecast once per delivery day, after 12:00 Europe/Berlin and once the hour up to 10:00 is loaded (if that hour is still missing at 20:00, the forecast is issued with the newest data, provided it is at most 24 hours old); a forecast is marked as degraded in its run details when that hour is missing or key features are incomplete (a lag of seven days for any hour, the 24 or 168 hour means, or less than 90 % of the last 168 hours);
 3. refreshes the backtest when the last one is older than seven days;
 4. publishes the snapshot and writes a heartbeat file.
 
