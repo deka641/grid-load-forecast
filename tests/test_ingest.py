@@ -46,7 +46,14 @@ def fake() -> FakeSmard:
 
 
 def run(con: duckdb.DuckDBPyConnection, client: SmardClient, series: list[Series], **kw: object):  # type: ignore[no-untyped-def]
-    return Ingestor(con, client).run(series, mode=str(kw.pop("mode", "backfill")), **kw)  # type: ignore[arg-type]
+    clock = kw.pop("clock", None)
+    ingestor = Ingestor(con, client) if clock is None else Ingestor(con, client, clock=clock)  # type: ignore[arg-type]
+    return ingestor.run(series, mode=str(kw.pop("mode", "backfill")), **kw)  # type: ignore[arg-type]
+
+
+def _day_after(chunk_ts: int) -> datetime:
+    """A moment one day after the chunk ended, so it counts as recent."""
+    return datetime.fromtimestamp(chunk_end_ms(chunk_ts) / 1000, UTC) + timedelta(days=1)
 
 
 def count(con: duckdb.DuckDBPyConnection, sql: str, params: list[object] | None = None) -> int:
@@ -173,7 +180,7 @@ def test_bad_chunk_is_logged_and_never_stored_as_no_data(
     con: duckdb.DuckDBPyConnection, fake: FakeSmard, body: bytes, status: int, fragment: str
 ) -> None:
     fake.override(chunk_name(LOAD, REGULAR), body, status)
-    result = run(con, fake.client(retries=0), [LOAD, PRICE])
+    result = run(con, fake.client(retries=0), [LOAD, PRICE], clock=_clock_at(_day_after(REGULAR)))
     assert result.status == "failed"
     assert len(result.errors) == 1
     assert fragment in result.errors[0]
@@ -203,7 +210,9 @@ def test_truncated_chunk_keeps_previous_values(
     data = json.loads(fixture_bytes(name))
     data["series"] = data["series"][:300]
     fake.override(name, json.dumps(data).encode())
-    result = run(con, fake.client(), [LOAD], mode="incremental")
+    result = run(
+        con, fake.client(), [LOAD], mode="incremental", clock=_clock_at(_day_after(REGULAR))
+    )
     assert result.status == "failed"
     assert count(con, "SELECT count(*) FROM observations") == before
 
@@ -238,7 +247,10 @@ def test_week_containing_since_is_included(con: duckdb.DuckDBPyConnection, fake:
     assert result.loaded == 4
 
 
-def test_unexpected_exception_marks_run_failed(con: duckdb.DuckDBPyConnection) -> None:
+@pytest.mark.parametrize("finish", [True, False])
+def test_unexpected_exception_marks_run_failed(
+    con: duckdb.DuckDBPyConnection, finish: bool
+) -> None:
     class Exploding(SmardClient):
         def __init__(self) -> None:
             pass
@@ -247,8 +259,9 @@ def test_unexpected_exception_marks_run_failed(con: duckdb.DuckDBPyConnection) -
             raise RuntimeError("bug")
 
     with pytest.raises(RuntimeError):
-        Ingestor(con, Exploding()).run([LOAD], mode="backfill")
-    assert con.execute("SELECT status FROM load_runs").fetchall() == [("failed",)]
+        Ingestor(con, Exploding()).run([LOAD], mode="backfill", finish=finish)
+    rows = con.execute("SELECT status, finished_at IS NOT NULL FROM load_runs").fetchall()
+    assert rows == [("failed", True)]
 
 
 def test_progress_callback_sees_every_chunk(
@@ -705,3 +718,181 @@ def test_recent_gap_is_logged_as_warning(fake: FakeSmard) -> None:
     rows = connection.execute("SELECT status FROM load_log WHERE status = 'warning'").fetchall()
     assert rows == [("warning",)]
     connection.close()
+
+
+def _newest_stored(con: duckdb.DuckDBPyConnection) -> int:
+    return count(
+        con,
+        "SELECT count(*) FROM observations WHERE ts_utc >= make_timestamptz(? * 1000)",
+        [recorded_chunks(LOAD)[-1]],
+    )
+
+
+def test_all_null_newest_chunk_keeps_the_stored_values(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    latest = recorded_chunks(LOAD)[-1]
+    name = chunk_name(LOAD, latest)
+    run(con, fake.client(), [LOAD])
+    before = count(con, "SELECT count(*) FROM observations")
+    sha_sql = "SELECT sha256 FROM raw_chunks WHERE series_key = 'load' AND epoch_ms(chunk_ts) = ?"
+    sha = con.execute(sha_sql, [latest]).fetchone()
+    fake.override(name, _with_trailing_nulls(name, 0))
+
+    result = run(con, fake.client(), [LOAD], mode="incremental")
+    assert result.status == "failed"
+    assert result.rows_removed == 0
+    assert any("missing in an open chunk" in e for e in result.errors)
+    assert count(con, "SELECT count(*) FROM observations") == before
+    assert con.execute(sha_sql, [latest]).fetchone() == sha
+    logged = con.execute(
+        "SELECT status FROM load_log WHERE run_id = ? AND epoch_ms(chunk_ts) = ?",
+        [result.run_id, latest],
+    ).fetchall()
+    assert logged == [("error",)]
+
+    fake.responses.clear()
+    again = run(con, fake.client(), [LOAD], mode="incremental")
+    assert again.status == "ok"
+    assert count(con, "SELECT count(*) FROM observations") == before
+
+
+@pytest.mark.parametrize(("vanished", "accepted"), [(8, True), (9, False)])
+def test_only_a_short_tail_may_vanish_from_the_open_chunk(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard, vanished: int, accepted: bool
+) -> None:
+    name = chunk_name(LOAD, recorded_chunks(LOAD)[-1])
+    run(con, fake.client(), [LOAD])
+    full = _newest_stored(con)
+    fake.override(name, _with_trailing_nulls(name, full - vanished))
+    result = run(con, fake.client(), [LOAD], mode="incremental")
+    if accepted:
+        assert result.status == "ok"
+        assert result.rows_removed == vanished
+        assert _newest_stored(con) == full - vanished
+    else:
+        assert result.status == "failed"
+        assert result.rows_removed == 0
+        assert _newest_stored(con) == full
+
+
+def test_interior_value_vanishing_from_the_open_chunk_is_rejected(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    name = chunk_name(LOAD, recorded_chunks(LOAD)[-1])
+    run(con, fake.client(), [LOAD])
+    full = _newest_stored(con)
+    data = json.loads(fixture_bytes(name))
+    data["series"][10][1] = None
+    fake.override(name, json.dumps(data).encode())
+    result = run(con, fake.client(), [LOAD], mode="incremental")
+    assert result.status == "failed"
+    assert any("1 stored values are now missing in an open chunk" in e for e in result.errors)
+    assert _newest_stored(con) == full
+
+
+def test_withdrawals_from_the_open_chunk_can_be_accepted_explicitly(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    name = chunk_name(LOAD, recorded_chunks(LOAD)[-1])
+    run(con, fake.client(), [LOAD])
+    full = _newest_stored(con)
+    fake.override(name, _with_trailing_nulls(name, 0))
+    result = Ingestor(con, fake.client(), accept_withdrawals=True).run([LOAD], mode="incremental")
+    assert result.status == "ok"
+    assert result.rows_removed == full
+    assert _newest_stored(con) == 0
+
+
+@pytest.mark.parametrize("failure", ["withdrawal", "fetch error"])
+@pytest.mark.parametrize(("days_after", "status"), [(1, "failed"), (8, "partial")])
+def test_errors_in_a_completed_chunk_are_recent_only_within_seven_days(
+    fake: FakeSmard, failure: str, days_after: int, status: str
+) -> None:
+    name = chunk_name(LOAD, REGULAR)
+    fake.use_index(LOAD, [REGULAR])
+    at = _clock_at(
+        datetime.fromtimestamp(chunk_end_ms(REGULAR) / 1000, UTC) + timedelta(days=days_after)
+    )
+    connection = duckdb.connect()
+    connection.execute("SET TimeZone = 'UTC'")
+    migrate(connection)
+    assert Ingestor(connection, fake.client(), clock=at).run([LOAD], mode="backfill").status == "ok"
+    if failure == "withdrawal":
+        fake.override(name, _with_trailing_nulls(name, 600))
+    else:
+        fake.override(name, b"", 200)
+    # The chunk is inside the refetch window in both cases; only its age decides.
+    result = Ingestor(connection, fake.client(retries=0), clock=at).run(
+        [LOAD], mode="incremental", refetch_weeks=4
+    )
+    assert result.status == status
+    assert result.recent_errors == (1 if status == "failed" else 0)
+    assert len([e for e in result.errors if "source gap" not in e]) == 1
+    connection.close()
+
+
+def test_all_null_open_chunk_keeps_a_short_stored_start(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    name = chunk_name(LOAD, recorded_chunks(LOAD)[-1])
+    fake.override(name, _with_trailing_nulls(name, 6))
+    run(con, fake.client(), [LOAD])
+    assert _newest_stored(con) == 6
+    fake.override(name, _with_trailing_nulls(name, 0))
+    result = run(con, fake.client(), [LOAD], mode="incremental")
+    assert result.status == "failed"
+    assert result.rows_removed == 0
+    assert _newest_stored(con) == 6
+
+
+def test_rejected_open_chunk_still_takes_its_new_values(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    latest = recorded_chunks(LOAD)[-1]
+    name = chunk_name(LOAD, latest)
+    fake.override(name, _with_trailing_nulls(name, 200))
+    run(con, fake.client(), [LOAD])
+    sha_sql = "SELECT sha256 FROM raw_chunks WHERE series_key = 'load' AND epoch_ms(chunk_ts) = ?"
+    sha = con.execute(sha_sql, [latest]).fetchone()
+    data = json.loads(_with_trailing_nulls(name, 300))
+    kept_ts, kept_value = data["series"][10]
+    data["series"][10][1] = None
+    fake.override(name, json.dumps(data).encode())
+
+    result = run(con, fake.client(), [LOAD], mode="incremental")
+    assert result.status == "failed"
+    assert result.rows_written == 100
+    assert any("wrote 100 new values" in e for e in result.errors)
+    assert _newest_stored(con) == 300
+    stored = con.execute(
+        "SELECT value FROM observations WHERE series_key = 'load' AND epoch_ms(ts_utc) = ?",
+        [kept_ts],
+    ).fetchone()
+    assert stored == (pytest.approx(kept_value),)
+    # The payload is not stored, so the next run fetches the chunk again.
+    assert con.execute(sha_sql, [latest]).fetchone() == sha
+    logged = con.execute(
+        "SELECT status FROM load_log WHERE run_id = ? AND epoch_ms(chunk_ts) = ?",
+        [result.run_id, latest],
+    ).fetchall()
+    assert logged == [("error",)]
+
+
+@pytest.mark.parametrize("failure", ["withdrawal", "fetch error"])
+def test_last_chunk_of_an_ended_series_is_neither_open_nor_recent(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard, failure: str
+) -> None:
+    # The series stopped a long time ago: its last chunk ended well over a year ago.
+    name = chunk_name(LOAD, SPRING)
+    fake.use_index(LOAD, [SPRING])
+    assert run(con, fake.client(), [LOAD]).status == "ok"
+    if failure == "withdrawal":
+        fake.override(name, _with_trailing_nulls(name, 600))
+    else:
+        fake.override(name, b"", 200)
+    result = run(con, fake.client(retries=0), [LOAD], mode="incremental")
+    assert result.status == "partial"
+    assert result.recent_errors == 0
+    if failure == "withdrawal":
+        assert any("missing in a completed chunk" in e for e in result.errors)

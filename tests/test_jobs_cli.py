@@ -105,7 +105,7 @@ def test_status_before_and_after_load(settings: Settings, fake: FakeSmard) -> No
     )
     report = jobs.status(settings)
     assert report["initialised"] is True
-    # The broken chunk is older than the refetch window, so the run is partial.
+    # The broken chunk ended more than seven days ago, so the run is partial.
     assert report["runs"][0]["status"] == "partial"
     assert report["series"][0]["series"] == "load"
     assert report["errors_last_run"][0]["message"] == "empty response body"
@@ -183,6 +183,21 @@ def test_cli_ingest_and_run(
     }
     assert calls[1]["post_ingest"] is jobs.post_ingest_steps
     assert "error: load: boom" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(("value", "fragment"), [("-3", "must not be negative"), ("x", "whole")])
+def test_cli_rejects_bad_refetch_weeks(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], value: str, fragment: str
+) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(jobs, "load", fake_load(calls))
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["ingest", "--refetch-weeks", value])
+    assert exc.value.code == 2
+    assert fragment in capsys.readouterr().err
+    assert calls == []
+    assert cli.main(["ingest", "--refetch-weeks", "0"]) == 0
+    assert calls[0]["refetch_weeks"] == 0
 
 
 def test_cli_status_and_healthcheck(
@@ -301,3 +316,33 @@ def test_failed_step_after_a_partial_ingest_keeps_partial(
     )
     assert result.status == "partial"
     assert result.errors[-1] == "step failed: forecast"
+
+
+def test_run_finishes_after_the_follow_up_steps(settings: Settings, fake: FakeSmard) -> None:
+    seen: list[tuple[object, ...]] = []
+
+    def steps(
+        con: duckdb.DuckDBPyConnection, _settings: Settings, _tick: Callable[[], None]
+    ) -> list[str]:
+        row = con.execute("SELECT status, finished_at, now() FROM load_runs").fetchone()
+        assert row is not None
+        seen.append(row)
+        return []
+
+    result = jobs.load(
+        settings,
+        mode="backfill",
+        keys=["load"],
+        client_factory=lambda _s: fake.client(),
+        post_ingest=steps,
+    )
+    assert result.status == "ok"
+    assert seen[0][:2] == ("running", None)
+    served = duckdb.connect(str(settings.serving_path), read_only=True)
+    try:
+        row = served.execute("SELECT status, finished_at FROM load_runs").fetchone()
+    finally:
+        served.close()
+    assert row is not None
+    assert row[0] == "ok"
+    assert row[1] >= seen[0][2]

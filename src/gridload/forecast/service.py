@@ -12,7 +12,7 @@ import polars as pl
 
 from gridload.forecast import calendar as cal
 from gridload.forecast.backtest import BacktestResult, run_backtest
-from gridload.forecast.features import History, baseline_week
+from gridload.forecast.features import History, baseline_week, feature_gaps
 from gridload.forecast.model import (
     BASELINE_NAME,
     MODEL_NAME,
@@ -66,6 +66,12 @@ def due_delivery_day(con: duckdb.DuckDBPyConnection, now: datetime) -> date | No
     return None if exists and exists[0] else delivery_day
 
 
+def degraded_checks(load: History, delivery_day: date, *, cutoff_hour_missing: bool) -> list[str]:
+    """Reasons to mark the forecast for ``delivery_day`` as degraded (empty if none)."""
+    reasons = ["cutoff_hour_missing"] if cutoff_hour_missing else []
+    return reasons + feature_gaps(load, delivery_day)
+
+
 def issue_forecast(
     con: duckdb.DuckDBPyConnection,
     delivery_day: date,
@@ -76,8 +82,9 @@ def issue_forecast(
     """Train on all days that ended before the origin day and store model and baseline runs.
 
     Returns None (and stores nothing) if there are fewer than ``MIN_TRAINING_ROWS``
-    training hours. ``degraded`` marks a forecast issued without the newest
-    admissible hour (recorded in the run details).
+    training hours. ``degraded`` means the newest admissible hour is missing. The
+    run details record ``degraded`` (true if any check in :func:`degraded_checks`
+    fails, for example a hollowed week before the cutoff) and ``degraded_checks``.
     """
     created = now or datetime.now(UTC)
     load = load_history(con, "load")
@@ -88,6 +95,7 @@ def issue_forecast(
     mask = store.training_mask(last_training_day)
     if int(mask.sum()) < MIN_TRAINING_ROWS:
         return None
+    checks = degraded_checks(load, delivery_day, cutoff_hour_missing=degraded)
     booster = train(store.matrix[mask], store.labels[mask])
     rows = store.day_mask(delivery_day)
     targets = cal.day_hours(delivery_day)
@@ -100,7 +108,8 @@ def issue_forecast(
         "training_rows": int(mask.sum()),
         "last_training_day": last_training_day.isoformat(),
         "params_hash": params_hash(),
-        "degraded": degraded,
+        "degraded": bool(checks),
+        "degraded_checks": checks,
     }
     run_id = ""
     con.execute("BEGIN")
