@@ -12,18 +12,21 @@ Each run fetches the chunk index per series and then loads:
 A chunk is processed in one transaction: raw payload, observations and the log
 entry are written together. Unchanged payloads (same SHA-256) are skipped.
 Changed values overwrite the stored value and increase its revision counter, so
-there are never duplicate timestamps. In an open chunk, values that the source
-no longer publishes are removed. In a completed chunk, stored values that turn
-null point to a degraded response: the stored values are kept and the chunk
-is reported as an error, unless withdrawals are accepted explicitly
-(``gridload ingest --accept-withdrawals``). Quarter hours that SMARD leaves out of a completed chunk
+there are never duplicate timestamps. In an open chunk, a short run of values at
+its very end that the source no longer publishes (at most
+``MAX_OPEN_WITHDRAWAL`` quarter hours, all newer than the newest value still
+published) is removed as a revision. Any other stored value that turns null,
+in an open or a completed chunk, points to a degraded response: the stored
+values are kept and the chunk is reported as an error, unless withdrawals are
+accepted explicitly (``gridload ingest --accept-withdrawals``). Quarter hours that SMARD leaves out of a completed chunk
 (permanent gaps in the source) are not stored as values; the load log records
 how many are missing and where the gap starts. Any source or validation error
 is written to ``load_log`` and nothing is stored for that chunk.
 
 Run status: ``failed`` if the run crashed, the source was unavailable, an index
-could not be read or a recent chunk (newest ``refetch_weeks`` or ending in the
-last 7 days) failed; ``partial`` if only older chunks failed; otherwise ``ok``.
+could not be read or a recent chunk (the newest chunk in the index or one that
+ended in the last 7 days) failed; ``partial`` if only older chunks failed,
+including older chunks reloaded through ``refetch_weeks``; otherwise ``ok``.
 """
 
 import uuid
@@ -54,6 +57,9 @@ Progress = Callable[[str, int], None]
 # recently may still miss its last values while the next chunk already exists.
 LATE_DATA_ALLOWANCE = timedelta(hours=6)
 RECENT = timedelta(days=7)
+# Values at the end of an open chunk that SMARD withdraws again (a revision of the
+# newest quarter hours). Larger or interior removals are treated as a bad response.
+MAX_OPEN_WITHDRAWAL = 8
 MAX_CONSECUTIVE_SOURCE_ERRORS = 5
 
 
@@ -165,15 +171,16 @@ class Ingestor:
             if self._progress is not None:
                 self._progress(series.key, ts)
             end = chunk_end_ms(ts)
+            # One rule for every error of this chunk: recent means the newest chunk
+            # or one that ended within RECENT.
+            recent = ts == latest or end > recent_ms
             try:
                 raw = self._client.chunk(series, ts)
                 self._source_errors = 0
                 is_open = ts == latest or end > late_ms
                 frame = parse_chunk(series, ts, raw.payload, is_open=is_open)
             except (SourceError, ChunkValidationError) as exc:
-                self._log_error(
-                    result, series, ts, str(exc), recent=ts in refetch or end > recent_ms
-                )
+                self._log_error(result, series, ts, str(exc), recent=recent)
                 self._count_source_error(exc)
                 continue
             missing, first_missing = missing_points(frame, ts, is_open=is_open)
@@ -186,7 +193,7 @@ class Ingestor:
                     # A gap in a week that just ended is worth a look: run becomes partial.
                     result.errors.append(f"{series.key}: {note}")
                     self._log(result.run_id, series, ts, status="warning", rows=0, message=note)
-            self._store(result, series, raw, frame, note=note, is_open=is_open)
+            self._store(result, series, raw, frame, note=note, is_open=is_open, recent=recent)
 
     def _count_source_error(self, exc: Exception) -> None:
         if not (isinstance(exc, SourceError) and exc.transient):
@@ -230,6 +237,7 @@ class Ingestor:
         *,
         note: str | None = None,
         is_open: bool = True,
+        recent: bool = True,
     ) -> None:
         chunk_at = ms_to_datetime(raw.chunk_ts)
         chunk_end = ms_to_datetime(chunk_end_ms(raw.chunk_ts))
@@ -271,13 +279,26 @@ class Ingestor:
             params = [series.key, RESOLUTION, chunk_at, chunk_end]
             removed_row = con.execute(
                 """
-                SELECT count(*) FROM observations o
+                SELECT count(*),
+                    count(*) FILTER (WHERE o.ts_utc <= (SELECT max(ts_utc) FROM incoming))
+                FROM observations o
                 WHERE o.series_key = ? AND o.resolution = ? AND o.ts_utc >= ? AND o.ts_utc < ?
                 AND NOT EXISTS (SELECT 1 FROM incoming i WHERE i.ts_utc = o.ts_utc)
                 """,
                 params,
             ).fetchone()
             removed = int(removed_row[0]) if removed_row else 0
+            # Removed values at or before the newest value still published.
+            interior = int(removed_row[1]) if removed_row else 0
+            too_many = removed > MAX_OPEN_WITHDRAWAL or interior > 0
+            if is_open and too_many and not self._accept_withdrawals:
+                # Only a short tail may vanish from an open week; anything more (for
+                # example a response with every value null) is not a revision.
+                raise ChunkValidationError(
+                    f"{series.key} chunk {raw.chunk_ts}: {removed} stored values are now "
+                    f"missing in an open chunk (more than {MAX_OPEN_WITHDRAWAL} or not at "
+                    "its end); kept the stored values"
+                )
             if removed and not is_open and not self._accept_withdrawals:
                 # A completed week whose stored values turn null points to a degraded
                 # response, not a correction: keep the stored values and report it.
@@ -321,7 +342,6 @@ class Ingestor:
             con.execute("COMMIT")
         except ChunkValidationError as exc:
             con.execute("ROLLBACK")
-            recent = chunk_end > now - RECENT
             self._log_error(result, series, raw.chunk_ts, str(exc), recent=recent)
             return
         except Exception:
