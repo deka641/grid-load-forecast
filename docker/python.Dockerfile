@@ -19,7 +19,9 @@ ARG SUPERCRONIC_SHA256_arm64=4ae22576a78223d8ccdf5f3b3660a5cbb5288416bf0ca96afc4
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 curl ca-certificates \
     # Security fix newer than the base image (CVE-2026-85091), exempt from the wait period.
+    # Remove once the pinned base image digest includes the fix.
     && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' zlib1g)" ge '1:1.3.dfsg+really1.3.1-1+deb13u1' \
     && case "${TARGETARCH}" in \
          amd64) sha="${SUPERCRONIC_SHA256_amd64}" ;; \
          arm64) sha="${SUPERCRONIC_SHA256_arm64}" ;; \
