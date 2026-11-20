@@ -66,6 +66,10 @@ def main(rows_path: str, report_path: str) -> int:
             if not subset and key not in reported:
                 continue
             checks += 1
+            if key not in reported:
+                print(f"{model:14} {scope}/{value}: {len(subset)} rows, metric missing  MISMATCH")
+                failed = True
+                continue
             failed |= not check(f"{scope}/{value}", subset, model, reported[key])
     print(f"{checks} metrics compared: {'all match' if not failed else 'MISMATCHES found'}")
     return 1 if failed else 0

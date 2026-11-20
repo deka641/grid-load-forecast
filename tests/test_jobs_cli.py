@@ -30,12 +30,17 @@ def fake() -> FakeSmard:
 
 def test_load_publishes_snapshot_and_heartbeat(settings: Settings, fake: FakeSmard) -> None:
     calls: list[str] = []
+
+    def post(_con: duckdb.DuckDBPyConnection, _s: Settings, _tick: Callable[[], None]) -> list[str]:
+        calls.append("post")
+        return []
+
     result = jobs.load(
         settings,
         mode="backfill",
         keys=["load"],
         client_factory=lambda _s: fake.client(),
-        post_ingest=lambda _con, _s, _tick: calls.append("post"),
+        post_ingest=post,
     )
     assert result.status == "ok"
     assert calls == ["post"]
@@ -229,7 +234,7 @@ def test_prices_loaded_earlier_disappear_when_switched_off(tmp_path: Path, fake:
 def test_failure_after_ingest_marks_run_failed(settings: Settings, fake: FakeSmard) -> None:
     def broken(
         _con: duckdb.DuckDBPyConnection, _settings: Settings, _tick: Callable[[], None]
-    ) -> None:
+    ) -> list[str]:
         raise RuntimeError("forecast failed")
 
     with pytest.raises(RuntimeError, match="forecast failed"):
@@ -261,3 +266,33 @@ def test_heartbeat_records_newest_load_value(settings: Settings, fake: FakeSmard
     beat = heartbeat.read(settings.heartbeat_path)
     assert beat is not None
     assert beat.newest_load == "2026-11-20T09:45:00+00:00"
+
+
+def test_failed_follow_up_step_makes_the_run_partial(settings: Settings, fake: FakeSmard) -> None:
+    result = jobs.load(
+        settings,
+        mode="backfill",
+        keys=["load"],
+        client_factory=lambda _s: fake.client(),
+        post_ingest=lambda _con, _s, _tick: ["backtest"],
+    )
+    assert result.status == "partial"
+    assert result.errors == ["step failed: backtest"]
+    with connect(settings.warehouse_path) as con:
+        assert con.execute("SELECT status FROM load_runs").fetchall() == [("partial",)]
+
+
+def test_failed_step_after_a_partial_ingest_keeps_partial(
+    settings: Settings, fake: FakeSmard
+) -> None:
+    fake.override(chunk_name(CATALOG[0], recorded_chunks(CATALOG[0])[0]), b"")
+    result = jobs.load(
+        settings,
+        mode="backfill",
+        keys=["load"],
+        refetch_weeks=2,
+        client_factory=lambda _s: fake.client(),
+        post_ingest=lambda _con, _s, _tick: ["forecast"],
+    )
+    assert result.status == "partial"
+    assert result.errors[-1] == "step failed: forecast"

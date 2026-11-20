@@ -150,7 +150,10 @@ def test_failing_steps_are_isolated(
     monkeypatch.setattr(service, "issue_forecast", boom)
     monkeypatch.setattr(service, "run_and_store_backtest", boom)
     with connect(settings.warehouse_path) as con:
-        jobs.post_ingest_steps(con, settings, now=datetime(2025, 4, 29, 13, tzinfo=cal.BERLIN))
+        failed = jobs.post_ingest_steps(
+            con, settings, now=datetime(2025, 4, 29, 13, tzinfo=cal.BERLIN)
+        )
+    assert failed == ["forecast", "backtest"]
     assert "forecast step failed" in caplog.text
     assert "backtest step failed" in caplog.text
 
@@ -206,10 +209,8 @@ def test_short_history_backtest_scores_fewer_days() -> None:
 def test_backtest_without_metrics_is_stored(tmp_path: Path) -> None:
     settings = _settings_with_warehouse(tmp_path, FIRST, date(2025, 2, 5))
     with connect(settings.warehouse_path) as con:
-        result = service.run_and_store_backtest(con)
-        assert result is not None
-        assert result.metrics == []
-        assert con.execute("SELECT count(*) FROM backtest_metrics").fetchone() == (0,)
+        assert service.run_and_store_backtest(con) is None
+        assert con.execute("SELECT count(*) FROM backtest_runs").fetchone() == (0,)
 
 
 def test_forecast_with_no_baseline_values(tmp_path: Path) -> None:
@@ -288,3 +289,39 @@ def test_report_without_smard_forecast(result: BacktestResult) -> None:
     text = report.to_markdown(no_tso)
     assert "SMARD grid load forecast |" not in text.split("## By day type")[0]
     assert "hours that also have a SMARD forecast" not in text
+
+
+def test_degraded_forecast_needs_recent_data(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    settings = _settings_with_warehouse(tmp_path, FIRST, LAST)
+    with connect(settings.warehouse_path) as con:
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 6, 15, 20, 30, tzinfo=cal.BERLIN))
+        assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)
+    assert "no load data in the 24 h before the cutoff" in caplog.text
+
+
+def test_backtest_is_attempted_at_most_once_a_day(tmp_path: Path) -> None:
+    settings = _settings_with_warehouse(tmp_path, FIRST, date(2025, 2, 5))
+    with connect(settings.warehouse_path) as con:
+        for hour in (13, 14, 15):
+            jobs.post_ingest_steps(con, settings, now=datetime(2025, 2, 6, hour, tzinfo=cal.BERLIN))
+        assert con.execute("SELECT count(*) FROM backtest_runs").fetchone() == (0,)
+    attempt = json.loads((tmp_path / "backtest_attempt.json").read_text())
+    assert attempt["attempted_at"] == "2025-02-06T12:00:00+00:00"
+    assert jobs._backtest_due(
+        tmp_path / "backtest_attempt.json", datetime(2025, 2, 7, 12, 0, tzinfo=UTC)
+    )
+    assert not jobs._backtest_due(
+        tmp_path / "backtest_attempt.json", datetime(2025, 2, 7, 11, 59, tzinfo=UTC)
+    )
+
+
+def test_backtest_attempt_file_problems_mean_due(tmp_path: Path) -> None:
+    path = tmp_path / "attempt.json"
+    now = datetime(2025, 2, 7, tzinfo=UTC)
+    assert jobs._backtest_due(path, now)
+    path.write_text("not json")
+    assert jobs._backtest_due(path, now)
+    path.write_text('{"attempted_at": "2025-02-07T00:00:00"}')
+    assert jobs._backtest_due(path, now)

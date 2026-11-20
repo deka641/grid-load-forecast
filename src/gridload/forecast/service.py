@@ -154,7 +154,11 @@ def run_and_store_backtest(
     now: datetime | None = None,
     progress: Callable[[date], None] | None = None,
 ) -> BacktestResult | None:
-    """Backtest up to the last complete day and store run and metrics."""
+    """Backtest up to the last complete day and store run and metrics.
+
+    Returns None and stores nothing if there is no complete day or no hour could
+    be scored.
+    """
     load = load_history(con, "load")
     last_day = last_complete_day(load)
     if last_day is None:
@@ -167,6 +171,8 @@ def run_and_store_backtest(
         training_start=training_start(load),
         progress=progress,
     )
+    if not result.metrics:
+        return None  # nothing scored (history too short): store nothing
     run_id = uuid.uuid4().hex
     con.execute("BEGIN")
     try:
@@ -180,11 +186,10 @@ def run_and_store_backtest(
                 json.dumps(result.config),
             ],
         )
-        if result.metrics:
-            con.executemany(
-                "INSERT INTO backtest_metrics VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [[run_id, *asdict(m).values()] for m in result.metrics],
-            )
+        con.executemany(
+            "INSERT INTO backtest_metrics VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [[run_id, *asdict(m).values()] for m in result.metrics],
+        )
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")

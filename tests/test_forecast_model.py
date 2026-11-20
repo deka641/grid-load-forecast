@@ -72,17 +72,21 @@ def test_backtest_predictions_do_not_change_when_future_data_is_corrupted(load: 
     tso = synthetic.history(FIRST, LAST, seed=11)
     kwargs = {"days": 8, "retrain_every": 7, "training_start": date(2025, 1, 15)}
     clean = run_backtest(load, tso, last, **kwargs)  # type: ignore[arg-type]
-    # Corrupt everything unknown at the first origin: every prediction in the
-    # window must stay the same, because each origin only sees older hours.
+    # Corrupt everything unknown at the first origin: the first day's predictions
+    # must stay the same, although the corruption reaches all later training rows.
     leaked_all = run_backtest(unknown_at_origin(load, first), tso, last, **kwargs)  # type: ignore[arg-type]
     first_day_rows = [r for r in clean.rows if r["delivery_day"] == first]
     leaked_rows = [r for r in leaked_all.rows if r["delivery_day"] == first]
     assert [r["lightgbm"] for r in first_day_rows] == [r["lightgbm"] for r in leaked_rows]
     assert [r["baseline_week"] for r in first_day_rows] == [r["baseline_week"] for r in leaked_rows]
     assert [r["actual"] for r in first_day_rows] != [r["actual"] for r in leaked_rows]
-    # Per origin: corrupting what is unknown at the last origin keeps the last day identical.
-    leaked_last = run_backtest(unknown_at_origin(load, last), tso, last, **kwargs)  # type: ignore[arg-type]
-    assert [r["lightgbm"] for r in clean.rows] == [r["lightgbm"] for r in leaked_last.rows]
+    # Per origin, on a retraining day (04-12, index 7) and on a day that reuses the
+    # previous model (04-08): data unknown at that origin leaves every prediction
+    # up to that day unchanged.
+    for day in (last, date(2025, 4, 8)):
+        leaked = run_backtest(unknown_at_origin(load, day), tso, last, **kwargs)  # type: ignore[arg-type]
+        upto = [r["lightgbm"] for r in clean.rows if r["delivery_day"] <= day]  # type: ignore[operator]
+        assert upto == [r["lightgbm"] for r in leaked.rows if r["delivery_day"] <= day]  # type: ignore[operator]
 
 
 def test_backtest_is_deterministic_and_scores_all_models(load: History) -> None:
