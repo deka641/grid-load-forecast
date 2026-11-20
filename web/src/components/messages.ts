@@ -7,7 +7,7 @@ export const SNAPSHOT_FALLBACK =
   'A newer data snapshot could not be read; showing the previous one.'
 export const NO_FORECAST =
   'No forecast yet. The first forecast is issued at 12:00 (Europe/Berlin) once the history is loaded.'
-export const NO_BACKTEST = 'No backtest yet. It runs after the first forecast.'
+export const NO_BACKTEST = 'No backtest yet. It runs once enough history is loaded.'
 
 export function noForecastFor(day: string): string {
   return `No forecast for ${dayShort(day)}.`

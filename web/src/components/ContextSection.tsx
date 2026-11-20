@@ -99,8 +99,10 @@ function PriceStats({ values }: { values: readonly (number | null)[] }) {
   }
   return (
     <p className="chart-stats">
-      Hourly price from {s.min.toFixed(2)} to {s.max.toFixed(2)} EUR/MWh, mean {s.mean.toFixed(2)}{' '}
-      EUR/MWh, negative in {String(s.negativeHours)} of {String(s.hours)} hours.
+      Hourly mean price from {s.min.toFixed(2)} to {s.max.toFixed(2)} EUR/MWh, mean{' '}
+      {s.mean.toFixed(2)} EUR/MWh, negative in {String(s.negativeHours)} of {String(s.hours)} hours.
+      Since October 2025 each hour is the mean of four quarter-hour prices, so single negative
+      quarter hours can be hidden.
     </p>
   )
 }
@@ -230,8 +232,8 @@ export function ContextSection({ today, priceNote }: { today: string; priceNote:
       </h2>
       <p className="prose">
         Hourly electricity generation in Germany by source
-        {showPrice ? ', and the day-ahead wholesale price for the same hours' : ''}, from{' '}
-        {dayPlain(start)} to {dayPlain(today)}.
+        {showPrice ? ', and the day-ahead wholesale price as far as SMARD has published it' : ''},
+        from {dayPlain(start)} to {dayPlain(today)}.
       </p>
       {body}
     </section>

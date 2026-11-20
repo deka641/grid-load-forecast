@@ -18,7 +18,7 @@ From the backtest over the delivery days 2025-11-20 to 2026-11-19 (8760 hours, e
 | Baseline (same hour last week) | 2,814 | 5.30 % |
 | SMARD grid load forecast | 2,075 | 3.92 % |
 
-All values are scored as they are stored today: later corrections to load values are included, and the SMARD forecast is scored with the values SMARD publishes now, without its publication time, so the comparison may favour it. The full report with results per hour and per day type is in [reports/backtest.md](reports/backtest.md), the method in [Forecast and backtest method](docs/explanation/forecast.md). All 86 metrics in this report match a recomputation with scikit-learn in a separate environment (`scripts/crosscheck_metrics.py`).
+All values are scored as they are stored today: later corrections to load values are included, and the SMARD forecast is scored with the values SMARD publishes now, without its publication time, so the comparison may favour it. The full report with results per hour and per day type is in [reports/backtest.md](reports/backtest.md), the method in [Forecast and backtest method](docs/explanation/forecast.md). All 86 metrics in `reports/backtest.json` match a recomputation with scikit-learn in a separate environment (`scripts/crosscheck_metrics.py`).
 
 ## Architecture
 
@@ -49,11 +49,12 @@ On the first start the pipeline loads the full history (our run: 75 minutes for 
 ## Development
 
 ```bash
-make install   # locked Python (uv) and frontend (npm) environments
-make verify    # dependency vulnerability check, lint, strict typing, tests, API types, builds
+make install       # locked Python (uv) and frontend (npm) environments
+make verify-fast   # lint, strict typing, style and secret scans, tests
+make verify        # adds dependency vulnerability check, history scan, coverage, API types, builds
 ```
 
-`make verify` runs every check in order and stops at the first failure; tests never reach the network. See [Develop and verify changes](docs/how-to/develop.md) for the release checks (`make smoke`, `make prod-check`, `make loadtest`).
+Both gates run their checks in order and stop at the first failure; tests never reach the network. See [Develop and verify changes](docs/how-to/develop.md) for the release checks (`make smoke`, `make prod-check`, `make loadtest`).
 
 | Path | Content |
 |---|---|

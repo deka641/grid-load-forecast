@@ -3,9 +3,10 @@
 SMARD publishes each series in weekly chunks that start on Monday 00:00
 Europe/Berlin. An index file lists the chunk start timestamps; each chunk file
 holds ``[epoch_ms_utc, value | null]`` pairs. The backend is not a documented
-API, so every response is validated strictly: a malformed, empty, truncated or
-gapped chunk raises :class:`ChunkValidationError` and is never treated as
-"no data".
+API, so every response is validated strictly: a malformed, empty or truncated
+chunk, or one with irregular timestamps, raises :class:`ChunkValidationError`
+and is never treated as "no data". Missing values (``null``) are allowed and
+reported as gaps by the caller.
 """
 
 import hashlib
@@ -103,7 +104,7 @@ def parse_chunk(series: Series, chunk_ts: int, payload: bytes, *, is_open: bool)
     - it covers the whole local week (668, 672 or 676 values, depending on clock changes);
     - values are finite numbers, energy values are not negative;
     - ``null`` marks a value SMARD does not publish. It is expected at the end of
-      an open chunk (the newest one, or one that ended a few hours ago) and also
+      an open chunk (one that has not ended yet, or ended a few hours ago) and also
       occurs as a permanent gap in older data (the first days of the history,
       some single days). Null points are never returned as values; the caller
       records gaps. A completed chunk without a single value is an error.
