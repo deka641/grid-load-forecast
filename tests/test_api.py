@@ -1,6 +1,7 @@
 """Endpoint tests against real snapshots built from the recorded SMARD fixtures."""
 
 import json
+import os
 import runpy
 import shutil
 from collections.abc import Iterator
@@ -267,16 +268,25 @@ def test_series_without_data_in_range_has_no_points(client: TestClient) -> None:
 
 
 def test_incomplete_last_hour_is_missing_from_hourly_but_not_quarterhour(
-    client: TestClient,
+    wh: duckdb.DuckDBPyConnection, settings: Settings
 ) -> None:
-    # The newest load chunk ends at 2026-11-20 09:45 UTC (10:45 local): hour 10 is incomplete.
+    # The newest load value is 2026-11-20 09:45 UTC (10:45 local). Without it, the
+    # local hour 10:00 has only three quarter hours and is not reported hourly.
+    wh.execute(
+        "DELETE FROM observations WHERE series_key = 'load' AND ts_utc = ?",
+        [datetime(2026, 11, 20, 9, 45, tzinfo=UTC)],
+    )
+    publish(wh, settings)
+    client = make_client(settings)
     params = {"series": "load", "start": "2026-11-20", "end": "2026-11-20"}
     hourly = get(client, "/api/v1/actuals", params)["series"][0]["points"]
     quarter = get(client, "/api/v1/actuals", params | {"resolution": "quarterhour"})["series"][0][
         "points"
     ]
-    assert hourly[-1]["ts"] == "2026-11-20T10:00:00+01:00"
-    assert quarter[-1]["ts"] == "2026-11-20T10:45:00+01:00"
+    assert hourly[-1]["ts"] == "2026-11-20T09:00:00+01:00"
+    assert len(hourly) == 10
+    assert quarter[-1]["ts"] == "2026-11-20T10:30:00+01:00"
+    assert len(quarter) == 43
 
 
 @pytest.mark.parametrize(
@@ -579,15 +589,16 @@ def test_status_reports_freshness_runs_and_licence(
     add_run(wh, "f2", "lightgbm", later, issued(later), 1.0)
     add_run(wh, "f3", "baseline_week", date(2026, 11, 22), issued(later), 1.0)
     publish(wh, settings)
+    # Pin the file time to a summer instant so the offset does not depend on today.
+    mtime = datetime(2026, 7, 1, 10, 30, 15, 250000, tzinfo=UTC)
+    stamp_ns = int(mtime.timestamp()) * 10**9 + 250_000_000
+    os.utime(settings.serving_path, ns=(stamp_ns, stamp_ns))
     body = get(make_client(settings), "/api/v1/status")
 
     assert body["initialised"] is True
     assert body["generated_at"] == "2026-11-20T13:00:00+01:00"
     assert body["schema_version"] == 1
-    created = datetime.fromisoformat(body["snapshot_created_at"])
-    assert created.utcoffset() == timedelta(hours=1)
-    mtime = datetime.fromtimestamp(settings.serving_path.stat().st_mtime, tz=UTC)
-    assert abs((created - mtime).total_seconds()) < 1e-3
+    assert body["snapshot_created_at"] == "2026-07-01T12:30:15.250000+02:00"
 
     series = {s["key"]: s for s in body["series"]}
     assert list(series) == [s.key for s in CATALOG]
