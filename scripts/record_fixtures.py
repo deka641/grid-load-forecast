@@ -10,16 +10,13 @@ Selection (each chunk starts on Monday 00:00 Europe/Berlin):
   switch to 15 minute prices, a week with negative prices, the newest week;
 - hourly files for the same weeks, to check the derived hourly values;
 - all generation series and the SMARD load forecast for the regular week;
-- the newest chunk of every series (for nuclear power, which ended in 2023, its last).
+- the newest chunk of every series (for nuclear power, whose series ends in January 2024, its last).
 """
 
 import sys
 from datetime import datetime
 from pathlib import Path
 
-import httpx2
-
-from gridload.config import DEFAULT_BASE_URL, USER_AGENT
 from gridload.series import BY_KEY, Category, Series
 from gridload.sources.smard import BERLIN, SmardClient, parse_index
 
@@ -48,44 +45,37 @@ def save(name: str, payload: bytes) -> None:
     print(f"{name}: {len(payload)} bytes")
 
 
-def fetch(http: httpx2.Client, path: str) -> bytes:
-    response = http.get(f"{DEFAULT_BASE_URL}/{path}")
-    response.raise_for_status()
-    return response.content
-
-
-def record(smard: SmardClient, http: httpx2.Client, series: Series, chunks: list[int]) -> None:
+def record(smard: SmardClient, series: Series, chunks: list[int]) -> None:
     prefix = f"{series.filter_id}/{series.region}"
-    index_q = fetch(http, f"{prefix}/index_quarterhour.json")
+    index_q = smard.fetch(f"{prefix}/index_quarterhour.json")
     save(f"{series.filter_id}_{series.region}_index_quarterhour.json", index_q)
     stamps = parse_index(index_q)
-    # Series that ended (nuclear power, 2023) only get their final chunk.
+    # Series that ended (nuclear power, January 2024) only get their final chunk.
     wanted = [ts for ts in chunks if ts in stamps]
     for ts in dict.fromkeys([*wanted, stamps[-1]]):
         raw = smard.chunk(series, ts)
         save(f"{series.filter_id}_{series.region}_quarterhour_{ts}.json", raw.payload)
 
 
-def record_hourly(http: httpx2.Client, series: Series, chunks: list[int]) -> None:
+def record_hourly(smard: SmardClient, series: Series, chunks: list[int]) -> None:
     for ts in chunks:
         name = f"{series.filter_id}_{series.region}_hour_{ts}.json"
-        save(name, fetch(http, f"{series.filter_id}/{series.region}/{name}"))
+        save(name, smard.fetch(f"{series.filter_id}/{series.region}/{name}"))
 
 
 def main() -> int:
-    http = httpx2.Client(headers={"User-Agent": USER_AGENT}, timeout=30.0)
-    smard = SmardClient(http)
+    smard = SmardClient.create()
     try:
         load_weeks = [SPRING_DST_2025, AUTUMN_DST_2025, REGULAR_2026]
         price_weeks = [NEGATIVE_PRICES_2025, PRE_SWITCH_2025, SWITCH_2025, REGULAR_2026]
-        record(smard, http, BY_KEY["load"], load_weeks)
-        record_hourly(http, BY_KEY["load"], [SPRING_DST_2025, AUTUMN_DST_2025])
-        record(smard, http, BY_KEY["price_day_ahead"], price_weeks)
-        record_hourly(http, BY_KEY["price_day_ahead"], [PRE_SWITCH_2025, SWITCH_2025])
-        record(smard, http, BY_KEY["load_forecast_tso"], [REGULAR_2026])
+        record(smard, BY_KEY["load"], load_weeks)
+        record_hourly(smard, BY_KEY["load"], [SPRING_DST_2025, AUTUMN_DST_2025])
+        record(smard, BY_KEY["price_day_ahead"], price_weeks)
+        record_hourly(smard, BY_KEY["price_day_ahead"], [PRE_SWITCH_2025, SWITCH_2025])
+        record(smard, BY_KEY["load_forecast_tso"], [REGULAR_2026])
         for series in BY_KEY.values():
             if series.category is Category.GENERATION:
-                record(smard, http, series, [REGULAR_2026])
+                record(smard, series, [REGULAR_2026])
     finally:
         smard.close()
     return 0

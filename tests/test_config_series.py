@@ -43,7 +43,8 @@ def test_catalog_keys_and_filters_are_unique() -> None:
 def test_select_filters_and_excludes_prices() -> None:
     assert [s.key for s in select(["load"])] == ["load"]
     assert all(s.category is not Category.PRICE for s in select(include_prices=False))
-    assert select(["price_day_ahead"], include_prices=False) == []
+    with pytest.raises(ValueError, match="prices are switched off"):
+        select(["price_day_ahead"], include_prices=False)
     assert len(select()) == len(CATALOG)
 
 

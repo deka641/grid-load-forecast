@@ -15,6 +15,7 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Heartbeat:
     state: str  # running | idle
+    # last_success: end of the last run with status ok or partial (fresh data loaded).
     updated_at: str
     last_success: str | None = None
     last_status: str | None = None
@@ -28,11 +29,15 @@ def write(path: Path, beat: Heartbeat) -> None:
 
 
 def read(path: Path) -> Heartbeat | None:
+    """Read the heartbeat; None if missing or malformed (including bad timestamps)."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return Heartbeat(**data)
+        beat = Heartbeat(**json.loads(path.read_text(encoding="utf-8")))
+        for stamp in (beat.updated_at, beat.last_success):
+            if stamp is not None and datetime.fromisoformat(stamp).utcoffset() is None:
+                raise ValueError("timestamp without time zone")
     except OSError, ValueError, TypeError:
         return None
+    return beat
 
 
 def is_healthy(
