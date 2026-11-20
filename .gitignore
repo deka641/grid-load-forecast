@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+.audit-requirements.txt
+
+# Frontend
+web/node_modules/
+web/dist/
+web/coverage/
+
+# Docs
+site/
+
+# Data and local state
+data/
+.audit/
+.remember/
+docker-compose.override.yml
+.env

@@ -1,0 +1,62 @@
+name: grid-load-forecast
+
+x-python: &python
+  build:
+    context: .
+    dockerfile: docker/python.Dockerfile
+  image: grid-load-forecast-python:local
+  restart: unless-stopped
+  volumes:
+    - ./data:/data
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  pipeline:
+    <<: *python
+    command: ["supercronic", "/app/crontab"]
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  api:
+    <<: *python
+    command: ["uvicorn", "gridload.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    image: grid-load-forecast-web:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8460:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 128m
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /config
+      - /data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
