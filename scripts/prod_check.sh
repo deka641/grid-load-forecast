@@ -27,13 +27,14 @@ docker run --rm -v "${PROJECT}_gridload-data:/data" -v "$(realpath "$DATA_DIR"):
 
 # Known vulnerabilities in the built images: critical findings with a fix block the
 # release, high findings are listed for the record.
+# Scanner image pin, updated by hand (Dependabot does not read this script).
 TRIVY=aquasec/trivy:0.68.1@sha256:a93fd67162843c0f749002af9245fe9a2e5edc41445bd71d3949c803e95ef05b
 for image in grid-load-forecast-python:check grid-load-forecast-web:check; do
     docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v grid-load-forecast-trivy-cache:/root/.cache \
         "$TRIVY" image --quiet --severity HIGH --ignore-unfixed --exit-code 0 "$image"
     docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v grid-load-forecast-trivy-cache:/root/.cache \
         "$TRIVY" image --quiet --severity CRITICAL --ignore-unfixed --exit-code 1 "$image" \
-        || fail "critical vulnerabilities with a fix in $image"
+        || fail "Trivy failed or found critical vulnerabilities with a fix in $image"
 done
 
 for _ in $(seq 1 60); do

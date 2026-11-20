@@ -8,8 +8,8 @@ SHELL := /bin/bash
 UV  := uv run --locked
 NPM := npm --prefix web
 T   := timeout -k 10
+# Scanner image pins are updated by hand (Dependabot does not read the Makefile).
 GITLEAKS := zricethezav/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9
-SCAN_DIR := .gitleaks-scan
 
 .PHONY: help install deps verify-fast verify style secrets secrets-history test-fast prod-check loadtest prod-down audit lint typecheck test openapi openapi-check build docs smoke clean
 
@@ -21,6 +21,8 @@ install: ## Install Python and frontend dependencies from the lockfiles
 	$(NPM) ci --no-fund
 	sha256sum web/package-lock.json > web/node_modules/.lock.sha256
 
+# Detects a missing or outdated install. Packages added by hand outside the lockfiles
+# (uv pip install, npm install --no-save) are not detected.
 deps: ## Fail early if the locked environments are missing or out of date
 	@test -d web/node_modules || { echo "web/node_modules missing: run make install"; exit 1; }
 	@sha256sum --status -c web/node_modules/.lock.sha256 2>/dev/null || { echo "web/node_modules was not installed from the current package-lock.json: run make install"; exit 1; }
@@ -35,15 +37,22 @@ verify: deps lint typecheck style secrets audit secrets-history test openapi-che
 style: ## No emojis or em/en dashes in versioned text files
 	$(T) 60 $(UV) python scripts/check_style.py
 
-secrets: ## Secret scan of the versioned files in the working tree
-	rm -rf $(SCAN_DIR)
-	mkdir $(SCAN_DIR)
-	git ls-files -z | xargs -0 cp --parents -t $(SCAN_DIR)
-	$(T) 120 docker run --rm -v "$(CURDIR)/$(SCAN_DIR):/scan:ro" $(GITLEAKS) dir /scan --no-banner --redact
-	rm -rf $(SCAN_DIR)
+# Tracked and new (not ignored) files; the copy is removed even when a secret is found.
+secrets: ## Secret scan of the working tree
+	@trap 'rm -rf .gitleaks-scan' EXIT; rm -rf .gitleaks-scan; mkdir .gitleaks-scan; \
+	git ls-files -z --cached --others --exclude-standard \
+	  | while IFS= read -r -d '' f; do [ -f "$$f" ] && printf '%s\0' "$$f"; done \
+	  | xargs -0r cp --parents -t .gitleaks-scan; \
+	$(T) 120 docker run --rm -v "$(CURDIR)/.gitleaks-scan:/scan:ro" $(GITLEAKS) dir /scan --no-banner --redact
 
+# Mounts the shared git directory too, so the scan also works inside a git worktree,
+# and fails if no commit was scanned.
 secrets-history: ## Secret scan over the full git history
-	$(T) 300 docker run --rm -v "$(CURDIR):/repo:ro" $(GITLEAKS) git /repo --no-banner --redact
+	@g=$$(git rev-parse --path-format=absolute --git-common-dir); \
+	out=$$($(T) 300 docker run --rm -v "$(CURDIR):$(CURDIR):ro" -v "$$g:$$g:ro" $(GITLEAKS) \
+	  git "$(CURDIR)" --no-banner --redact 2>&1) || { echo "$$out"; exit 1; }; \
+	echo "$$out" | tail -2; \
+	! echo "$$out" | grep -q " 0 commits scanned" || { echo "secrets-history: no commits scanned"; exit 1; }
 
 test-fast: ## Tests without coverage
 	$(T) 600 $(UV) pytest -q -p no:cacheprovider
