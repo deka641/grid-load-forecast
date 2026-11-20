@@ -30,7 +30,8 @@ function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
     return metric ? formatPercent(metric.mape) : NOT_AVAILABLE
   }
   return (
-    <div className="table-scroll">
+    // Narrow windows may scroll the table sideways, so the box takes keyboard focus.
+    <div className="table-scroll" tabIndex={0} role="region" aria-label="Backtest errors table">
       <table className="metrics">
         <caption className="visually-hidden">
           Backtest errors by forecast: mean absolute error in GW, number of scored hours and mean
@@ -80,7 +81,7 @@ function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
                 <td className="num">
                   {overall ? `${(overall.mae / 1000).toFixed(2)} GW` : NOT_AVAILABLE}
                 </td>
-                <td className="num">
+                <td className="num metric-hours">
                   {overall ? overall.n.toLocaleString('en-GB') : NOT_AVAILABLE}
                 </td>
                 <td className="num">{mape(m.key, 'overall', 'all')}</td>
@@ -167,6 +168,7 @@ function BacktestView({ backtest }: { backtest: BacktestMetrics }) {
             build={build}
             label="Line chart of the mean absolute percentage error by local hour of the day for the LightGBM model, the baseline and the SMARD forecast"
             className="chart-small"
+            dataLabel="MAPE by hour table"
           >
             <HourTable backtest={backtest} />
           </Chart>

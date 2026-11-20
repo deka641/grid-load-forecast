@@ -13,12 +13,14 @@ export interface ChartProps {
   label: string
   /** The plotted values as a table: read by screen readers, shown on request. */
   children?: ReactNode
+  /** Short name of the opened data table, for its scroll region. */
+  dataLabel?: string
   className?: string
 }
 
 type Instance = ReturnType<typeof echarts.init>
 
-export function Chart({ build, label, children, className }: ChartProps) {
+export function Chart({ build, label, children, dataLabel, className }: ChartProps) {
   const container = useRef<HTMLDivElement>(null)
   const instance = useRef<Instance | null>(null)
   const { resolved } = useTheme()
@@ -77,7 +79,15 @@ export function Chart({ build, label, children, className }: ChartProps) {
             {showData ? 'Hide data' : 'Show data'}
           </button>
           <figcaption id={dataId} className={showData ? 'chart-data' : 'visually-hidden'}>
-            {children}
+            {/* Once open, the table scrolls in its own box, which keyboard users can focus. */}
+            <div
+              className="chart-data-scroll"
+              {...(showData
+                ? { tabIndex: 0, role: 'region', 'aria-label': dataLabel ?? 'Chart data' }
+                : {})}
+            >
+              {children}
+            </div>
           </figcaption>
         </>
       ) : null}

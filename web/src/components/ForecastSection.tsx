@@ -13,12 +13,15 @@ import { Legend } from './Legend'
 import { Loading, QueryProblem } from './Notice'
 import { NO_FORECAST, noForecastFor } from './messages'
 
-const LEGEND = FORECAST_SERIES.map((s) => ({
-  key: s.key,
-  label: s.label,
-  pattern: LINE_STYLES[s.key].pattern,
-  width: LINE_STYLES[s.key].width,
-}))
+function legendItems(withActual: boolean) {
+  return FORECAST_SERIES.map((s) => ({
+    key: s.key,
+    label: s.label,
+    pattern: LINE_STYLES[s.key].pattern,
+    width: LINE_STYLES[s.key].width,
+    empty: s.key === 'actual' && !withActual,
+  }))
+}
 
 function DaySelector({
   days,
@@ -157,11 +160,12 @@ function ForecastView({ forecast }: { forecast: ForecastDay }) {
           {hours === 25 ? ', so 02:00 appears twice' : ', 02:00 does not exist'}.
         </p>
       )}
-      <Legend items={LEGEND} label="Lines in the forecast chart" />
+      <Legend items={legendItems(hasActuals(points))} label="Lines in the forecast chart" />
       <Chart
         build={build}
         label={`Line chart of the grid load on ${dayShort(forecast.delivery_day)} in GW by local hour: actual, LightGBM model, baseline and SMARD forecast`}
         className="chart-forecast"
+        dataLabel="Hourly forecast table"
       >
         <ForecastTable forecast={forecast} />
       </Chart>

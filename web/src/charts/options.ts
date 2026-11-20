@@ -186,7 +186,8 @@ export function forecastOption(points: readonly ForecastPoint[], palette: Palett
         }
         return tooltipHtml(
           `${wallClock(point.ts)} (${offsetLabel(point.ts)})`,
-          FORECAST_SERIES.map((s) => ({
+          // No actual yet: the row is left out, as there is no line to read it from.
+          FORECAST_SERIES.filter((s) => s.key !== 'actual' || point.actual !== null).map((s) => ({
             label: s.label,
             value: gwText(point[s.key]),
             swatch: s.key,
@@ -315,7 +316,8 @@ export function mixOption(
       stack: 'generation',
       showSymbol: false,
       symbol: 'none',
-      lineStyle: { width: 0 },
+      // A hairline in the surface colour separates neighbouring bands in both themes.
+      lineStyle: { width: 0.75, color: palette.surface },
       areaStyle: { color: colorOf(s.key), opacity: 1 },
       itemStyle: { color: colorOf(s.key) },
       emphasis: { disabled: true },

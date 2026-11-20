@@ -1,4 +1,5 @@
 import type { Status } from '../api/client'
+import { describeRun } from '../lib/format'
 import { dateTimeBerlin } from '../lib/time'
 
 export const SOURCE_URL = 'https://github.com/deka641/grid-load-forecast'
@@ -12,7 +13,7 @@ function PipelineRun({ status }: { status: Status }) {
   const verb = run.finished_at ? 'finished' : 'started'
   return (
     <li>
-      Last pipeline run: {run.status} ({run.mode}), {verb} {dateTimeBerlin(when)}
+      Last pipeline run: {describeRun(run.status, run.mode)}, {verb} {dateTimeBerlin(when)}
     </li>
   )
 }

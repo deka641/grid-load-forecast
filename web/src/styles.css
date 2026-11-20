@@ -7,7 +7,7 @@
   --color-muted: #5a6577;
   --color-rule: #d6dce4;
   --color-model: #1d5fbf;
-  --color-baseline: #8792a3;
+  --color-baseline: #77829a;
   --color-tso: #0f8476;
   --color-actual: var(--color-ink);
   --color-price: var(--color-ink);
@@ -23,11 +23,11 @@
   --gen-wind-onshore: #3d97d3;
   --gen-wind-offshore: #1f5e99;
   --gen-solar: #e9c32d;
-  --gen-biomass: #5e9b3e;
+  --gen-biomass: #4c8a31;
   --gen-hydro: #27a8a6;
   --gen-pumped-storage: #79b4d2;
-  --gen-other-conventional: #a3a9b2;
-  --gen-other-renewable: #a7c66b;
+  --gen-other-conventional: #c3c8cf;
+  --gen-other-renewable: #bfd98c;
 
   --font-body: 'Barlow', system-ui, sans-serif;
   --font-display: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif;
@@ -56,9 +56,7 @@
     --color-warn: #f2b45c;
     --color-warn-bg: #3a2a12;
     --color-error: #ff9b8f;
-    --gen-hard-coal: #9aa0aa;
-    --gen-wind-offshore: #4e86c4;
-    --gen-other-conventional: #c48a99;
+    --gen-wind-offshore: #3b6fae;
   }
 }
 
@@ -76,9 +74,7 @@
   --color-warn: #f2b45c;
   --color-warn-bg: #3a2a12;
   --color-error: #ff9b8f;
-  --gen-hard-coal: #9aa0aa;
-  --gen-wind-offshore: #4e86c4;
-  --gen-other-conventional: #c48a99;
+  --gen-wind-offshore: #3b6fae;
 }
 
 *,
@@ -158,6 +154,11 @@ a:hover {
   gap: 16px 48px;
   padding: 32px 0 20px;
   border-bottom: 1px solid var(--color-rule);
+}
+
+/* The heavy rule of the first section is the only divider below the header. */
+.page:has(.section) .site-header {
+  border-bottom: 0;
 }
 
 .site-header h1 {
@@ -309,6 +310,7 @@ a:hover {
 }
 
 .clock-change {
+  margin-top: 12px;
   font-size: var(--text-sm);
   color: var(--color-muted);
 }
@@ -370,12 +372,26 @@ a:hover {
   stroke-linecap: butt;
 }
 
+/* A series without values yet, such as the actual load before the day starts. */
+.legend-item.is-empty {
+  color: var(--color-muted);
+}
+
+.is-empty .legend-line {
+  opacity: 0.35;
+}
+
 .legend-area,
 .tt-swatch {
   display: inline-block;
   width: 12px;
   height: 12px;
   flex: none;
+}
+
+/* An inner edge keeps pale swatches visible on the page background. */
+.legend-area {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 50%, transparent);
 }
 
 .stroke-actual line {
@@ -553,7 +569,7 @@ a:hover {
 /* Backtest: table and hourly chart side by side on wide screens. */
 .backtest-grid {
   display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   gap: 32px;
   align-items: start;
   margin-top: 16px;
@@ -566,6 +582,11 @@ a:hover {
 .table-scroll {
   max-width: 100%;
   overflow-x: auto;
+}
+
+.table-scroll:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 tr.narrow-only {
@@ -590,7 +611,7 @@ tr.narrow-only {
 
 .metrics th,
 .metrics td {
-  padding: 8px 10px;
+  padding: 8px;
   border-bottom: 1px solid var(--color-rule);
   text-align: left;
   vertical-align: bottom;
@@ -615,7 +636,8 @@ tr.narrow-only {
   border-bottom: 1px solid var(--color-rule);
 }
 
-.metrics thead tr:first-child th[rowspan] {
+.metrics thead tr:first-child th[rowspan],
+.metrics thead tr:first-child td[rowspan] {
   border-bottom: 1px solid var(--color-ink);
 }
 
@@ -645,6 +667,11 @@ tr.narrow-only {
 
 .metrics tbody:first-of-type tr:first-child td {
   font-weight: 600;
+}
+
+/* The scored hours are the same for every model, so they are not a result to stress. */
+.metrics tbody:first-of-type tr:first-child td.metric-hours {
+  font-weight: 400;
 }
 
 .row-key {
@@ -706,7 +733,7 @@ tr.narrow-only {
   color: var(--color-ink);
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1240px) {
   .backtest-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -811,14 +838,14 @@ tr.narrow-only {
 .chart-data-toggle {
   display: block;
   margin: 0 8px 8px auto;
-  min-height: 32px;
+  min-height: 36px;
   padding: 0 10px;
   border: 1px solid var(--color-rule);
   border-radius: var(--radius);
   background: var(--color-surface);
   color: var(--color-muted);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -829,16 +856,26 @@ tr.narrow-only {
 
 .chart-data {
   display: block;
+  border-top: 1px solid var(--color-rule);
+  font-size: var(--text-sm);
+}
+
+/* Only the opened table scrolls; the hidden copy for screen readers is no scroll region. */
+.chart-data .chart-data-scroll {
   max-height: 360px;
   overflow: auto;
-  border-top: 1px solid var(--color-rule);
   padding: 8px 12px;
-  font-size: var(--text-sm);
+}
+
+.chart-data-scroll:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
 }
 
 .chart-data table {
   border-collapse: collapse;
-  width: 100%;
+  width: auto;
+  min-width: 60%;
 }
 
 .chart-data caption {
@@ -855,8 +892,7 @@ tr.narrow-only {
   white-space: nowrap;
 }
 
-.chart-data th:first-child,
-.chart-data thead th {
+.chart-data th:first-child {
   text-align: left;
 }
 
