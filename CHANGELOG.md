@@ -12,6 +12,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ### Changed
 
+- Clients that accept gzip and zstd without a preference, such as browsers, now get gzip-compressed responses. Now that repeated large requests are answered from the cache, the zstd encoders took the web container past its 128 MB memory limit under `make loadtest`; with gzip it peaked at 61 MiB. A client that asks only for zstd, or ranks it higher, still gets zstd and can still exhaust that limit with many parallel large downloads.
 - Repeated large data requests, such as one year of all series hourly, are answered from an in-memory cache of at most 64 MiB until the next snapshot, so they no longer wait for one of the two slots for large requests. Under `make loadtest` the median of that request dropped from 3344 ms to 157 ms.
 - The pipeline and API image runs on Python 3.15 instead of 3.14. The backtest in this image reproduces `reports/backtest.json`, `reports/backtest.md` and the scored rows byte for byte. Local development still works with Python 3.14.
 
