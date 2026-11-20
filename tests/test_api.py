@@ -20,11 +20,11 @@ from gridload.pipeline import snapshot
 from gridload.pipeline.db import connect, migrate
 from gridload.pipeline.ingest import Ingestor
 from gridload.series import BY_KEY, CATALOG
-from tests.fake_smard import FakeSmard, recorded_chunks
+from tests.fake_smard import FIXTURE_NOW, FakeSmard, fixture_clock, recorded_chunks
 
 ROOT = Path(__file__).resolve().parent.parent
 BERLIN = ZoneInfo("Europe/Berlin")
-NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+NOW = FIXTURE_NOW
 BASE_SERIES = [BY_KEY[k] for k in ("load", "load_forecast_tso", "gen_solar", "price_day_ahead")]
 SPRING_DAY = date(2025, 3, 30)
 AUTUMN_DAY = date(2025, 10, 26)
@@ -42,7 +42,7 @@ def base_warehouse(tmp_path_factory: pytest.TempPathFactory) -> Path:
     for series in BASE_SERIES:
         fake.use_index(series, recorded_chunks(series))
     with connect(path) as con:
-        result = Ingestor(con, fake.client()).run(BASE_SERIES, mode="backfill")
+        result = Ingestor(con, fake.client(), clock=fixture_clock).run(BASE_SERIES, mode="backfill")
         assert result.status == "ok"
     return path
 

@@ -1,3 +1,4 @@
+import functools
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -10,14 +11,33 @@ from gridload import cli
 from gridload.config import Settings
 from gridload.pipeline import heartbeat, jobs
 from gridload.pipeline.db import connect
-from gridload.pipeline.ingest import RunResult
+from gridload.pipeline.ingest import Ingestor, RunResult
 from gridload.series import CATALOG
-from tests.fake_smard import FakeSmard, chunk_name, fixture_bytes, recorded_chunks
+from tests.fake_smard import (
+    FIXTURE_NOW,
+    FakeSmard,
+    advancing_clock,
+    chunk_name,
+    fixture_bytes,
+    recorded_chunks,
+)
 
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     return Settings(data_dir=tmp_path)
+
+
+def pin_ingest_clock(monkeypatch: pytest.MonkeyPatch, clock: Callable[[], datetime]) -> None:
+    """Make ``jobs.load`` ingest with ``clock`` instead of the wall clock."""
+    monkeypatch.setattr(jobs, "Ingestor", functools.partial(Ingestor, clock=clock))
+
+
+@pytest.fixture(autouse=True)
+def _fixture_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Which recorded chunks count as open or recent depends on "now"; the clock
+    # advances so that consecutive runs keep their order.
+    pin_ingest_clock(monkeypatch, advancing_clock())
 
 
 @pytest.fixture
@@ -28,7 +48,10 @@ def fake() -> FakeSmard:
     return smard
 
 
-def test_load_publishes_snapshot_and_heartbeat(settings: Settings, fake: FakeSmard) -> None:
+def test_load_publishes_snapshot_and_heartbeat(
+    settings: Settings, fake: FakeSmard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(heartbeat, "now_iso", FIXTURE_NOW.isoformat)
     calls: list[str] = []
 
     def post(_con: duckdb.DuckDBPyConnection, _s: Settings, _tick: Callable[[], None]) -> list[str]:
@@ -49,10 +72,12 @@ def test_load_publishes_snapshot_and_heartbeat(settings: Settings, fake: FakeSma
     assert beat is not None
     assert (beat.state, beat.last_status) == ("idle", "ok")
     assert beat.last_success is not None
-    # The fixtures end on 2026-11-20, so data freshness decides health here.
-    assert jobs.healthcheck(settings) is (
-        datetime.now(UTC) - datetime(2026, 11, 20, 9, 45, tzinfo=UTC) <= timedelta(hours=12)
-    )
+    assert beat.last_success == FIXTURE_NOW.isoformat()
+    # The run just succeeded, so the age of the newest load value decides health.
+    newest = datetime(2026, 11, 20, 9, 45, tzinfo=UTC)
+    assert heartbeat.is_healthy(beat, FIXTURE_NOW)
+    assert heartbeat.is_healthy(beat, newest + timedelta(hours=12))
+    assert not heartbeat.is_healthy(beat, newest + timedelta(hours=12, minutes=1))
 
 
 def test_failed_load_keeps_previous_success(settings: Settings, fake: FakeSmard) -> None:
@@ -318,15 +343,19 @@ def test_failed_step_after_a_partial_ingest_keeps_partial(
     assert result.errors[-1] == "step failed: forecast"
 
 
-def test_run_finishes_after_the_follow_up_steps(settings: Settings, fake: FakeSmard) -> None:
+def test_run_finishes_after_the_follow_up_steps(
+    settings: Settings, fake: FakeSmard, monkeypatch: pytest.MonkeyPatch
+) -> None:
     seen: list[tuple[object, ...]] = []
+    clock = advancing_clock()
+    pin_ingest_clock(monkeypatch, clock)
 
     def steps(
         con: duckdb.DuckDBPyConnection, _settings: Settings, _tick: Callable[[], None]
     ) -> list[str]:
-        row = con.execute("SELECT status, finished_at, now() FROM load_runs").fetchone()
+        row = con.execute("SELECT status, finished_at FROM load_runs").fetchone()
         assert row is not None
-        seen.append(row)
+        seen.append((*row, clock()))
         return []
 
     result = jobs.load(
@@ -345,7 +374,7 @@ def test_run_finishes_after_the_follow_up_steps(settings: Settings, fake: FakeSm
         served.close()
     assert row is not None
     assert row[0] == "ok"
-    assert row[1] >= seen[0][2]
+    assert row[1] > seen[0][2]
 
 
 def test_withdrawal_in_a_generation_series_keeps_the_pipeline_healthy(
