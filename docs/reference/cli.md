@@ -1,6 +1,6 @@
 # Command line
 
-The `gridload` command is installed with the package (`uv run gridload ...` locally, `docker compose exec pipeline gridload ...` in the stack). It exits with 0 on success, 1 if a run failed and 2 for invalid arguments.
+The `gridload` command is installed with the package (`uv run gridload ...` locally, `docker compose exec pipeline gridload ...` in the stack). It exits with 0 on success, 1 if the command failed (a failed or aborted run, an unhealthy pipeline, or no backtest stored, including `--days` below 7) and 2 for invalid arguments or unknown series.
 
 | Command | What it does |
 |---|---|

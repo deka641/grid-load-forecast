@@ -20,7 +20,7 @@ The features per target hour are:
 
 ## Model and baseline
 
-The model is LightGBM with an L1 objective, 600 boosting rounds and a fixed seed (parameters in `src/gridload/forecast/model.py`). It is trained on all complete delivery days that ended before the origin day began. In production it is retrained for every forecast.
+The model is LightGBM with an L1 objective, 600 boosting rounds and a fixed seed (parameters in `src/gridload/forecast/model.py`). It is trained on every hour with a measured value up to the end of the day before the origin day. In production it is retrained for every forecast.
 
 The baseline repeats the load of the same local hour seven days earlier. It is simple, needs no training and captures the weekly pattern, which makes it the reference any model has to beat.
 
@@ -28,7 +28,7 @@ The third line is the grid load forecast that SMARD publishes (filter 411). It i
 
 ## Backtest
 
-`scripts/backtest.py` replays the production procedure for every day of the last 365 days with complete data. For each delivery day it issues the forecast as of 12:00 on the previous day. The model is retrained every seven days on all days that ended before the origin day (an expanding window with a hard cutoff). LightGBM runs deterministically with a fixed seed, so the same data gives the same report.
+`scripts/backtest.py` replays the production procedure for each of the 365 days ending with the last complete day of load data. For each delivery day it issues the forecast as of 12:00 on the previous day. The model is retrained every seven days on all hours up to the end of the day before the origin day (an expanding window with a hard cutoff). LightGBM runs deterministically with a fixed seed, so the same data gives the same report.
 
 The errors are measured against the actual hourly load:
 
@@ -39,4 +39,6 @@ The model and the baseline are scored on every hour that has an actual value and
 
 Two checks guard the method. A leak test corrupts every value that was not yet known at an origin and confirms that features and forecasts stay identical, for the production path and for the backtest over several origins with retraining. A cross-check recomputes every reported metric with scikit-learn in a separate environment (`scripts/crosscheck_metrics.py`).
 
-Only values produced by `scripts/backtest.py` are quoted in this documentation and in the README.
+The replay uses the load values as they are stored today, including corrections SMARD made after the original publication; the warehouse keeps the newest value and a revision counter, not earlier versions. The leak test covers values not yet published at an origin, not later corrections.
+
+Only values produced by `scripts/backtest.py` are quoted in this documentation and in the README. The dashboard shows the backtest that the pipeline recomputes every week, so its period and values move on from the committed report over time.

@@ -22,10 +22,10 @@ Unchanged chunks are recognised by their hash and skipped, changed values overwr
 
 ## Accept values that SMARD removed
 
-If the status reports "stored values are now missing in a completed chunk" for a week and you have checked on SMARD.de that the values were removed on purpose, accept the withdrawal once:
+If the status reports "stored values are now missing in a completed chunk" for a week and you have checked on SMARD.de that the values were removed on purpose, accept the withdrawal for that series only, with N large enough to reach the reported week:
 
 ```bash
-docker compose exec pipeline gridload ingest --refetch-weeks 52 --accept-withdrawals
+docker compose exec pipeline gridload ingest --series KEY --refetch-weeks N --accept-withdrawals
 ```
 
 ## Switch wholesale prices off
@@ -36,7 +36,7 @@ Set `GRIDLOAD_INCLUDE_PRICES=false` (in the shell or in `.env`) and recreate the
 GRIDLOAD_INCLUDE_PRICES=false docker compose up -d
 ```
 
-The next run publishes a snapshot without any price data, and the dashboard hides the price chart.
+After the services are recreated, the API no longer offers prices and the dashboard hides the price chart; the next pipeline run publishes a snapshot without any price data.
 
 ## Run the backtest on demand
 

@@ -55,4 +55,4 @@ Scopes in `backtest_metrics`:
 
 ## Serving snapshot
 
-`serving.duckdb` contains `schema_version`, `series`, `load_runs`, `forecast_runs`, `forecasts`, `backtest_runs`, `backtest_metrics`, the quarter-hour `observations` (without revision columns), `hourly` as a table, and the `load_log` of the last 30 runs. Price series are left out entirely when prices are switched off.
+`serving.duckdb` contains `schema_version`, `series`, `load_runs`, `forecast_runs`, `forecasts`, `backtest_runs`, `backtest_metrics`, the quarter-hour `observations` with `series_key`, `ts_utc` and `value` only, `hourly` as a table, and the `load_log` of the last 30 runs. Price series are left out entirely when prices are switched off.
