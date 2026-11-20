@@ -49,6 +49,13 @@ MIN_THROUGHPUT = 64 * 1024
 BYTE_BUDGET = 100 * 2**20
 BYTES_PER_POINT = 52
 SMALL_BODY_BYTES = 64 * 1024
+# Bodies of at least CACHE_MIN_BYTES are kept for the current snapshot, at most
+# CACHE_BYTES in total, least recently used out first. A repeated large request
+# is then answered from memory without a gate or a query slot; sending it still
+# counts against BYTE_BUDGET. 1 MiB is about 20,000 points, well below the
+# heavy threshold; one year of all series hourly needs about 6.6 MB of it.
+CACHE_BYTES = 64 * 2**20
+CACHE_MIN_BYTES = 2**20
 # All limits are per process; compose runs a single uvicorn worker. uvicorn's own
 # --limit-concurrency (256 in compose.yaml) is only a backstop far above them.
 
@@ -72,6 +79,8 @@ class Limits:
     byte_budget: int = BYTE_BUDGET
     send_timeout: float = SEND_TIMEOUT_SECONDS
     min_throughput: float = MIN_THROUGHPUT
+    cache_bytes: int = CACHE_BYTES
+    cache_min_bytes: int = CACHE_MIN_BYTES
 
 
 @dataclass

@@ -13,6 +13,7 @@ import duckdb
 from fastapi import Request, Response
 
 import gridload
+from gridload.api.cache import ResponseCache
 from gridload.api.limits import (
     HEAVY_CONCURRENCY,
     HEAVY_MAX_WAITING,
@@ -71,6 +72,7 @@ class DataService:
         self.heavy = Gate(HEAVY_CONCURRENCY, limits.heavy_wait, HEAVY_MAX_WAITING)
         self.query = Gate(QUERY_CONCURRENCY, limits.query_wait, QUERY_MAX_WAITING)
         self.budget = ByteBudget(limits.byte_budget)
+        self.cache = ResponseCache(limits.cache_bytes, limits.cache_min_bytes)
         self._limits = limits
         # Build and settings that change a response without a new snapshot.
         self._variant = variant
@@ -83,9 +85,18 @@ class DataService:
         return f'"{hashlib.sha256(raw.encode()).hexdigest()[:32]}"'
 
     async def _query(
-        self, request: Request, run: Callable[[], bytes], *, gated: bool
+        self,
+        request: Request,
+        run: Callable[[], bytes],
+        cached: Callable[[], bytes | None],
+        *,
+        gated: bool,
     ) -> bytes | None:
-        """Run the query behind the gates; None if the client disconnected first."""
+        """Run the query behind the gates; None if the client disconnected first.
+
+        A body that an identical request cached while this one waited for its
+        slots is returned without running the query.
+        """
         with anyio.CancelScope() as scope:
             watcher = asyncio.create_task(_until_disconnected(request, scope))
             try:
@@ -95,6 +106,8 @@ class DataService:
                     await gates.enter_async_context(self.query())
                     # Lets the watcher see a disconnect before the query starts.
                     await anyio.lowlevel.checkpoint()
+                    if (body := cached()) is not None:
+                        return body
                     return await anyio.to_thread.run_sync(run)
             finally:
                 watcher.cancel()
@@ -110,26 +123,35 @@ class DataService:
     ) -> Response:
         """Answer a data request; the body only changes with the snapshot.
 
-        A matching If-None-Match is answered with 304 before any gate or query.
-        ``estimate`` is the expected body size, reserved in the byte budget.
+        A matching If-None-Match is answered with 304 before any gate or query,
+        and a cached body is sent without them. ``estimate`` is the expected
+        body size, reserved in the byte budget.
         """
         snapshot = self.store.current()
-        headers = {"ETag": self.etag(snapshot, request), "Cache-Control": "no-cache"}
-        if etag_matches(request.headers.get("if-none-match"), headers["ETag"]):
+        self.cache.select(snapshot.key)
+        tag = self.etag(snapshot, request)
+        headers = {"ETag": tag, "Cache-Control": "no-cache"}
+        if etag_matches(request.headers.get("if-none-match"), tag):
             return Response(status_code=304, headers=headers)
+
+        def cached() -> bytes | None:
+            return self.cache.get(snapshot.key, tag)
 
         def run() -> bytes:
             with self.store.cursor(snapshot) as (cur, _created):
                 return build(cur)
 
-        self.budget.reserve(estimate)
-        try:
-            body = await self._query(request, run, gated=gated)
-        finally:
-            self.budget.release(estimate)
+        body = cached()
         if body is None:
-            # The client is gone; nobody reads this.
-            return Response(status_code=499)
+            self.budget.reserve(estimate)
+            try:
+                body = await self._query(request, run, cached, gated=gated)
+            finally:
+                self.budget.release(estimate)
+            if body is None:
+                # The client is gone; nobody reads this.
+                return Response(status_code=499)
+            self.cache.put(snapshot.key, tag, body)
         size = len(body)
         # The estimate may have been low: the real size must fit as well.
         self.budget.reserve(size)

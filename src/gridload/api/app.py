@@ -166,6 +166,7 @@ def create_app(
     app.state.heavy_gate = data.heavy
     app.state.budget = data.budget
     app.state.query_gate = data.query
+    app.state.cache = data.cache
 
     # The include order is the route order of the OpenAPI document.
     app.include_router(health_router())
