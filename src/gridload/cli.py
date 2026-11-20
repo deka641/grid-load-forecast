@@ -1,6 +1,7 @@
-"""Command line entry point: ``gridload backfill|ingest|run|status|healthcheck``."""
+"""Command line entry point: ``gridload backfill|ingest|run|backtest|status|healthcheck``."""
 
 import argparse
+import logging
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -36,7 +37,10 @@ def _parser() -> argparse.ArgumentParser:
         help="also reload the newest N weekly chunks to pick up corrections (default 4)",
     )
 
-    sub.add_parser("run", help="scheduled job: ingest, follow-up steps, publish snapshot")
+    sub.add_parser("run", help="scheduled job: ingest, forecast, publish snapshot")
+
+    backtest = sub.add_parser("backtest", help="run the rolling-origin backtest and store it")
+    backtest.add_argument("--days", type=int, default=365, help="evaluation days (default 365)")
     sub.add_parser("status", help="print the status of the published snapshot as JSON")
     sub.add_parser("healthcheck", help="exit 0 if the pipeline is healthy")
     return parser
@@ -44,12 +48,17 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     settings = Settings.from_env()
     if args.command == "status":
         print(jobs.dumps(jobs.status(settings)))
         return 0
     if args.command == "healthcheck":
         return 0 if jobs.healthcheck(settings) else 1
+    if args.command == "backtest":
+        stored = jobs.backtest(settings, days=args.days)
+        print(stored)
+        return 0 if stored.startswith("backtest") else 1
     try:
         select(getattr(args, "series", None), include_prices=settings.include_prices)
     except ValueError as exc:
