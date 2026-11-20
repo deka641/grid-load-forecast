@@ -19,6 +19,16 @@ def _date(value: str) -> datetime:
         raise argparse.ArgumentTypeError(f"expected YYYY-MM-DD, got {value!r}") from exc
 
 
+def _non_negative(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected a whole number, got {value!r}") from exc
+    if number < 0:
+        raise argparse.ArgumentTypeError(f"must not be negative, got {number}")
+    return number
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gridload", description=__doc__)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -32,14 +42,14 @@ def _parser() -> argparse.ArgumentParser:
     ingest.add_argument("--series", nargs="+", metavar="KEY", help="limit to these series")
     ingest.add_argument(
         "--refetch-weeks",
-        type=int,
+        type=_non_negative,
         default=4,
         help="also reload the newest N weekly chunks to pick up corrections (default 4)",
     )
     ingest.add_argument(
         "--accept-withdrawals",
         action="store_true",
-        help="accept values that SMARD removed from completed weeks (deletes them locally)",
+        help="accept values that SMARD removed beyond a short open tail (deletes them locally)",
     )
 
     sub.add_parser("run", help="scheduled job: ingest, forecast, publish snapshot")
