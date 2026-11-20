@@ -16,6 +16,18 @@ def test_dns_lookup_is_blocked(network_attempts: list[str]) -> None:
     assert network_attempts[0].startswith("getaddrinfo")
 
 
+@pytest.mark.parametrize(
+    ("name", "args"),
+    [("gethostbyaddr", ("192.0.2.1",)), ("getnameinfo", (("192.0.2.1", 443), 0))],
+)
+def test_reverse_lookup_is_blocked(
+    name: str, args: tuple[object, ...], network_attempts: list[str]
+) -> None:
+    with pytest.raises(NetworkAccessError):
+        getattr(socket, name)(*args)
+    assert network_attempts[0].startswith(name)
+
+
 @pytest.mark.parametrize("method", ["connect", "connect_ex"])
 def test_tcp_connect_is_blocked(method: str, network_attempts: list[str]) -> None:
     with (

@@ -41,7 +41,14 @@ def _inet_only(name: str, original: Callable[..., Any]) -> Callable[..., Any]:
 
 def install_network_guard() -> None:
     """Replace every outbound entry point of the socket module with a blocker."""
-    for name in ("getaddrinfo", "gethostbyname", "gethostbyname_ex", "create_connection"):
+    for name in (
+        "getaddrinfo",
+        "getnameinfo",
+        "gethostbyname",
+        "gethostbyname_ex",
+        "gethostbyaddr",
+        "create_connection",
+    ):
         setattr(socket, name, _blocker(name))
     for name in ("connect", "connect_ex", "sendto", "sendmsg"):
         original = getattr(socket.socket, name)
@@ -52,14 +59,25 @@ def pytest_configure(config: pytest.Config) -> None:
     install_network_guard()
 
 
+def _take_attempts() -> str:
+    found = ", ".join(_attempts)
+    _attempts.clear()
+    return found
+
+
 @pytest.fixture(autouse=True)
 def _fail_on_network_attempt() -> Iterator[None]:
-    _attempts.clear()
+    if _attempts:
+        pytest.fail(f"network access before this test (import or fixture): {_take_attempts()}")
     yield
     if _attempts:
-        found = ", ".join(_attempts)
-        _attempts.clear()
-        pytest.fail(f"test attempted network access: {found}")
+        pytest.fail(f"test attempted network access: {_take_attempts()}")
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    if _attempts:
+        print(f"\nnetwork access outside of tests: {_take_attempts()}")
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 @pytest.fixture
