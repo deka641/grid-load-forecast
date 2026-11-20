@@ -20,6 +20,12 @@ All timestamps in responses are ISO 8601 with the Europe/Berlin offset (`+01:00`
 
 - `/actuals` accepts at most 31 days in quarter-hour resolution and 366 days in hourly resolution; `end` must not be before `start`. Unknown series keys, invalid dates and exceeded limits return 422 with the standard FastAPI error body.
 - `/forecasts` returns 404 if no forecast exists for the day; `/backtest/metrics` returns 404 before the first backtest.
-- `/actuals`, `/forecasts`, `/forecasts/days` and `/backtest/metrics` return 503 `{"detail": ...}` when no readable snapshot exists yet (first start). `/actuals` and `/forecasts` also return it when too many large requests are running at once. Above 32 concurrent connections the server answers 503 with a plain-text body. Clients should retry later.
+- `/actuals`, `/forecasts`, `/forecasts/days` and `/backtest/metrics` return 503 `{"detail": ...}` when no readable snapshot exists yet (first start).
+- The data endpoints (including `/series`) also return a JSON 503 when the server is saturated: at most 64 data requests are in progress at once, requests for more than 50,000 values share two slots with a short queue, and responses waiting to be sent may hold at most 100 MB. Clients should retry later. `/health` and `/status` are never limited. Only above 256 open connections does the server itself answer 503 with a plain-text body.
+- Large responses are sent in parts. A client that stops reading for 10 seconds, or reads slower than about 64 KiB per second of uncompressed data, is disconnected; behind Caddy with compression this corresponds to roughly 10 KiB per second on the wire.
 - `/status` always answers and reports `initialised: false` without a snapshot; `/series` then lists the configured catalog.
 - Series and models that are not in the current snapshot (for example prices when they are switched off) are not offered.
+
+## Caching
+
+Data responses carry `Cache-Control: no-cache` and an `ETag` that changes with every new snapshot, a restart of the API and the price setting. A request with a matching `If-None-Match` header gets `304 Not Modified` without running a query, so a dashboard that reloads within the hour transfers almost nothing.

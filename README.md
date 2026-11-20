@@ -49,11 +49,12 @@ On the first start the pipeline loads the full history (our run: 75 minutes for 
 ## Development
 
 ```bash
-make install   # locked Python (uv) and frontend (npm) environments
-make verify    # dependency vulnerability check, lint, strict typing, tests, API types, builds
+make install       # locked Python (uv) and frontend (npm) environments
+make verify-fast   # lint, strict typing, style and secret scans, tests
+make verify        # adds dependency vulnerability check, history scan, coverage, API types, builds
 ```
 
-`make verify` runs every check in order and stops at the first failure; tests never reach the network. See [Develop and verify changes](docs/how-to/develop.md) for the release checks (`make smoke`, `make prod-check`, `make loadtest`).
+Both gates run their checks in order and stop at the first failure; tests never reach the network. See [Develop and verify changes](docs/how-to/develop.md) for the release checks (`make smoke`, `make prod-check`, `make loadtest`).
 
 | Path | Content |
 |---|---|

@@ -8,15 +8,20 @@ Install [uv](https://docs.astral.sh/uv/) and Node.js 24, then:
 make install
 ```
 
-## The quality gate
+## The quality gates
 
 ```bash
-make verify
+make verify-fast   # during work, about two minutes
+make verify        # before merging larger changes, before every push and release
 ```
 
-The first step fails with a hint to run `make install` if the environments were not installed from the current lockfiles (also once on checkouts made before this check existed).
+Both gates first check that the environments were installed from the current lockfiles (otherwise they stop with a hint to run `make install`) and stop at the first failing step.
 
-The gate checks that the locked environments are installed and then runs, in order and stopping at the first failure: the dependency audit (pip-audit, npm audit), ruff, ESLint and Prettier, mypy in strict mode and `tsc`, all tests with coverage (100 % for the data source, pipeline, forecast and API packages), the freshness check of the generated API types, the frontend build with its size budget, and the strict documentation build. Tests never reach the network: a guard fails any test that tries.
+The fast gate runs ruff, ESLint and Prettier, mypy in strict mode and `tsc`, a check that no versioned text file contains emojis or em and en dashes, a secret scan of the working tree with gitleaks, and all tests without coverage. The full gate adds the dependency audit (pip-audit, npm audit), a secret scan over the whole git history, the tests with coverage thresholds (100 % for the data source, pipeline, forecast and API packages), the freshness check of the generated API types, the frontend build with its size budget, and the strict documentation build. Tests never reach the network: a guard fails any test that tries. gitleaks runs from a digest-pinned container, so Docker is needed.
+
+## Dependencies
+
+New package versions are only resolved once they are at least seven days old (`exclude-newer` in `pyproject.toml`, `min-release-age` in `web/.npmrc`), and npm does not run install scripts of dependencies. Dependabot proposes updates weekly with the same seven-day cooldown. Every new dependency needs a reason: purpose, maintenance and licence.
 
 ## Work with real data locally
 
@@ -41,7 +46,7 @@ The first command writes `reports/backtest.json` and `reports/backtest.md`. The 
 
 ```bash
 make smoke        # live request against SMARD
-make prod-check   # production build behind Caddy on an isolated port with a data copy
+make prod-check   # production build behind Caddy on an isolated port with a data copy, image scan with Trivy
 make loadtest     # parallel dashboard requests against the isolated stack
 ```
 
