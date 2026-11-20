@@ -11,7 +11,7 @@ import { NOT_AVAILABLE } from '../lib/format'
 import { PRICE_KEY, alignSeries, meanOf, stats } from '../lib/series'
 import type { Aligned } from '../lib/series'
 import { coversFullDays } from '../lib/days'
-import { addDays, dayPlain } from '../lib/time'
+import { addDays, dayPlain, dayShort, localDay, offsetLabel, wallClock } from '../lib/time'
 import { Legend } from './Legend'
 import { Loading, QueryProblem } from './Notice'
 
@@ -54,6 +54,39 @@ function MixSummary({ series }: { series: readonly TimeSeries[] }) {
             </td>
           </tr>
         ))}
+      </tbody>
+    </table>
+  )
+}
+
+function PriceTable({
+  stamps,
+  values,
+}: {
+  stamps: readonly string[]
+  values: readonly (number | null)[]
+}) {
+  return (
+    <table>
+      <caption>Hourly day-ahead price DE/LU in EUR/MWh</caption>
+      <thead>
+        <tr>
+          <th scope="col">Hour</th>
+          <th scope="col">Price</th>
+        </tr>
+      </thead>
+      <tbody>
+        {stamps.map((ts, i) => {
+          const value = values[i] ?? null
+          return (
+            <tr key={ts}>
+              <th scope="row">
+                {dayShort(localDay(ts), false)}, {wallClock(ts)} ({offsetLabel(ts)})
+              </th>
+              <td>{value === null ? NOT_AVAILABLE : value.toFixed(2)}</td>
+            </tr>
+          )
+        })}
       </tbody>
     </table>
   )
@@ -123,7 +156,9 @@ function ContextCharts({
             build={buildPrice}
             label={`Line chart of the hourly day-ahead electricity price for Germany and Luxembourg in EUR/MWh, ${range}`}
             className="chart-price"
-          />
+          >
+            <PriceTable stamps={aligned.stamps} values={prices} />
+          </Chart>
           <PriceStats values={prices} />
           <p className="note">{priceNote}</p>
         </>

@@ -1,4 +1,4 @@
-import { QueryClient, keepPreviousData, useQuery } from '@tanstack/react-query'
+import { QueryClient, keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiGet, isApiError, isNoData } from './client'
 
@@ -39,7 +39,13 @@ export function useStatus() {
 }
 
 /** Query keys that hold snapshot data and must be refetched for a new snapshot. */
-export const SNAPSHOT_QUERIES = [['forecast'], ['forecast-days'], ['actuals'], ['backtest']]
+export const SNAPSHOT_QUERIES = [
+  ['forecast'],
+  ['forecast-days'],
+  ['actuals'],
+  ['backtest'],
+  ['series'],
+]
 
 export function useSeries(enabled: boolean) {
   return useQuery({
@@ -59,10 +65,21 @@ export function useForecastDays(enabled: boolean) {
 
 /** `day` undefined asks the API for the latest delivery day with a forecast. */
 export function useForecast(day: string | undefined, enabled: boolean) {
+  const client = useQueryClient()
   return useQuery({
     queryKey: ['forecast', day ?? 'latest'],
-    queryFn: ({ signal }) =>
-      apiGet('/api/v1/forecasts', day === undefined ? {} : { delivery_day: day }, signal),
+    queryFn: async ({ signal }) => {
+      const result = await apiGet(
+        '/api/v1/forecasts',
+        day === undefined ? {} : { delivery_day: day },
+        signal,
+      )
+      if (day === undefined) {
+        // Seed the dated key, so selecting this day later needs no second request.
+        client.setQueryData(['forecast', result.delivery_day], result)
+      }
+      return result
+    },
     enabled,
     // Keep the previous day on screen while the next one loads.
     placeholderData: keepPreviousData,

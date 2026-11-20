@@ -10,7 +10,7 @@ import { Footer } from './components/Footer'
 import { Header } from './components/Header'
 import { ErrorNotice, Info, Loading, QueryProblem } from './components/Notice'
 import { NO_DATA } from './components/messages'
-import { localDay } from './lib/time'
+import { dateTimeBerlin, localDay } from './lib/time'
 import { ThemeProvider } from './theme/ThemeProvider'
 
 /** Refetch snapshot data when the API starts serving a new snapshot. */
@@ -32,11 +32,14 @@ export function Dashboard() {
   useSnapshotRollover(status.data?.snapshot_created_at)
   const retryStatus = () => void status.refetch()
 
+  // Branch on data first: a failed background refetch keeps the last good status on screen.
   let content
-  if (status.isPending) {
-    content = <Loading what="status" />
-  } else if (status.isError) {
-    content = <QueryProblem what="the status" error={status.error} onRetry={retryStatus} />
+  if (status.data === undefined) {
+    content = status.isError ? (
+      <QueryProblem what="the status" error={status.error} onRetry={retryStatus} />
+    ) : (
+      <Loading what="status" />
+    )
   } else if (!status.data.initialised && status.data.snapshot_error) {
     content = (
       <ErrorNotice
@@ -62,7 +65,15 @@ export function Dashboard() {
   return (
     <div className="page">
       <Header status={status.data} fetchedAt={status.dataUpdatedAt} />
-      <main id="main">{content}</main>
+      <main id="main">
+        {status.isError && status.data ? (
+          <p className="inline-note refresh-note" role="status">
+            Could not refresh the status; showing data from{' '}
+            {dateTimeBerlin(status.data.generated_at)}.
+          </p>
+        ) : null}
+        {content}
+      </main>
       <Footer status={status.data} />
     </div>
   )

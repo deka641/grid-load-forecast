@@ -67,6 +67,10 @@ describe('Dashboard with data', () => {
       screen.getByRole('img', { name: /Stacked area chart.*14 Nov 2026 to 20 Nov 2026/ }),
     ).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Context: the past week' })).toBeInTheDocument()
+    const prices = screen.getByRole('table', { name: /Hourly day-ahead price/ })
+    expect(within(prices).getByText('-5.50')).toBeInTheDocument()
+    expect(within(prices).getByText('Thu 19 Nov, 23:00 (UTC+1)')).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'MAPE, All days' })).toBeInTheDocument()
     const actualsCall = calls.find((u) => u.pathname === '/api/v1/actuals')
     expect(actualsCall?.searchParams.get('series')).toBe(
       'gen_wind_onshore,gen_solar,price_day_ahead',
@@ -289,6 +293,8 @@ describe('Dashboard states', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Previous day' })).toBeEnabled()
     })
+    // The latest response seeded the dated key, so the day is not fetched a second time.
+    expect(calls.filter((u) => u.pathname === '/api/v1/forecasts')).toHaveLength(1)
   })
 
   it('reports a network error and retries', async () => {
@@ -487,6 +493,35 @@ describe('Freshness and rollover', () => {
       expect(count('/api/v1/backtest/metrics')).toBe(before + 1)
     })
     expect(count('/api/v1/forecasts/days')).toBe(2)
+    expect(count('/api/v1/series')).toBe(2)
+  })
+
+  it('keeps the sections and the selected day when a status refetch fails', async () => {
+    let attempts = 0
+    mockFetch(
+      routes({
+        '/api/v1/status': () => {
+          attempts += 1
+          return attempts === 1 ? { body: fx.status() } : { status: 500, body: { detail: 'boom' } }
+        },
+      }),
+    )
+    const { client } = renderApp()
+    await headline()
+    fireEvent.click(screen.getByRole('button', { name: 'Previous day' }))
+    expect(await screen.findByText(/Friday 20 November/)).toBeInTheDocument()
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['status'] })
+    })
+    expect(
+      await screen.findByText(
+        'Could not refresh the status; showing data from 20 Nov 2026, 14:02.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText(/Friday 20 November/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Delivery day')).toHaveValue('2026-11-20')
+    expect(screen.getByRole('heading', { name: 'How accurate is it?' })).toBeInTheDocument()
   })
 
   it('shows the stale warning once the data ages in an open tab', async () => {

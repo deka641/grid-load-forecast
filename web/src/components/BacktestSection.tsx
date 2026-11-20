@@ -51,14 +51,16 @@ function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
           </tr>
           <tr>
             <th scope="col" className="num">
-              <span className="label-long">All days</span>
+              <span className="label-long">
+                <span className="visually-hidden">MAPE,</span> All days
+              </span>
               <span className="label-short" aria-hidden="true">
                 MAPE
               </span>
             </th>
             {DAY_TYPES.map((t) => (
               <th key={t.value} scope="col" className="num wide-only">
-                {t.label}
+                <span className="visually-hidden">MAPE,</span> {t.label}
               </th>
             ))}
           </tr>
@@ -91,6 +93,7 @@ function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
               {/* Narrow screens: the day-type columns are hidden and stacked here instead. */}
               <tr className="narrow-only day-type-row">
                 <td colSpan={4}>
+                  <span className="visually-hidden">MAPE by day type:</span>{' '}
                   {DAY_TYPES.map((t) => `${t.label} ${mape(m.key, 'day_type', t.value)}`).join(
                     ', ',
                   )}
