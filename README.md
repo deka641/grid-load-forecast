@@ -6,7 +6,7 @@ Day-ahead forecast of the German grid load from public SMARD data, with a valida
 
 ## What it does
 
-Every day after 12:00 (Europe/Berlin), the time the day-ahead electricity market closes, the pipeline forecasts the grid load for each hour of the next delivery day with 12:00 as the forecast origin. A LightGBM model is trained on all history since 2015 and may only use hours that ended by 10:00, which matches the publication delay of the source. The dashboard compares the forecast with the actual load, with a naive baseline (the same hour one week earlier) and with the grid load forecast that SMARD publishes.
+Every day the pipeline forecasts the grid load for each hour of the next delivery day as of 12:00 (Europe/Berlin), the time the day-ahead electricity market closes. The forecast is computed by the first hourly run after 12:00 and uses only the information available at 12:00. A LightGBM model is trained on all history since 2015 and may only use hours that ended by 10:00, which matches the publication delay of the source. The dashboard compares the forecast with the actual load, with a naive baseline (the same hour one week earlier) and with the grid load forecast that SMARD publishes.
 
 ## How good the forecast is
 
