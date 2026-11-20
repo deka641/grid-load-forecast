@@ -77,7 +77,8 @@ export function status(overrides: Partial<Status> = {}): Status {
     attribution: 'Bundesnetzagentur | SMARD.de',
     licence: 'CC BY 4.0',
     licence_url: 'https://creativecommons.org/licenses/by/4.0/',
-    price_note: 'note',
+    price_note:
+      'The Bundesnetzagentur reviews the licensing of the wholesale electricity prices shown on SMARD.de in its HEDWIG procedure.',
     ...overrides,
   }
 }

@@ -41,18 +41,16 @@ export function isApiError(error: unknown, status?: number): error is ApiError {
   return error instanceof ApiError && (status === undefined || error.status === status)
 }
 
-const TRANSIENT_503 = ['the server is busy', 'the data snapshot cannot be read']
+/** Detail the API sends while no snapshot has been published (src/gridload/api/store.py). */
+export const NO_SNAPSHOT_DETAIL = 'no data snapshot is available yet'
 
 /**
- * A 503 means "no snapshot yet" unless its detail says the server is busy or the
- * snapshot is unreadable; those are failures worth retrying.
+ * Only the API's own "no snapshot yet" 503 means first start. Every other 503 (busy,
+ * unreadable or unopenable snapshot, a plain-text 503 from the server's concurrency
+ * limit) is a failure worth retrying.
  */
-export function isTransient(error: unknown): boolean {
-  return isApiError(error, 503) && TRANSIENT_503.some((text) => error.message.startsWith(text))
-}
-
 export function isNoData(error: unknown): boolean {
-  return isApiError(error, 503) && !isTransient(error)
+  return isApiError(error, 503) && error.message.startsWith(NO_SNAPSHOT_DETAIL)
 }
 
 export function buildUrl(

@@ -288,6 +288,7 @@ export function mixOption(
           return ''
         }
         let total = 0
+        const partial = series.some((s) => (s.values[index] ?? null) === null)
         const rows = [...series].reverse().map((s) => {
           const value = s.values[index] ?? null
           total += value ?? 0
@@ -297,7 +298,11 @@ export function mixOption(
             swatch: s.key,
           }
         })
-        rows.push({ label: 'Total', value: `${total.toFixed(1)} GW`, swatch: 'none' })
+        rows.push({
+          label: partial ? 'Total (partial)' : 'Total',
+          value: `${total.toFixed(1)} GW`,
+          swatch: 'none',
+        })
         return tooltipHtml(stampTitle(stamp), rows)
       },
     },

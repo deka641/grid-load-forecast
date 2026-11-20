@@ -1,4 +1,4 @@
-import { ApiError, apiGet, buildUrl, isApiError, isNoData, isTransient } from './client'
+import { ApiError, apiGet, buildUrl, isApiError, isNoData } from './client'
 import { createQueryClient, shouldRetry } from './queries'
 
 describe('buildUrl', () => {
@@ -51,10 +51,19 @@ describe('apiGet', () => {
 describe('retry policy', () => {
   it('does not retry data states but retries transient failures twice', () => {
     expect(shouldRetry(0, new ApiError(404, 'x'))).toBe(false)
-    expect(shouldRetry(0, new ApiError(503, 'x'))).toBe(false)
-    expect(shouldRetry(0, new ApiError(503, 'the server is busy; try again shortly'))).toBe(true)
-    expect(isTransient(new ApiError(503, 'the data snapshot cannot be read'))).toBe(true)
-    expect(isNoData(new ApiError(503, 'no data snapshot exists yet'))).toBe(true)
+    const missing = 'no data snapshot is available yet; the pipeline has not published one'
+    expect(shouldRetry(0, new ApiError(503, missing))).toBe(false)
+    expect(isNoData(new ApiError(503, missing))).toBe(true)
+    // Busy, unreadable, unopenable and plain-text 503s are failures worth retrying.
+    for (const detail of [
+      'the server is busy; try again shortly',
+      'the data snapshot cannot be read',
+      'the data snapshot cannot be opened',
+      'Service Unavailable',
+    ]) {
+      expect(isNoData(new ApiError(503, detail))).toBe(false)
+      expect(shouldRetry(0, new ApiError(503, detail))).toBe(true)
+    }
     expect(isNoData(new ApiError(404, 'x'))).toBe(false)
     expect(shouldRetry(0, new ApiError(500, 'x'))).toBe(true)
     expect(shouldRetry(1, new TypeError('network'))).toBe(true)

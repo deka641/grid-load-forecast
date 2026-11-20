@@ -2,15 +2,16 @@ import { useCallback, useState } from 'react'
 
 import type { ForecastDay, ForecastPoint } from '../api/client'
 import { useForecast, useForecastDays } from '../api/queries'
-import { Chart } from '../charts/Chart'
+import { Chart } from '../charts/LazyChart'
 import { FORECAST_SERIES, LINE_STYLES, forecastOption } from '../charts/options'
 import type { Palette } from '../charts/palette'
 import { NOT_AVAILABLE, formatGW, formatPercent } from '../lib/format'
-import { MODELS, dayMape, hasActuals, headline } from '../lib/metrics'
+import { MODELS, dayErrors, hasActuals, headline } from '../lib/metrics'
+import { neighbours } from '../lib/days'
 import { dayShort, offsetLabel, wallClock } from '../lib/time'
 import { Legend } from './Legend'
 import { Loading, QueryProblem } from './Notice'
-import { NO_FORECAST } from './messages'
+import { NO_FORECAST, noForecastFor } from './messages'
 
 const LEGEND = FORECAST_SERIES.map((s) => ({
   key: s.key,
@@ -28,10 +29,8 @@ function DaySelector({
   current: string
   onSelect: (day: string) => void
 }) {
-  const index = days.indexOf(current)
-  const older = index >= 0 ? days[index + 1] : undefined
-  const newer = index > 0 ? days[index - 1] : undefined
-  const options = index >= 0 ? days : [current, ...days]
+  const { older, newer } = neighbours(days, current)
+  const options = days.includes(current) ? days : [current, ...days]
   return (
     <div className="day-selector">
       <button
@@ -81,7 +80,7 @@ function DaySelector({
   )
 }
 
-function DayErrors({ points }: { points: readonly ForecastPoint[] }) {
+function DayErrorsRow({ points }: { points: readonly ForecastPoint[] }) {
   if (!hasActuals(points)) {
     return (
       <p className="day-errors">
@@ -90,21 +89,26 @@ function DayErrors({ points }: { points: readonly ForecastPoint[] }) {
       </p>
     )
   }
-  const errors = MODELS.map((m) => ({ ...m, error: dayMape(points, m.key) }))
-  const hours = Math.max(...errors.map((e) => e.error?.hours ?? 0))
+  const errors = dayErrors(points)
+  const hours = errors.lightgbm?.hours ?? 0
+  const tsoHours = errors.tso?.hours ?? 0
   return (
     <div className="day-errors">
       <span className="day-errors-label">This day</span>
       <dl className="day-errors-list">
-        {errors.map((e) => (
-          <div key={e.key}>
-            <dt>{e.short}</dt>
-            <dd>{e.error ? formatPercent(e.error.mape) : NOT_AVAILABLE}</dd>
-          </div>
-        ))}
+        {MODELS.map((m) => {
+          const error = errors[m.key]
+          return (
+            <div key={m.key}>
+              <dt>{m.short}</dt>
+              <dd>{error ? formatPercent(error.mape) : NOT_AVAILABLE}</dd>
+            </div>
+          )
+        })}
       </dl>
       <span className="muted">
         MAPE against the actual load over {String(hours)} of {String(points.length)} hours
+        {tsoHours === hours ? '' : `; SMARD forecast over ${String(tsoHours)} hours`}
       </span>
     </div>
   )
@@ -141,30 +145,18 @@ function ForecastTable({ forecast }: { forecast: ForecastDay }) {
   )
 }
 
-function ForecastView({
-  forecast,
-  days,
-  onSelect,
-}: {
-  forecast: ForecastDay
-  days: readonly string[]
-  onSelect: (day: string) => void
-}) {
+function ForecastView({ forecast }: { forecast: ForecastDay }) {
   const { points } = forecast
   const build = useCallback((palette: Palette) => forecastOption(points, palette), [points])
   const hours = points.length
   return (
     <>
-      <p className="headline">{headline(forecast.delivery_day, points)}</p>
-      <div className="forecast-controls">
-        <DaySelector days={days} current={forecast.delivery_day} onSelect={onSelect} />
-        {hours === 24 ? null : (
-          <p className="clock-change">
-            Clock change: this day has {String(hours)} hours
-            {hours === 25 ? ', so 02:00 appears twice' : ', 02:00 does not exist'}.
-          </p>
-        )}
-      </div>
+      {hours === 24 ? null : (
+        <p className="clock-change">
+          Clock change: this day has {String(hours)} hours
+          {hours === 25 ? ', so 02:00 appears twice' : ', 02:00 does not exist'}.
+        </p>
+      )}
       <Legend items={LEGEND} label="Lines in the forecast chart" />
       <Chart
         build={build}
@@ -173,15 +165,19 @@ function ForecastView({
       >
         <ForecastTable forecast={forecast} />
       </Chart>
-      <DayErrors points={points} />
+      <DayErrorsRow points={points} />
     </>
   )
 }
 
 export function ForecastSection() {
+  // undefined: the newest day, which is the first of the day list once that is known.
   const [day, setDay] = useState<string | undefined>(undefined)
   const days = useForecastDays(true)
-  const forecast = useForecast(day, true)
+  const list = days.data?.days ?? []
+  // Ask for the newest listed day by date, so a later explicit request hits the same cache entry.
+  const requested = day ?? list[0]
+  const forecast = useForecast(requested, day !== undefined || !days.isPending)
 
   let body
   if (forecast.isPending) {
@@ -191,20 +187,40 @@ export function ForecastSection() {
       <QueryProblem
         what="the forecast"
         error={forecast.error}
-        notFound={NO_FORECAST}
+        notFound={day === undefined ? NO_FORECAST : noForecastFor(day)}
         onRetry={() => void forecast.refetch()}
       />
     )
   } else {
-    body = <ForecastView forecast={forecast.data} days={days.data?.days ?? []} onSelect={setDay} />
+    body = <ForecastView forecast={forecast.data} />
   }
 
+  // The selector follows the requested day, not placeholder data still on screen.
+  const shownDay = requested ?? forecast.data?.delivery_day
   return (
     <section className="section" aria-labelledby="forecast-title">
       <h2 id="forecast-title" className="section-title">
         Day-ahead forecast
       </h2>
-      {body}
+      {forecast.data && !forecast.isError ? (
+        <p className="headline">{headline(forecast.data.delivery_day, forecast.data.points)}</p>
+      ) : null}
+      <div className="forecast-controls">
+        {shownDay === undefined ? null : (
+          <DaySelector days={list} current={shownDay} onSelect={setDay} />
+        )}
+        {days.isError ? (
+          <p className="inline-note">
+            The list of forecast days could not be loaded.{' '}
+            <button type="button" className="link-button" onClick={() => void days.refetch()}>
+              Retry
+            </button>
+          </p>
+        ) : null}
+      </div>
+      <div className="forecast-body" aria-busy={forecast.isPlaceholderData}>
+        {body}
+      </div>
     </section>
   )
 }

@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react'
 
 import type { SeriesCatalog } from '../api/client'
 import { useActuals, useSeries } from '../api/queries'
-import { Chart } from '../charts/Chart'
+import { Chart } from '../charts/LazyChart'
 import { mixOption, priceOption } from '../charts/options'
 import type { TimeSeries } from '../charts/options'
 import { GENERATION, generationColor } from '../charts/palette'
@@ -10,22 +10,25 @@ import type { Palette } from '../charts/palette'
 import { NOT_AVAILABLE } from '../lib/format'
 import { PRICE_KEY, alignSeries, meanOf, stats } from '../lib/series'
 import type { Aligned } from '../lib/series'
+import { coversFullDays } from '../lib/days'
 import { addDays, dayPlain } from '../lib/time'
 import { Legend } from './Legend'
 import { Loading, QueryProblem } from './Notice'
-
-export const PRICE_NOTE =
-  'Wholesale price data is shown subject to the licensing review by the Bundesnetzagentur (HEDWIG procedure).'
 
 const DAYS = 7
 
 function generationSeries(catalog: SeriesCatalog, aligned: Aligned): TimeSeries[] {
   const labels = new Map(catalog.series.map((s) => [s.key, s.label]))
-  return GENERATION.filter((g) => labels.has(g.key)).map((g) => ({
-    key: g.key,
-    label: labels.get(g.key) ?? g.key,
-    values: (aligned.values[g.key] ?? []).map((v) => (v === null ? null : v / 1000)),
-  }))
+  return (
+    GENERATION.filter((g) => labels.has(g.key))
+      .map((g) => ({
+        key: g.key,
+        label: labels.get(g.key) ?? g.key,
+        values: (aligned.values[g.key] ?? []).map((v) => (v === null ? null : v / 1000)),
+      }))
+      // A source without any value in the range (nuclear since 2023) is left out.
+      .filter((s) => s.values.some((v) => v !== null))
+  )
 }
 
 function MixSummary({ series }: { series: readonly TimeSeries[] }) {
@@ -73,12 +76,14 @@ function ContextCharts({
   catalog,
   aligned,
   showPrice,
+  priceNote,
   start,
   end,
 }: {
   catalog: SeriesCatalog
   aligned: Aligned
   showPrice: boolean
+  priceNote: string
   start: string
   end: string
 }) {
@@ -120,7 +125,7 @@ function ContextCharts({
             className="chart-price"
           />
           <PriceStats values={prices} />
-          <p className="note">{PRICE_NOTE}</p>
+          <p className="note">{priceNote}</p>
         </>
       ) : null}
     </>
@@ -128,7 +133,7 @@ function ContextCharts({
 }
 
 /** `today` is the local day of the status response, so the range ignores the browser clock. */
-export function ContextSection({ today }: { today: string }) {
+export function ContextSection({ today, priceNote }: { today: string; priceNote: string }) {
   const start = addDays(today, -(DAYS - 1))
   const catalog = useSeries(true)
   const { genKeys, showPrice } = useMemo(() => {
@@ -168,6 +173,7 @@ export function ContextSection({ today }: { today: string }) {
         catalog={catalog.data}
         aligned={aligned}
         showPrice={showPrice}
+        priceNote={priceNote}
         start={start}
         end={today}
       />
@@ -181,11 +187,14 @@ export function ContextSection({ today }: { today: string }) {
   return (
     <section className="section" aria-labelledby="context-title">
       <h2 id="context-title" className="section-title">
-        Context: the last {String(DAYS)} days
+        {aligned && coversFullDays(aligned.stamps, start, today)
+          ? 'Context: the last seven days'
+          : 'Context: the past week'}
       </h2>
       <p className="prose">
         Hourly electricity generation in Germany by source
-        {showPrice ? ', and the day-ahead wholesale price for the same hours' : ''}.
+        {showPrice ? ', and the day-ahead wholesale price for the same hours' : ''}, from{' '}
+        {dayPlain(start)} to {dayPlain(today)}.
       </p>
       {body}
     </section>

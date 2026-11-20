@@ -3,7 +3,10 @@ import { render } from '@testing-library/react'
 
 import { App } from '../App'
 
-export type Handler = (url: URL) => { status?: number; body: unknown } | Promise<never>
+/** `raw` sends a plain-text body instead of JSON, like a proxy or server limit would. */
+export type Handler = (
+  url: URL,
+) => { status?: number; body?: unknown; raw?: string } | Promise<never>
 
 /** Replace fetch with a router over pathname. Unknown paths answer 404. */
 export function mockFetch(routes: Record<string, Handler>) {
@@ -16,7 +19,10 @@ export function mockFetch(routes: Record<string, Handler>) {
     if (!handler) {
       return new Response(JSON.stringify({ detail: 'not found' }), { status: 404 })
     }
-    const { status = 200, body } = await handler(url)
+    const { status = 200, body, raw } = await handler(url)
+    if (raw !== undefined) {
+      return new Response(raw, { status, statusText: raw })
+    }
     return new Response(JSON.stringify(body), {
       status,
       headers: { 'Content-Type': 'application/json' },

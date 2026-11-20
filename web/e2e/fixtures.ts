@@ -276,6 +276,24 @@ export function backtest() {
   }
 }
 
+/** The API before its first snapshot: 200 with initialised false and no runs. */
+export function statusBeforeFirstSnapshot() {
+  return {
+    ...status(),
+    initialised: false,
+    snapshot_created_at: null,
+    schema_version: null,
+    series: seriesCatalog().series.map((s) => ({
+      key: s.key,
+      label: s.label,
+      last_ts: null,
+      age_seconds: null,
+    })),
+    last_load_run: null,
+    last_forecast: null,
+  }
+}
+
 export function status(ageSeconds = 1920) {
   const lastLoad = NOW - ageSeconds * 1000 - 15 * 60_000
   const keys = seriesCatalog().series
@@ -283,6 +301,7 @@ export function status(ageSeconds = 1920) {
     initialised: true,
     generated_at: isoLocal(NOW),
     snapshot_created_at: isoLocal(NOW - 6 * 60_000),
+    snapshot_error: null,
     schema_version: 3,
     series: keys.map((s) => ({
       key: s.key,
@@ -305,6 +324,9 @@ export function status(ageSeconds = 1920) {
     attribution: 'Bundesnetzagentur | SMARD.de',
     licence: 'CC BY 4.0',
     licence_url: 'https://creativecommons.org/licenses/by/4.0/',
-    price_note: 'The Bundesnetzagentur reviews the licensing of the wholesale prices.',
+    price_note:
+      'The Bundesnetzagentur reviews the licensing of the wholesale electricity prices ' +
+      'shown on SMARD.de in its HEDWIG procedure. Until that review is concluded, price ' +
+      'data is shown with that reservation, and price ingestion can be switched off.',
   }
 }

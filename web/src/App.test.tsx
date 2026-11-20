@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
-import { NO_BACKTEST, NO_DATA, NO_FORECAST } from './components/messages'
+import { NO_BACKTEST, NO_DATA, NO_FORECAST, SNAPSHOT_FALLBACK } from './components/messages'
 import { mockFetch, renderApp } from './test/api'
 import type { Handler } from './test/api'
 import * as fx from './test/fixtures'
@@ -14,6 +14,7 @@ vi.mock('./charts/Chart', () => ({
   ),
 }))
 
+const MISSING = 'no data snapshot is available yet; the pipeline has not published one'
 const ok = (body: unknown) => () => ({ body })
 const fail =
   (status: number, detail = 'x') =>
@@ -52,16 +53,20 @@ describe('Dashboard with data', () => {
 
     const table = await screen.findByRole('table', { name: /Backtest errors/ })
     const rows = within(table).getAllByRole('row')
-    expect(rows[2]).toHaveTextContent('LightGBM modelLightGBM1.20 GW2.4 %2.2 %2.6 %n/a16,032')
-    expect(rows[4]).toHaveTextContent('SMARD forecastSMARD forecastn/an/an/an/an/an/a')
-    expect(screen.getByText(/Each delivery day from 6 Jan 2025 to 15 Nov 2026/)).toHaveTextContent(
+    expect(rows[2]).toHaveTextContent('LightGBM modelLightGBM1.20 GW16,0322.4 %2.2 %2.6 %n/a')
+    expect(rows[3]).toHaveTextContent('Workdays 2.2 %, Saturdays 2.6 %, Sundays and holidays n/a')
+    expect(rows[6]).toHaveTextContent('SMARD forecastSMARD forecastn/an/an/an/an/an/a')
+    expect(screen.getByText(/Delivery days from 6 Jan 2025 to 15 Nov 2026/)).toHaveTextContent(
       'retrained every 7 days on all earlier complete days. Errors are measured against the actual grid load over 16,032 hours.',
     )
     expect(screen.queryByText(/hours that also have a SMARD forecast/)).toBeNull()
 
     expect(await screen.findByText(/HEDWIG procedure/)).toBeInTheDocument()
     expect(screen.getByText(/negative in 1 of 2 hours/)).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: /Stacked area chart.*14 Nov 2026 to 20 Nov 2026/ }))
+    expect(
+      screen.getByRole('img', { name: /Stacked area chart.*14 Nov 2026 to 20 Nov 2026/ }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Context: the past week' })).toBeInTheDocument()
     const actualsCall = calls.find((u) => u.pathname === '/api/v1/actuals')
     expect(actualsCall?.searchParams.get('series')).toBe(
       'gen_wind_onshore,gen_solar,price_day_ahead',
@@ -100,6 +105,18 @@ describe('Dashboard with data', () => {
     expect(await screen.findByText(/Saturday 21 November/)).toBeInTheDocument()
   })
 
+  it('counts SMARD hours separately when they differ', async () => {
+    const day = fx.forecast('2026-11-20')
+    day.points = day.points.map((p, i) => (i < 4 ? { ...p, tso: null } : p))
+    mockFetch(routes({ '/api/v1/forecasts': ok(day) }))
+    renderApp()
+    expect(
+      await screen.findByText(
+        'MAPE against the actual load over 24 of 24 hours; SMARD forecast over 20 hours',
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('handles the 25 and 23 hour clock-change days', async () => {
     mockFetch(routes())
     renderApp()
@@ -127,19 +144,66 @@ describe('Dashboard with data', () => {
 
 describe('Dashboard states', () => {
   it('shows the first-start message when no snapshot exists', async () => {
-    const { calls } = mockFetch(routes({ '/api/v1/status': ok(fx.status({ initialised: false })) }))
+    // What the API answers before the first snapshot: 200, not initialised, no runs.
+    const { calls } = mockFetch(
+      routes({
+        '/api/v1/status': ok(
+          fx.status({
+            initialised: false,
+            snapshot_created_at: null,
+            series: [],
+            last_load_run: null,
+          }),
+        ),
+      }),
+    )
     renderApp()
     expect(await screen.findByText(NO_DATA)).toBeInTheDocument()
     expect(calls.map((u) => u.pathname)).toEqual(['/api/v1/status'])
-    expect(
-      screen.getByText('Last pipeline run: succeeded (incremental), finished 20 Nov 2026, 13:51'),
-    )
+    expect(screen.getByText('Last pipeline run: none yet')).toBeInTheDocument()
   })
 
-  it('treats 503 responses as the first-start state', async () => {
-    mockFetch(routes({ '/api/v1/status': fail(503) }))
+  it('reports an unreadable snapshot with retry instead of the first-start text', async () => {
+    let attempts = 0
+    mockFetch(
+      routes({
+        '/api/v1/status': () => {
+          attempts += 1
+          return {
+            body:
+              attempts === 1
+                ? fx.status({
+                    initialised: false,
+                    snapshot_created_at: null,
+                    snapshot_error: 'the data snapshot cannot be opened',
+                    last_load_run: null,
+                  })
+                : fx.status(),
+          }
+        },
+      }),
+    )
     renderApp()
-    expect(await screen.findByText(NO_DATA)).toBeInTheDocument()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(
+      'The data snapshot is not available: the data snapshot cannot be opened.',
+    )
+    expect(screen.queryByText(NO_DATA)).toBeNull()
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+    expect(await headline()).toBeInTheDocument()
+  })
+
+  it('notes when an older snapshot is served because the newest cannot be read', async () => {
+    mockFetch(
+      routes({
+        '/api/v1/status': ok(
+          fx.status({ snapshot_error: 'the newest data snapshot file cannot be opened' }),
+        ),
+      }),
+    )
+    renderApp()
+    expect(await screen.findByText(SNAPSHOT_FALLBACK)).toBeInTheDocument()
+    expect(await headline()).toBeInTheDocument()
   })
 
   it('shows the 404 texts for forecast and backtest', async () => {
@@ -149,10 +213,82 @@ describe('Dashboard states', () => {
     expect(await screen.findByText(NO_BACKTEST)).toBeInTheDocument()
   })
 
-  it('shows the first-start message for a forecast 503', async () => {
-    mockFetch(routes({ '/api/v1/forecasts': fail(503) }))
+  it('shows the first-start message only for the "no snapshot yet" 503', async () => {
+    mockFetch(routes({ '/api/v1/forecasts': fail(503, MISSING) }))
     renderApp()
     expect(await screen.findByText(NO_DATA)).toBeInTheDocument()
+  })
+
+  it.each([
+    [
+      'an unopenable snapshot',
+      { status: 503, body: { detail: 'the data snapshot cannot be opened' } },
+    ],
+    ['a plain-text 503', { status: 503, raw: 'Service Unavailable' }],
+  ])('reports %s as a retryable failure', async (_name, response) => {
+    mockFetch(routes({ '/api/v1/backtest/metrics': () => response }))
+    renderApp()
+    const alert = await screen.findByRole('alert', {}, { timeout: 8000 })
+    expect(alert).toHaveTextContent(
+      /Could not load the backtest: the server answered with HTTP 503/,
+    )
+    expect(within(alert).getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(screen.queryByText(NO_DATA)).toBeNull()
+  })
+
+  it('keeps the day navigation when a selected day has no forecast', async () => {
+    mockFetch(
+      routes({
+        '/api/v1/forecasts': (url) => {
+          const day = url.searchParams.get('delivery_day')
+          return day === '2026-11-20'
+            ? { status: 404, body: { detail: 'no forecast exists for delivery day 2026-11-20' } }
+            : { body: fx.forecast(day ?? '2026-11-21', false) }
+        },
+      }),
+    )
+    renderApp()
+    await headline()
+    fireEvent.click(screen.getByRole('button', { name: 'Previous day' }))
+    expect(await screen.findByText('No forecast for Fri 20 Nov 2026.')).toBeInTheDocument()
+    expect(screen.queryByText(/^Forecast peak/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Previous day' }))
+    expect(await screen.findByText(/Thursday 19 November/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next day' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next day' }))
+    expect(await screen.findByText(/Saturday 21 November/)).toBeInTheDocument()
+  })
+
+  it('requests the newest day once by date and notes a failing day list', async () => {
+    const { calls } = mockFetch(routes())
+    renderApp()
+    await headline()
+    const forecastCalls = calls.filter((u) => u.pathname === '/api/v1/forecasts')
+    expect(forecastCalls.map((u) => u.search)).toEqual(['?delivery_day=2026-11-21'])
+  })
+
+  it('falls back to the latest forecast when the day list fails', async () => {
+    let attempts = 0
+    const { calls } = mockFetch(
+      routes({
+        '/api/v1/forecasts/days': () => {
+          attempts += 1
+          return attempts === 1
+            ? { status: 500, body: { detail: 'boom' } }
+            : { body: { days: fx.DAYS, limit: 400 } }
+        },
+      }),
+    )
+    renderApp()
+    expect(
+      await screen.findByText(/The list of forecast days could not be loaded/),
+    ).toBeInTheDocument()
+    expect(await headline()).toBeInTheDocument()
+    expect(calls.find((u) => u.pathname === '/api/v1/forecasts')?.search).toBe('')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Previous day' })).toBeEnabled()
+    })
   })
 
   it('reports a network error and retries', async () => {
@@ -266,7 +402,7 @@ describe('Dashboard states', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows n/a for sources without data and no price stats without prices', async () => {
+  it('drops sources without data and shows no price stats without prices', async () => {
     mockFetch(
       routes({
         '/api/v1/actuals': ok({
@@ -288,7 +424,10 @@ describe('Dashboard states', () => {
     renderApp()
     expect(await screen.findByText('No price data in this period.')).toBeInTheDocument()
     const summary = screen.getByRole('table', { name: /Average generation/ })
-    expect(within(summary).getAllByText('n/a')).toHaveLength(3)
+    // Wind onshore has no value in the range and is left out; the solar share is undefined.
+    expect(within(summary).queryByText('gen_wind_onshore')).toBeNull()
+    expect(within(summary).queryByText('Wind onshore')).toBeNull()
+    expect(within(summary).getAllByText('n/a')).toHaveLength(1)
   })
 
   it('marks stale data and pipeline runs that are still going', async () => {
@@ -326,6 +465,51 @@ describe('Dashboard states', () => {
     expect(await screen.findByText('Last pipeline run: none yet')).toBeInTheDocument()
     expect(screen.queryByText(/Data up to/)).toBeNull()
     expect(screen.queryByText(/Snapshot:/)).toBeNull()
+  })
+})
+
+describe('Freshness and rollover', () => {
+  it('refetches snapshot data when the snapshot changes', async () => {
+    let snapshot = '2026-11-20T13:56:00+01:00'
+    const { calls } = mockFetch(
+      routes({ '/api/v1/status': () => ({ body: fx.status({ snapshot_created_at: snapshot }) }) }),
+    )
+    const { client } = renderApp()
+    await headline()
+    await screen.findByRole('table', { name: /Backtest errors/ })
+    const count = (path: string) => calls.filter((u) => u.pathname === path).length
+    const before = count('/api/v1/backtest/metrics')
+    snapshot = '2026-11-20T14:56:00+01:00'
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['status'] })
+    })
+    await waitFor(() => {
+      expect(count('/api/v1/backtest/metrics')).toBe(before + 1)
+    })
+    expect(count('/api/v1/forecasts/days')).toBe(2)
+  })
+
+  it('shows the stale warning once the data ages in an open tab', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const base = fx.status()
+      mockFetch(
+        routes({
+          '/api/v1/status': ok(
+            fx.status({ series: base.series.map((s) => ({ ...s, age_seconds: 6 * 3600 - 30 })) }),
+          ),
+        }),
+      )
+      renderApp()
+      expect(await screen.findByText('Data up to 20 Nov 2026, 13:30')).toBeInTheDocument()
+      expect(screen.queryByText(/more than 6 hours old/)).toBeNull()
+      act(() => {
+        vi.advanceTimersByTime(61_000)
+      })
+      expect(await screen.findByText(/more than 6 hours old/)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

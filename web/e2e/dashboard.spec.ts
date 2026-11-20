@@ -24,9 +24,11 @@ test.afterAll(async () => {
 })
 
 interface MockOptions {
-  status?: ReturnType<typeof fixtures.status> | { error: number; detail: string }
+  status?:
+    ReturnType<typeof fixtures.status> | ReturnType<typeof fixtures.statusBeforeFirstSnapshot>
   withPrice?: boolean
   forecastError?: { error: number; detail: string }
+  onForecast?: () => void
 }
 
 async function expectNoSeriousAxe(page: Page) {
@@ -43,15 +45,14 @@ async function mockApi(page: Page, options: MockOptions = {}) {
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
     switch (url.pathname) {
-      case '/api/v1/status': {
-        const status = options.status ?? fixtures.status()
-        return 'error' in status ? json({ detail: status.detail }, status.error) : json(status)
-      }
+      case '/api/v1/status':
+        return json(options.status ?? fixtures.status())
       case '/api/v1/series':
         return json(fixtures.seriesCatalog(options.withPrice ?? true))
       case '/api/v1/forecasts/days':
         return json({ days: fixtures.forecastDays(), limit: 400 })
       case '/api/v1/forecasts':
+        options.onForecast?.()
         if (options.forecastError) {
           return json({ detail: options.forecastError.detail }, options.forecastError.error)
         }
@@ -149,6 +150,10 @@ for (const scheme of ['light', 'dark'] as const) {
           await page.screenshot({ path: join(SHOTS, `tooltip-mix-${scheme}-390.png`) })
           await page.mouse.move(0, 0)
         }
+        // The backtest table fits without sideways scrolling.
+        const table = page.locator('.table-scroll')
+        const fits = await table.evaluate((el) => el.scrollWidth <= el.clientWidth)
+        expect(fits).toBe(true)
         // Touch targets: every control is at least 44 px high.
         const controls = page.locator('button, select, .theme-option span, .site-footer a')
         for (const control of await controls.all()) {
@@ -209,6 +214,7 @@ test('switches days, handles the 25 hour day and toggles the theme', async ({ br
   await expectNoSeriousAxe(page)
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(page.locator('.chart-canvas canvas')).toHaveCount(4)
   await hoverCharts(page)
   expect(await cspViolations(page)).toEqual([])
   expect(problems).toEqual([])
@@ -232,31 +238,36 @@ test('marks stale data', async ({ browser }) => {
   await page.close()
 })
 
-test('shows the first-start notice for a 503 without accessibility problems', async ({
-  browser,
-}) => {
+test('shows the first-start notice without accessibility problems', async ({ browser }) => {
   const context = await browser.newContext()
   const page = await context.newPage()
   const problems = watchProblems(page)
-  await mockApi(page, { status: { error: 503, detail: 'no data snapshot is available yet' } })
+  await mockApi(page, { status: fixtures.statusBeforeFirstSnapshot() })
   await page.goto('/')
-  await expect(page.getByText(/No data yet\. The pipeline loads the history/)).toBeVisible()
+  await expect(page.getByText(/^No data yet\. The pipeline loads the full history/)).toBeVisible()
+  await expect(page.getByText('Last pipeline run: none yet')).toBeVisible()
   await expectNoSeriousAxe(page)
-  // The browser logs failed requests as console errors; only those are expected here.
-  expect(problems.filter((p) => !p.includes('503'))).toEqual([])
+  expect(problems).toEqual([])
   await context.close()
 })
 
 test('offers a retry when the server is busy', async ({ browser }) => {
   const context = await browser.newContext({ colorScheme: 'dark' })
   const page = await context.newPage()
+  let attempts = 0
   await mockApi(page, {
     forecastError: { error: 503, detail: 'the server is busy; try again shortly' },
+    onForecast: () => {
+      attempts += 1
+    },
   })
   await page.goto('/')
   const alert = page.getByRole('alert')
-  await expect(alert).toContainText('the server is busy; try again shortly')
-  await expect(alert.getByRole('button', { name: 'Retry' })).toBeVisible()
+  // The client retries a busy 503 twice before it shows the error.
+  await expect(alert).toContainText('the server is busy; try again shortly', { timeout: 15_000 })
+  expect(attempts).toBe(3)
   await expectNoSeriousAxe(page)
+  await alert.getByRole('button', { name: 'Retry' }).click()
+  await expect.poll(() => attempts, { timeout: 15_000 }).toBeGreaterThan(3)
   await context.close()
 })

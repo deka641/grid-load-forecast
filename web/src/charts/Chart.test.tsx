@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 
 import { ThemeContext } from '../theme/context'
 import type { ThemeState } from '../theme/context'
@@ -68,9 +68,35 @@ describe('Chart', () => {
     await Promise.resolve()
   })
 
+  it('toggles the data table visually', () => {
+    render(
+      <Chart build={() => ({})} label="Toggle">
+        <table aria-label="values" />
+      </Chart>,
+    )
+    const button = screen.getByRole('button', { name: 'Show data' })
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    const caption = document.getElementById(button.getAttribute('aria-controls') ?? '')
+    expect(caption).toHaveClass('visually-hidden')
+    fireEvent.click(button)
+    expect(screen.getByRole('button', { name: 'Hide data' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(caption).toHaveClass('chart-data')
+  })
+
+  it('renders once when the fonts are already loaded', () => {
+    const fonts = { status: 'loaded', ready: Promise.resolve() }
+    Object.defineProperty(document, 'fonts', { value: fonts, configurable: true })
+    render(<Chart build={() => ({})} label="Loaded" />)
+    expect(instance.setOption).toHaveBeenCalledTimes(1)
+    Reflect.deleteProperty(document, 'fonts')
+  })
+
   it('renders again once the web fonts are ready', async () => {
     let ready: () => void = () => undefined
-    const fonts = { ready: new Promise<void>((resolve) => (ready = resolve)) }
+    const fonts = { status: 'loading', ready: new Promise<void>((resolve) => (ready = resolve)) }
     Object.defineProperty(document, 'fonts', { value: fonts, configurable: true })
     const build = vi.fn(() => ({}))
     const view = render(<Chart build={build} label="Fonts" />)

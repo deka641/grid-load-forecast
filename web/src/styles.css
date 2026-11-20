@@ -181,6 +181,12 @@ a:hover {
   gap: 12px 20px;
 }
 
+.freshness-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .freshness {
   font-size: var(--text-sm);
   color: var(--color-muted);
@@ -562,11 +568,18 @@ a:hover {
   overflow-x: auto;
 }
 
-.table-hint {
+tr.narrow-only {
   display: none;
-  margin-top: 8px;
+}
+
+.metrics .day-type-row td {
+  padding-top: 0;
+  padding-left: 17px;
   font-size: var(--text-sm);
+  font-weight: 400;
   color: var(--color-muted);
+  text-align: left;
+  white-space: normal;
 }
 
 .metrics {
@@ -630,7 +643,7 @@ a:hover {
   display: none;
 }
 
-.metrics tbody tr:first-child td {
+.metrics tbody:first-of-type tr:first-child td {
   font-weight: 600;
 }
 
@@ -747,8 +760,18 @@ a:hover {
     gap: 2px;
   }
 
-  .table-hint {
-    display: block;
+  .wide-only {
+    display: none;
+  }
+
+  tr.narrow-only {
+    display: table-row;
+  }
+
+  .metrics tbody tr:first-child th,
+  .metrics tbody tr:first-child td {
+    border-bottom: 0;
+    padding-bottom: 2px;
   }
 
   .metrics th,
@@ -782,5 +805,80 @@ a:hover {
     transition: none !important;
     animation: none !important;
     scroll-behavior: auto !important;
+  }
+}
+
+.chart-data-toggle {
+  display: block;
+  margin: 0 8px 8px auto;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chart-data-toggle:hover {
+  color: var(--color-ink);
+  border-color: var(--color-muted);
+}
+
+.chart-data {
+  display: block;
+  max-height: 360px;
+  overflow: auto;
+  border-top: 1px solid var(--color-rule);
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+}
+
+.chart-data table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.chart-data caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 4px;
+}
+
+.chart-data th,
+.chart-data td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--color-rule);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.chart-data th:first-child,
+.chart-data thead th {
+  text-align: left;
+}
+
+.inline-note {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.link-button {
+  min-height: var(--control);
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--color-ink);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .chart-data-toggle {
+    min-height: 44px;
   }
 }

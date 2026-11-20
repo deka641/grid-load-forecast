@@ -15,20 +15,35 @@ export interface DayError {
   hours: number
 }
 
-/** MAPE in percent of one forecast against the actual, over hours where both exist. */
-export function dayMape(points: readonly ForecastPoint[], key: ForecastKey): DayError | null {
+export type DayErrors = Record<ForecastKey, DayError | null>
+
+function score(points: readonly ForecastPoint[], key: ForecastKey): DayError | null {
   let sum = 0
-  let hours = 0
   for (const point of points) {
-    const forecast = point[key]
-    const actual = point.actual
-    if (forecast === null || actual === null || actual === 0) {
-      continue
-    }
-    sum += Math.abs(forecast - actual) / Math.abs(actual)
-    hours += 1
+    const actual = point.actual ?? 0
+    sum += Math.abs((point[key] ?? 0) - actual) / Math.abs(actual)
   }
-  return hours === 0 ? null : { mape: (sum / hours) * 100, hours }
+  return points.length === 0 ? null : { mape: (sum / points.length) * 100, hours: points.length }
+}
+
+/**
+ * MAPE in percent for one delivery day, scored like the backtest (metrics_for in
+ * src/gridload/forecast/backtest.py): LightGBM and the baseline on hours with an actual
+ * and both predictions, the SMARD forecast on the subset of those with a SMARD value.
+ * Hours with a zero actual are skipped because MAPE is undefined for them.
+ */
+export function dayErrors(points: readonly ForecastPoint[]): DayErrors {
+  const primary = points.filter(
+    (p) => p.actual !== null && p.actual !== 0 && p.lightgbm !== null && p.baseline_week !== null,
+  )
+  return {
+    lightgbm: score(primary, 'lightgbm'),
+    baseline_week: score(primary, 'baseline_week'),
+    tso: score(
+      primary.filter((p) => p.tso !== null),
+      'tso',
+    ),
+  }
 }
 
 export function hasActuals(points: readonly ForecastPoint[]): boolean {
@@ -96,8 +111,8 @@ export function methodSentence(backtest: BacktestMetrics): string {
       ? ''
       : `, using only hours that ended by ${String(cutoffHour).padStart(2, '0')}:00`
   const first =
-    `Each delivery day from ${dayPlain(backtest.first_day)} to ${dayPlain(backtest.last_day)} ` +
-    `is forecast at 12:00 (Europe/Berlin) on the day before${using}.`
+    `Delivery days from ${dayPlain(backtest.first_day)} to ${dayPlain(backtest.last_day)} ` +
+    `are forecast at 12:00 (Europe/Berlin) on the day before${using}.`
   const second =
     retrain === null
       ? ' The model is retrained regularly on all earlier complete days.'

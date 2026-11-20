@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { useTheme } from '../theme/context'
@@ -11,7 +11,7 @@ export interface ChartProps {
   /** Builds the option from the colours of the active theme; keep it stable with useCallback. */
   build: (palette: Palette) => EChartsCoreOption
   label: string
-  /** Text alternative for screen readers, usually a table of the plotted values. */
+  /** The plotted values as a table: read by screen readers, shown on request. */
   children?: ReactNode
   className?: string
 }
@@ -22,6 +22,8 @@ export function Chart({ build, label, children, className }: ChartProps) {
   const container = useRef<HTMLDivElement>(null)
   const instance = useRef<Instance | null>(null)
   const { resolved } = useTheme()
+  const [showData, setShowData] = useState(false)
+  const dataId = useId()
 
   useEffect(() => {
     const element = container.current
@@ -49,8 +51,8 @@ export function Chart({ build, label, children, className }: ChartProps) {
       }
     }
     render()
-    // Canvas text uses the web font only once it has loaded.
-    if ('fonts' in document) {
+    // Canvas text uses the web font only once it has loaded; render again only then.
+    if ('fonts' in document && document.fonts.status !== 'loaded') {
       void document.fonts.ready.then(render)
     }
     return () => {
@@ -61,7 +63,24 @@ export function Chart({ build, label, children, className }: ChartProps) {
   return (
     <figure className={className ? `chart ${className}` : 'chart'}>
       <div ref={container} className="chart-canvas" role="img" aria-label={label} />
-      {children ? <figcaption className="visually-hidden">{children}</figcaption> : null}
+      {children ? (
+        <>
+          <button
+            type="button"
+            className="chart-data-toggle"
+            aria-expanded={showData}
+            aria-controls={dataId}
+            onClick={() => {
+              setShowData((open) => !open)
+            }}
+          >
+            {showData ? 'Hide data' : 'Show data'}
+          </button>
+          <figcaption id={dataId} className={showData ? 'chart-data' : 'visually-hidden'}>
+            {children}
+          </figcaption>
+        </>
+      ) : null}
     </figure>
   )
 }

@@ -13,20 +13,10 @@ export function Info({ children }: { children: string }) {
   return <p className="notice">{children}</p>
 }
 
-export function ErrorNotice({
-  what,
-  error,
-  onRetry,
-}: {
-  what: string
-  error: unknown
-  onRetry: () => void
-}) {
+export function ErrorNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="notice notice-error" role="alert">
-      <p>
-        Could not load {what}: {describeError(error)}.
-      </p>
+      <p>{message}</p>
       <button type="button" className="button" onClick={onRetry}>
         Retry
       </button>
@@ -34,7 +24,7 @@ export function ErrorNotice({
   )
 }
 
-/** Shared handling of a failed query: 503 and the given 404 text are data states, not errors. */
+/** Shared handling of a failed query: the first-start 503 and the given 404 text are data states. */
 export function QueryProblem({
   what,
   error,
@@ -52,5 +42,7 @@ export function QueryProblem({
   if (notFound !== undefined && isApiError(error, 404)) {
     return <Info>{notFound}</Info>
   }
-  return <ErrorNotice what={what} error={error} onRetry={onRetry} />
+  return (
+    <ErrorNotice message={`Could not load ${what}: ${describeError(error)}.`} onRetry={onRetry} />
+  )
 }

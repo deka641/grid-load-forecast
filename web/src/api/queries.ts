@@ -25,12 +25,21 @@ export function createQueryClient(): QueryClient {
   })
 }
 
+export const STATUS_REFRESH_MS = 5 * 60 * 1000
+
+/** Polled, so freshness, the stale warning and a new snapshot show up in an open tab. */
 export function useStatus() {
   return useQuery({
     queryKey: ['status'],
     queryFn: ({ signal }) => apiGet('/api/v1/status', undefined, signal),
+    refetchInterval: STATUS_REFRESH_MS,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   })
 }
+
+/** Query keys that hold snapshot data and must be refetched for a new snapshot. */
+export const SNAPSHOT_QUERIES = [['forecast'], ['forecast-days'], ['actuals'], ['backtest']]
 
 export function useSeries(enabled: boolean) {
   return useQuery({

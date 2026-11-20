@@ -1,7 +1,7 @@
 import { backtest, forecast } from '../test/fixtures'
 import { formatGW, formatPercent, formatPrice, toGW } from './format'
 import {
-  dayMape,
+  dayErrors,
   findMetric,
   forecastPeak,
   hasActuals,
@@ -21,24 +21,25 @@ describe('format', () => {
   })
 })
 
-describe('dayMape', () => {
-  it('averages absolute percentage errors over hours with both values', () => {
+describe('dayErrors', () => {
+  it('scores like the backtest: shared hours for the model and baseline, SMARD on its subset', () => {
     const points = [
-      { ts: 'a', lightgbm: 110, baseline_week: null, tso: 100, actual: 100 },
-      { ts: 'b', lightgbm: 190, baseline_week: 200, tso: 200, actual: 200 },
-      { ts: 'c', lightgbm: 50, baseline_week: 50, tso: 50, actual: null },
-      { ts: 'd', lightgbm: 50, baseline_week: 50, tso: 50, actual: 0 },
+      { ts: 'a', lightgbm: 110, baseline_week: 90, tso: 100, actual: 100 },
+      { ts: 'b', lightgbm: 190, baseline_week: 200, tso: null, actual: 200 },
+      { ts: 'c', lightgbm: 50, baseline_week: null, tso: 50, actual: 60 },
+      { ts: 'd', lightgbm: 50, baseline_week: 50, tso: 50, actual: null },
+      { ts: 'e', lightgbm: 50, baseline_week: 50, tso: 50, actual: 0 },
     ]
-    const result = dayMape(points, 'lightgbm')
-    expect(result?.hours).toBe(2)
-    expect(result?.mape).toBeCloseTo(7.5)
-    expect(dayMape(points, 'baseline_week')).toEqual({ mape: 0, hours: 1 })
-    expect(dayMape(points, 'tso')?.mape).toBe(0)
+    const errors = dayErrors(points)
+    expect(errors.lightgbm?.hours).toBe(2)
+    expect(errors.lightgbm?.mape).toBeCloseTo(7.5)
+    expect(errors.baseline_week?.mape).toBeCloseTo(5)
+    expect(errors.tso).toEqual({ mape: 0, hours: 1 })
   })
 
   it('returns null without actuals', () => {
     const points = forecast('2026-11-21', false).points
-    expect(dayMape(points, 'lightgbm')).toBeNull()
+    expect(dayErrors(points)).toEqual({ lightgbm: null, baseline_week: null, tso: null })
     expect(hasActuals(points)).toBe(false)
     expect(hasActuals(forecast('2026-11-20').points)).toBe(true)
   })
@@ -90,7 +91,7 @@ describe('backtest helpers', () => {
 describe('backtest sentences', () => {
   it('builds the method from the config', () => {
     expect(methodSentence(backtest())).toBe(
-      'Each delivery day from 6 Jan 2025 to 15 Nov 2026 is forecast at 12:00 (Europe/Berlin) ' +
+      'Delivery days from 6 Jan 2025 to 15 Nov 2026 are forecast at 12:00 (Europe/Berlin) ' +
         'on the day before, using only hours that ended by 10:00. The model is retrained ' +
         'every 7 days on all earlier complete days.',
     )
@@ -102,7 +103,7 @@ describe('backtest sentences', () => {
       config: { retrain_every: 'weekly', feature_cutoff_hours_before_origin: 20 },
     }
     expect(methodSentence(data)).toBe(
-      'Each delivery day from 6 Jan 2025 to 15 Nov 2026 is forecast at 12:00 (Europe/Berlin) ' +
+      'Delivery days from 6 Jan 2025 to 15 Nov 2026 are forecast at 12:00 (Europe/Berlin) ' +
         'on the day before. The model is retrained regularly on all earlier complete days.',
     )
     expect(methodSentence({ ...backtest(), config: { retrain_every: 1 } })).toContain(

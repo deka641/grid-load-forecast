@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 
 import type { BacktestMetrics } from '../api/client'
 import { useBacktest } from '../api/queries'
-import { Chart } from '../charts/Chart'
+import { Chart } from '../charts/LazyChart'
 import { LINE_STYLES, hourLabel, mapeByHourOption } from '../charts/options'
 import type { Palette } from '../charts/palette'
 import { NOT_AVAILABLE, formatPercent } from '../lib/format'
@@ -30,12 +30,11 @@ function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
     return metric ? formatPercent(metric.mape) : NOT_AVAILABLE
   }
   return (
-    // Focusable so that keyboard users can scroll the table on narrow screens.
-    <div className="table-scroll" tabIndex={0} role="region" aria-label="Backtest errors">
+    <div className="table-scroll">
       <table className="metrics">
         <caption className="visually-hidden">
-          Backtest errors by forecast: mean absolute error in GW and mean absolute percentage error
-          by day type
+          Backtest errors by forecast: mean absolute error in GW, number of scored hours and mean
+          absolute percentage error by day type
         </caption>
         <thead>
           <tr>
@@ -43,29 +42,32 @@ function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
             <th scope="col" rowSpan={2} className="num">
               MAE
             </th>
-            <th scope="colgroup" colSpan={4} className="group">
-              MAPE
-            </th>
             <th scope="col" rowSpan={2} className="num">
               Hours
+            </th>
+            <th scope="colgroup" colSpan={4} className="group wide-only">
+              MAPE
             </th>
           </tr>
           <tr>
             <th scope="col" className="num">
-              All days
+              <span className="label-long">All days</span>
+              <span className="label-short" aria-hidden="true">
+                MAPE
+              </span>
             </th>
             {DAY_TYPES.map((t) => (
-              <th key={t.value} scope="col" className="num">
+              <th key={t.value} scope="col" className="num wide-only">
                 {t.label}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
-          {MODELS.map((m) => {
-            const overall = findMetric(backtest, m.key, 'overall', 'all')
-            return (
-              <tr key={m.key}>
+        {MODELS.map((m) => {
+          const overall = findMetric(backtest, m.key, 'overall', 'all')
+          return (
+            <tbody key={m.key}>
+              <tr>
                 <th scope="row">
                   <span className={`row-key stroke-${m.key}`} aria-hidden="true" />
                   <span className="label-long">{m.label}</span>
@@ -76,21 +78,28 @@ function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
                 <td className="num">
                   {overall ? `${(overall.mae / 1000).toFixed(2)} GW` : NOT_AVAILABLE}
                 </td>
-                <td className="num">{mape(m.key, 'overall', 'all')}</td>
-                {DAY_TYPES.map((t) => (
-                  <td key={t.value} className="num">
-                    {mape(m.key, 'day_type', t.value)}
-                  </td>
-                ))}
                 <td className="num">
                   {overall ? overall.n.toLocaleString('en-GB') : NOT_AVAILABLE}
                 </td>
+                <td className="num">{mape(m.key, 'overall', 'all')}</td>
+                {DAY_TYPES.map((t) => (
+                  <td key={t.value} className="num wide-only">
+                    {mape(m.key, 'day_type', t.value)}
+                  </td>
+                ))}
               </tr>
-            )
-          })}
-        </tbody>
+              {/* Narrow screens: the day-type columns are hidden and stacked here instead. */}
+              <tr className="narrow-only day-type-row">
+                <td colSpan={4}>
+                  {DAY_TYPES.map((t) => `${t.label} ${mape(m.key, 'day_type', t.value)}`).join(
+                    ', ',
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          )
+        })}
       </table>
-      <p className="table-hint">Scroll the table sideways for the day types.</p>
     </div>
   )
 }
@@ -158,6 +167,9 @@ function BacktestView({ backtest }: { backtest: BacktestMetrics }) {
           >
             <HourTable backtest={backtest} />
           </Chart>
+          <p className="note">
+            SMARD forecast values per hour are computed on the hours where SMARD publishes a value.
+          </p>
         </div>
       </div>
     </>
