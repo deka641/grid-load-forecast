@@ -2,8 +2,8 @@
 
 Each run fetches the chunk index per series and then loads:
 - every chunk that is not yet stored (so a chunk that failed earlier is retried);
-- every stored chunk that is still incomplete (it had trailing nulls when it was
-  loaded), however old it is;
+- every stored chunk that ended less than ``LATE_FILL_WINDOW`` ago and still
+  misses its last quarter hour (values published late are filled in);
 - the newest ``refetch_weeks`` chunks again, because SMARD corrects recent
   values. Corrections to older chunks are only picked up with a larger
   ``refetch_weeks`` (for example ``gridload ingest --refetch-weeks 9999``).
@@ -13,8 +13,10 @@ entry are written together. Unchanged payloads (same SHA-256) are skipped.
 Changed values overwrite the stored value and increase its revision counter, so
 there are never duplicate timestamps. Values that the source no longer
 publishes for a chunk are removed, so the cleaned data always matches the
-stored raw payload. Any source or validation error is written to ``load_log``
-and nothing is stored for that chunk.
+stored raw payload. Quarter hours that SMARD leaves out of a completed chunk
+(permanent gaps in the source) are not stored as values; the load log records
+how many are missing and where the gap starts. Any source or validation error
+is written to ``load_log`` and nothing is stored for that chunk.
 
 Run status: ``failed`` if the run crashed, the source was unavailable, an index
 could not be read or a recent chunk (newest ``refetch_weeks`` or ending in the
@@ -40,6 +42,7 @@ from gridload.sources.smard import (
     SmardClient,
     SourceError,
     chunk_end_ms,
+    missing_points,
     ms_to_datetime,
     parse_chunk,
 )
@@ -50,6 +53,8 @@ Progress = Callable[[str, int], None]
 # recently may still miss its last values while the next chunk already exists.
 LATE_DATA_ALLOWANCE = timedelta(hours=6)
 RECENT = timedelta(days=7)
+# Chunks that ended within this window and miss their last value are reloaded.
+LATE_FILL_WINDOW = timedelta(days=28)
 MAX_CONSECUTIVE_SOURCE_ERRORS = 5
 
 
@@ -162,16 +167,22 @@ class Ingestor:
             try:
                 raw = self._client.chunk(series, ts)
                 self._source_errors = 0
-                frame = parse_chunk(
-                    series, ts, raw.payload, allow_trailing_nulls=ts == latest or end > late_ms
-                )
+                is_open = ts == latest or end > late_ms
+                frame = parse_chunk(series, ts, raw.payload, is_open=is_open)
             except (SourceError, ChunkValidationError) as exc:
                 self._log_error(
                     result, series, ts, str(exc), recent=ts in refetch or end > recent_ms
                 )
                 self._count_source_error(exc)
                 continue
-            self._store(result, series, raw, frame)
+            missing, first_missing = missing_points(frame, ts, is_open=is_open)
+            note = (
+                f"source gap: {missing} quarter hours missing from "
+                f"{ms_to_datetime(first_missing).isoformat()}"
+                if first_missing is not None
+                else None
+            )
+            self._store(result, series, raw, frame, note=note)
 
     def _count_source_error(self, exc: Exception) -> None:
         if not (isinstance(exc, SourceError) and exc.transient):
@@ -191,7 +202,9 @@ class Ingestor:
         return {int(r[0]) for r in rows}
 
     def _incomplete_chunks(self, series: Series, known: set[int]) -> set[int]:
-        """Stored chunks with fewer values than quarter hours in their week."""
+        """Recently ended stored chunks whose last quarter hour is still missing."""
+        window_start = int((self._clock() - LATE_FILL_WINDOW).timestamp() * 1000)
+        known = {t for t in known if chunk_end_ms(t) > window_start}
         if not known:
             return set()
         stamps = self._con.execute(
@@ -201,11 +214,20 @@ class Ingestor:
         ).fetchnumpy()["t"]
         starts = np.array(sorted(known), dtype=np.int64)
         ends = np.array([chunk_end_ms(int(t)) for t in starts], dtype=np.int64)
-        present = np.searchsorted(stamps, ends) - np.searchsorted(stamps, starts)
-        expected = (ends - starts) // QUARTER_HOUR_MS
-        return {int(t) for t, n, e in zip(starts, present, expected, strict=True) if n < e}
+        last = ends - QUARTER_HOUR_MS
+        idx = np.searchsorted(stamps, last)
+        has_last = (idx < stamps.size) & (stamps[np.minimum(idx, stamps.size - 1)] == last)
+        return {int(t) for t, ok in zip(starts, has_last, strict=True) if not ok}
 
-    def _store(self, result: RunResult, series: Series, raw: RawChunk, frame: pl.DataFrame) -> None:
+    def _store(
+        self,
+        result: RunResult,
+        series: Series,
+        raw: RawChunk,
+        frame: pl.DataFrame,
+        *,
+        note: str | None = None,
+    ) -> None:
         chunk_at = ms_to_datetime(raw.chunk_ts)
         chunk_end = ms_to_datetime(chunk_end_ms(raw.chunk_ts))
         now = self._clock()
@@ -273,7 +295,10 @@ class Ingestor:
                 "INSERT OR REPLACE INTO raw_chunks VALUES (?, ?, ?, ?, ?, ?)",
                 [series.key, RESOLUTION, chunk_at, now, raw.sha256, zlib.compress(raw.payload, 9)],
             )
-            message = f"removed {removed} values no longer published" if removed else None
+            notes = [note] if note else []
+            if removed:
+                notes.append(f"removed {removed} values no longer published")
+            message = "; ".join(notes) or None
             self._log(
                 result.run_id, series, raw.chunk_ts, status="loaded", rows=changed, message=message
             )

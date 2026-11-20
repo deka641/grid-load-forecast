@@ -449,12 +449,14 @@ def test_incomplete_chunk_is_completed_after_leaving_the_refetch_window(
     )
 
 
-def test_recently_ended_chunk_may_still_have_trailing_nulls(fake: FakeSmard) -> None:
+def test_trailing_nulls_are_pending_shortly_after_the_week_and_a_gap_later(
+    fake: FakeSmard,
+) -> None:
     week_end = datetime.fromtimestamp(chunk_end_ms(REGULAR) / 1000, UTC)
     name = chunk_name(LOAD, REGULAR)
     fake.use_index(LOAD, [REGULAR, recorded_chunks(LOAD)[-1]])
     fake.override(name, _with_trailing_nulls(name, 668))
-    for hours_after, status in ((2, "ok"), (8, "failed")):
+    for hours_after, message in ((2, None), (8, "source gap: 4 quarter hours missing from ")):
         connection = duckdb.connect()
         connection.execute("SET TimeZone = 'UTC'")
         migrate(connection)
@@ -464,8 +466,46 @@ def test_recently_ended_chunk_may_still_have_trailing_nulls(fake: FakeSmard) -> 
             return at
 
         result = Ingestor(connection, fake.client(), clock=clock).run([LOAD], mode="backfill")
-        assert result.status == status, hours_after
+        assert result.status == "ok"
+        row = connection.execute(
+            "SELECT message FROM load_log WHERE epoch_ms(chunk_ts) = ?", [REGULAR]
+        ).fetchone()
+        assert row is not None
+        if message is None:
+            assert row[0] is None
+        else:
+            assert row[0].startswith(message)
         connection.close()
+
+
+def test_permanent_gap_is_logged_and_not_refetched(fake: FakeSmard) -> None:
+    name = chunk_name(LOAD, SPRING)
+    data = json.loads(fixture_bytes(name))
+    for point in data["series"][100:196]:
+        point[1] = None
+    fake.override(name, json.dumps(data).encode())
+    fake.use_index(LOAD, [SPRING, *recorded_chunks(LOAD)[1:]])
+    connection = duckdb.connect()
+    connection.execute("SET TimeZone = 'UTC'")
+    migrate(connection)
+    result = Ingestor(connection, fake.client()).run([LOAD], mode="backfill", refetch_weeks=1)
+    assert result.status == "ok"
+    logged = connection.execute(
+        "SELECT message FROM load_log WHERE epoch_ms(chunk_ts) = ?", [SPRING]
+    ).fetchone()
+    assert logged is not None
+    assert logged[0].startswith("source gap: 96 quarter hours missing from 2025-03-25")
+    stored = count(
+        connection,
+        "SELECT count(*) FROM observations WHERE ts_utc >= make_timestamptz(? * 1000) "
+        "AND ts_utc < make_timestamptz(? * 1000)",
+        [SPRING, chunk_end_ms(SPRING)],
+    )
+    assert stored == 668 - 96
+    fake.requests.clear()
+    Ingestor(connection, fake.client()).run([LOAD], mode="incremental", refetch_weeks=1)
+    assert f"/app/chart_data/410/DE/{name}" not in fake.requests
+    connection.close()
 
 
 def test_old_chunk_errors_make_a_partial_run(
