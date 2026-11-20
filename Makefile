@@ -8,7 +8,7 @@ UV  := uv run --locked
 NPM := npm --prefix web
 T   := timeout -k 10
 
-.PHONY: help install verify audit lint typecheck test openapi openapi-check build docs smoke clean
+.PHONY: help install deps verify loadtest audit lint typecheck test openapi openapi-check build docs smoke clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -17,7 +17,12 @@ install: ## Install Python and frontend dependencies from the lockfiles
 	uv sync --locked
 	$(NPM) ci --no-fund
 
-verify: audit lint typecheck test openapi-check build docs ## Full local gate
+deps: ## Fail early if the locked environments are missing or out of date
+	@test -d web/node_modules || { echo "web/node_modules missing: run make install"; exit 1; }
+	@$(T) 60 $(NPM) ls --depth=0 >/dev/null || { echo "web dependencies differ from package-lock.json: run make install"; exit 1; }
+	@$(T) 120 uv sync --locked --check >/dev/null 2>&1 || { echo "Python environment differs from uv.lock: run make install"; exit 1; }
+
+verify: deps audit lint typecheck test openapi-check build docs ## Full local gate
 	@echo "verify: all steps passed"
 
 audit: ## Dependency vulnerability audit (needs network to the package indexes)
