@@ -17,6 +17,7 @@ limits. Exit code 1 if a request failed with anything other than the API's own
 import argparse
 import asyncio
 import json
+import math
 import random
 import statistics
 import subprocess
@@ -30,6 +31,7 @@ from datetime import date, timedelta
 import httpx2
 
 MEMORY_SHARE_LIMIT = 0.9
+BUSY_SHARE_LIMIT = 0.05
 
 
 @dataclass
@@ -39,6 +41,8 @@ class Stats:
         default_factory=lambda: defaultdict(lambda: defaultdict(int))
     )
     failures: list[str] = field(default_factory=list)
+    busy: int = 0
+    total: int = 0
 
 
 def scenarios(newest: date, keys: list[str]) -> dict[str, tuple[str, dict[str, str]]]:
@@ -99,10 +103,13 @@ async def client(
         except httpx2.HTTPError as exc:
             stats.failures.append(f"{name}: {type(exc).__name__}")
             continue
-        stats.latencies[name].append(time.perf_counter() - start)
+        stats.total += 1
         stats.statuses[name][response.status_code] += 1
-        busy = response.status_code == 503 and "busy" in response.text
-        if response.status_code >= 500 and not busy:
+        if response.status_code == 503 and "busy" in response.text:
+            stats.busy += 1  # the API's own load shedding: counted, not timed
+            continue
+        stats.latencies[name].append(time.perf_counter() - start)
+        if response.status_code != 200:
             stats.failures.append(f"{name}: HTTP {response.status_code}")
 
 
@@ -111,22 +118,30 @@ def sample_memory(
 ) -> None:
     """Record peak memory use and limit (MiB) per container of the compose project."""
     while not stop.is_set():
-        result = subprocess.run(
-            ["docker", "stats", "--no-stream", "--format", "{{json .}}"],  # noqa: S607
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        for line in result.stdout.splitlines():
-            row = json.loads(line)
-            name = row["Name"]
-            if not name.startswith(project + "-"):
-                continue
-            used_text, limit_text = (part.strip() for part in row["MemUsage"].split("/"))
-            used, limit = _mib(used_text), _mib(limit_text)
-            if used > peaks.get(name, (0.0, limit))[0]:
-                peaks[name] = (used, limit)
+        try:
+            _sample_once(project, peaks)
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"memory sampling failed: {exc}", file=sys.stderr)
+            return
         stop.wait(1.0)
+
+
+def _sample_once(project: str, peaks: dict[str, tuple[float, float]]) -> None:
+    result = subprocess.run(
+        ["docker", "stats", "--no-stream", "--format", "{{json .}}"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    for line in result.stdout.splitlines():
+        row = json.loads(line)
+        name = row["Name"]
+        if not name.startswith(project + "-"):
+            continue
+        used_text, limit_text = (part.strip() for part in row["MemUsage"].split("/"))
+        used, limit = _mib(used_text), _mib(limit_text)
+        if used > peaks.get(name, (0.0, limit))[0]:
+            peaks[name] = (used, limit)
 
 
 def _mib(text: str) -> float:
@@ -165,7 +180,7 @@ async def run(args: argparse.Namespace) -> int:
         values = sorted(stats.latencies.get(name, []))
         if not values:
             continue
-        p95 = values[min(len(values) - 1, int(0.95 * len(values)))]
+        p95 = values[math.ceil(0.95 * len(values)) - 1]  # nearest-rank percentile
         codes = ", ".join(f"{c}: {n}" for c, n in sorted(stats.statuses[name].items()))
         print(
             f"| {name} | {len(values)} | {statistics.median(values) * 1000:.0f} | "
@@ -178,9 +193,15 @@ async def run(args: argparse.Namespace) -> int:
         share = used / limit
         over |= share > MEMORY_SHARE_LIMIT
         print(f"| {name} | {used:.0f} | {limit:.0f} | {share:.0%} |")
+    busy_share = stats.busy / stats.total if stats.total else 0.0
+    print(
+        f"\nBusy responses (503, load shedding): {stats.busy} of {stats.total} ({busy_share:.1%})"
+    )
     if stats.failures:
-        print(f"\n{len(stats.failures)} failed requests, first: {stats.failures[:5]}")
-    return 1 if stats.failures or over or not peaks else 0
+        print(f"{len(stats.failures)} failed requests, first: {stats.failures[:5]}")
+    if not peaks:
+        print("no memory samples: is docker available?")
+    return 1 if stats.failures or over or not peaks or busy_share > BUSY_SHARE_LIMIT else 0
 
 
 def main() -> int:

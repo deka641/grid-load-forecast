@@ -16,11 +16,12 @@ help: ## List targets
 install: ## Install Python and frontend dependencies from the lockfiles
 	uv sync --locked
 	$(NPM) ci --no-fund
+	sha256sum web/package-lock.json > web/node_modules/.lock.sha256
 
 deps: ## Fail early if the locked environments are missing or out of date
 	@test -d web/node_modules || { echo "web/node_modules missing: run make install"; exit 1; }
-	@$(T) 60 $(NPM) ls --depth=0 >/dev/null || { echo "web dependencies differ from package-lock.json: run make install"; exit 1; }
-	@$(T) 120 uv sync --locked --check >/dev/null 2>&1 || { echo "Python environment differs from uv.lock: run make install"; exit 1; }
+	@sha256sum --status -c web/node_modules/.lock.sha256 2>/dev/null || { echo "web/node_modules was not installed from the current package-lock.json: run make install"; exit 1; }
+	@$(T) 120 uv sync --quiet --locked --check || { echo "Python environment differs from uv.lock: run make install"; exit 1; }
 
 verify: deps audit lint typecheck test openapi-check build docs ## Full local gate
 	@echo "verify: all steps passed"
