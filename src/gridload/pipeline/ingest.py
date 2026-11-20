@@ -18,10 +18,11 @@ its very end that the source no longer publishes (at most
 published) is removed as a revision. Any other stored value that turns null,
 in an open or a completed chunk, points to a degraded response: the stored
 values are kept and the chunk is reported as an error, unless withdrawals are
-accepted explicitly (``gridload ingest --accept-withdrawals``). Quarter hours that SMARD leaves out of a completed chunk
-(permanent gaps in the source) are not stored as values; the load log records
-how many are missing and where the gap starts. Any source or validation error
-is written to ``load_log`` and nothing is stored for that chunk.
+accepted explicitly (``gridload ingest --accept-withdrawals``). Quarter hours
+that SMARD leaves out of a completed chunk (permanent gaps in the source) are
+not stored as values; the load log records how many are missing and where the
+gap starts. Any source or validation error is written to ``load_log`` and
+nothing is stored for that chunk.
 
 Run status: ``failed`` if the run crashed, the source was unavailable, an index
 could not be read or a recent chunk (the newest chunk in the index or one that
