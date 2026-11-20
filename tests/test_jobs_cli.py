@@ -7,6 +7,7 @@ import pytest
 from gridload import cli
 from gridload.config import Settings
 from gridload.pipeline import heartbeat, jobs
+from gridload.pipeline.db import connect
 from gridload.pipeline.ingest import RunResult
 from gridload.series import CATALOG
 from tests.fake_smard import FakeSmard, chunk_name, recorded_chunks
@@ -171,5 +172,7 @@ def test_cli_status_and_healthcheck(
     assert cli.main(["healthcheck"]) == 0
 
 
-def test_post_ingest_steps_is_callable(settings: Settings) -> None:
-    jobs.post_ingest_steps(duckdb.connect(), settings)
+def test_post_ingest_steps_without_data_does_nothing(settings: Settings) -> None:
+    with connect(settings.warehouse_path) as con:
+        jobs.post_ingest_steps(con, settings)
+        assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)

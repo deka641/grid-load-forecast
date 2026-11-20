@@ -1,19 +1,23 @@
 """Pipeline jobs used by the CLI and the scheduler."""
 
 import json
+import logging
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import duckdb
 
 from gridload.config import Settings
+from gridload.forecast import service
 from gridload.pipeline import heartbeat, snapshot
 from gridload.pipeline.db import connect
 from gridload.pipeline.ingest import Ingestor, RunResult
 from gridload.series import select
 from gridload.sources.smard import SmardClient
+
+log = logging.getLogger(__name__)
 
 ClientFactory = Callable[[Settings], SmardClient]
 PostIngest = Callable[[duckdb.DuckDBPyConnection, Settings], None]
@@ -130,5 +134,33 @@ def dumps(data: object) -> str:
     return json.dumps(data, indent=2)
 
 
-def post_ingest_steps(con: duckdb.DuckDBPyConnection, settings: Settings) -> None:
-    """Steps after ingestion in the scheduled job. The forecast is added here."""
+def post_ingest_steps(
+    con: duckdb.DuckDBPyConnection, settings: Settings, now: datetime | None = None
+) -> None:
+    """Issue the day-ahead forecast when due and refresh a stale backtest."""
+    current = now or datetime.now(UTC)
+    day = service.due_delivery_day(con, current)
+    if day is not None:
+        last = service.last_complete_day(service.load_history(con, "load"))
+        if last is None or last < day - timedelta(days=2):
+            log.warning("forecast for %s skipped: last complete day is %s", day, last)
+        else:
+            service.issue_forecast(con, day, now=current)
+            log.info("forecast issued for delivery day %s", day)
+    if service.backtest_is_stale(con, current):
+        result = service.run_and_store_backtest(con, now=current)
+        if result is not None:
+            log.info("backtest stored for %s to %s", result.first_day, result.last_day)
+
+
+def backtest(settings: Settings, *, days: int) -> str:
+    """Run and store a backtest, then republish the snapshot. Returns a summary line."""
+    if days < 7:
+        return "error: --days must be at least 7"
+    with connect(settings.warehouse_path) as con:
+        result = service.run_and_store_backtest(con, days=days)
+        if result is None:
+            return "error: no complete day of load data"
+        con.execute("CHECKPOINT")
+        snapshot.publish(con, settings.serving_path)
+    return f"backtest {result.first_day} to {result.last_day}: {len(result.metrics)} metrics"
