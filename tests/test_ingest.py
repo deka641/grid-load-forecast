@@ -655,6 +655,7 @@ def test_reader_keeps_old_snapshot_and_failed_publish_keeps_file(
     with pytest.raises(duckdb.CatalogException):
         snapshot.publish(con, target)
     assert target.read_bytes() == published
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["serving.duckdb"]
 
 
 def test_missing_files_do_not_trip_the_source_breaker(
@@ -975,3 +976,69 @@ def test_fetch_error_in_the_open_chunk_still_fails_the_run_for_any_series(
     fake.override(chunk_name(SOLAR, recorded_chunks(SOLAR)[-1]), b"")
     result = run(con, fake.client(retries=0), [SOLAR], mode="incremental", clock=clock)
     assert result.status == "failed"
+
+
+class _RecordingConnection:
+    """Record statements and which temporary files exist when the snapshot is attached."""
+
+    def __init__(self, inner: duckdb.DuckDBPyConnection, tmp: Path) -> None:
+        self._inner = inner
+        self._tmp = tmp
+        self.statements: list[str] = []
+        self.present_at_attach: list[str] = []
+
+    def execute(self, sql: str, params: object = None) -> duckdb.DuckDBPyConnection:
+        self.statements.append(sql)
+        if sql.startswith("ATTACH"):
+            self.present_at_attach = sorted(
+                p.name for p in self._tmp.parent.iterdir() if p.name.startswith(self._tmp.name)
+            )
+        return self._inner.execute(sql, params)
+
+
+def test_publish_removes_a_stale_temporary_file_and_its_log_first(
+    tmp_path: Path, con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    run(con, fake.client(), [LOAD])
+    target = tmp_path / "serving.duckdb"
+    (tmp_path / "serving.duckdb.tmp").write_bytes(b"left by a crashed run")
+    (tmp_path / "serving.duckdb.tmp.wal").write_bytes(b"garbage" * 100)
+    proxy = _RecordingConnection(con, tmp_path / "serving.duckdb.tmp")
+    snapshot.publish(proxy, target)  # type: ignore[arg-type]
+    assert proxy.present_at_attach == []
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["serving.duckdb"]
+
+
+def test_published_snapshot_is_checkpointed_and_opens_read_only_without_a_log(
+    tmp_path: Path, con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    run(con, fake.client(), [LOAD])
+    target = tmp_path / "serving.duckdb"
+    proxy = _RecordingConnection(con, tmp_path / "serving.duckdb.tmp")
+    snapshot.publish(proxy, target)  # type: ignore[arg-type]
+    assert proxy.statements[-2:] == ["CHECKPOINT snap", "DETACH snap"]
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["serving.duckdb"]
+    reader = duckdb.connect(str(target), read_only=True)
+    try:
+        assert count(reader, "SELECT count(*) FROM observations") == _stored(con, LOAD)
+    finally:
+        reader.close()
+    assert not (tmp_path / "serving.duckdb.wal").exists()
+
+
+def test_failed_rename_leaves_no_temporary_files(
+    tmp_path: Path, con: duckdb.DuckDBPyConnection, fake: FakeSmard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run(con, fake.client(), [LOAD])
+    target = tmp_path / "serving.duckdb"
+    snapshot.publish(con, target)
+    published = target.read_bytes()
+
+    def failing_replace(_src: object, _dst: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", failing_replace)
+    with pytest.raises(OSError, match="disk full"):
+        snapshot.publish(con, target)
+    assert target.read_bytes() == published
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["serving.duckdb"]
