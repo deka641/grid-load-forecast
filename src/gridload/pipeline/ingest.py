@@ -2,8 +2,9 @@
 
 Each run fetches the chunk index per series and then loads:
 - every chunk that is not yet stored (so a chunk that failed earlier is retried);
-- every stored chunk that is still incomplete (it had trailing nulls when it was
-  loaded), however old it is;
+- every stored chunk that was last fetched while it was still open (before its
+  end plus ``LATE_DATA_ALLOWANCE``), however old it is, so values published
+  late are filled in even after a long downtime;
 - the newest ``refetch_weeks`` chunks again, because SMARD corrects recent
   values. Corrections to older chunks are only picked up with a larger
   ``refetch_weeks`` (for example ``gridload ingest --refetch-weeks 9999``).
@@ -11,10 +12,14 @@ Each run fetches the chunk index per series and then loads:
 A chunk is processed in one transaction: raw payload, observations and the log
 entry are written together. Unchanged payloads (same SHA-256) are skipped.
 Changed values overwrite the stored value and increase its revision counter, so
-there are never duplicate timestamps. Values that the source no longer
-publishes for a chunk are removed, so the cleaned data always matches the
-stored raw payload. Any source or validation error is written to ``load_log``
-and nothing is stored for that chunk.
+there are never duplicate timestamps. In an open chunk, values that the source
+no longer publishes are removed. In a completed chunk, stored values that turn
+null point to a degraded response: the stored values are kept and the chunk
+is reported as an error, unless withdrawals are accepted explicitly
+(``gridload ingest --accept-withdrawals``). Quarter hours that SMARD leaves out of a completed chunk
+(permanent gaps in the source) are not stored as values; the load log records
+how many are missing and where the gap starts. Any source or validation error
+is written to ``load_log`` and nothing is stored for that chunk.
 
 Run status: ``failed`` if the run crashed, the source was unavailable, an index
 could not be read or a recent chunk (newest ``refetch_weeks`` or ending in the
@@ -28,18 +33,17 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import duckdb
-import numpy as np
 import polars as pl
 
 from gridload.series import Series
 from gridload.sources.smard import (
-    QUARTER_HOUR_MS,
     RESOLUTION,
     ChunkValidationError,
     RawChunk,
     SmardClient,
     SourceError,
     chunk_end_ms,
+    missing_points,
     ms_to_datetime,
     parse_chunk,
 )
@@ -82,7 +86,9 @@ class Ingestor:
         *,
         clock: Callable[[], datetime] = _now,
         progress: Progress | None = None,
+        accept_withdrawals: bool = False,
     ) -> None:
+        self._accept_withdrawals = accept_withdrawals
         self._con = con
         self._client = client
         self._clock = clock
@@ -162,16 +168,25 @@ class Ingestor:
             try:
                 raw = self._client.chunk(series, ts)
                 self._source_errors = 0
-                frame = parse_chunk(
-                    series, ts, raw.payload, allow_trailing_nulls=ts == latest or end > late_ms
-                )
+                is_open = ts == latest or end > late_ms
+                frame = parse_chunk(series, ts, raw.payload, is_open=is_open)
             except (SourceError, ChunkValidationError) as exc:
                 self._log_error(
                     result, series, ts, str(exc), recent=ts in refetch or end > recent_ms
                 )
                 self._count_source_error(exc)
                 continue
-            self._store(result, series, raw, frame)
+            missing, first_missing = missing_points(frame, ts, is_open=is_open)
+            note = None
+            if first_missing is not None:
+                kind = "pending gap" if is_open else "source gap"
+                first = ms_to_datetime(first_missing).isoformat()
+                note = f"{kind}: {missing} quarter hours missing, first at {first}"
+                if not is_open and end > recent_ms:
+                    # A gap in a week that just ended is worth a look: run becomes partial.
+                    result.errors.append(f"{series.key}: {note}")
+                    self._log(result.run_id, series, ts, status="warning", rows=0, message=note)
+            self._store(result, series, raw, frame, note=note, is_open=is_open)
 
     def _count_source_error(self, exc: Exception) -> None:
         if not (isinstance(exc, SourceError) and exc.transient):
@@ -191,21 +206,31 @@ class Ingestor:
         return {int(r[0]) for r in rows}
 
     def _incomplete_chunks(self, series: Series, known: set[int]) -> set[int]:
-        """Stored chunks with fewer values than quarter hours in their week."""
+        """Stored chunks last fetched while still open (their tail may have been missing).
+
+        A chunk fetched after its end plus ``LATE_DATA_ALLOWANCE`` is final: gaps in
+        it are permanent and only rechecked through ``refetch_weeks``.
+        """
         if not known:
             return set()
-        stamps = self._con.execute(
-            "SELECT epoch_ms(ts_utc) AS t FROM observations "
-            "WHERE series_key = ? AND resolution = ? ORDER BY t",
+        rows = self._con.execute(
+            "SELECT epoch_ms(chunk_ts), epoch_ms(fetched_at) FROM raw_chunks "
+            "WHERE series_key = ? AND resolution = ?",
             [series.key, RESOLUTION],
-        ).fetchnumpy()["t"]
-        starts = np.array(sorted(known), dtype=np.int64)
-        ends = np.array([chunk_end_ms(int(t)) for t in starts], dtype=np.int64)
-        present = np.searchsorted(stamps, ends) - np.searchsorted(stamps, starts)
-        expected = (ends - starts) // QUARTER_HOUR_MS
-        return {int(t) for t, n, e in zip(starts, present, expected, strict=True) if n < e}
+        ).fetchall()
+        allowance = int(LATE_DATA_ALLOWANCE.total_seconds() * 1000)
+        return {int(ts) for ts, fetched in rows if int(fetched) < chunk_end_ms(int(ts)) + allowance}
 
-    def _store(self, result: RunResult, series: Series, raw: RawChunk, frame: pl.DataFrame) -> None:
+    def _store(
+        self,
+        result: RunResult,
+        series: Series,
+        raw: RawChunk,
+        frame: pl.DataFrame,
+        *,
+        note: str | None = None,
+        is_open: bool = True,
+    ) -> None:
         chunk_at = ms_to_datetime(raw.chunk_ts)
         chunk_end = ms_to_datetime(chunk_end_ms(raw.chunk_ts))
         now = self._clock()
@@ -216,6 +241,12 @@ class Ingestor:
             [series.key, RESOLUTION, chunk_at],
         ).fetchone()
         if stored is not None and stored[0] == raw.sha256:
+            # Record the fetch time: an unchanged chunk fetched after it closed is final.
+            con.execute(
+                "UPDATE raw_chunks SET fetched_at = ? "
+                "WHERE series_key = ? AND resolution = ? AND chunk_ts = ?",
+                [now, series.key, RESOLUTION, chunk_at],
+            )
             self._log(result.run_id, series, raw.chunk_ts, status="unchanged", rows=0, message=None)
             result.unchanged += 1
             return
@@ -247,6 +278,13 @@ class Ingestor:
                 params,
             ).fetchone()
             removed = int(removed_row[0]) if removed_row else 0
+            if removed and not is_open and not self._accept_withdrawals:
+                # A completed week whose stored values turn null points to a degraded
+                # response, not a correction: keep the stored values and report it.
+                raise ChunkValidationError(
+                    f"{series.key} chunk {raw.chunk_ts}: {removed} stored values are now "
+                    "missing in a completed chunk; kept the stored values"
+                )
             if removed:
                 con.execute(
                     """
@@ -273,11 +311,19 @@ class Ingestor:
                 "INSERT OR REPLACE INTO raw_chunks VALUES (?, ?, ?, ?, ?, ?)",
                 [series.key, RESOLUTION, chunk_at, now, raw.sha256, zlib.compress(raw.payload, 9)],
             )
-            message = f"removed {removed} values no longer published" if removed else None
+            notes = [note] if note else []
+            if removed:
+                notes.append(f"removed {removed} values no longer published")
+            message = "; ".join(notes) or None
             self._log(
                 result.run_id, series, raw.chunk_ts, status="loaded", rows=changed, message=message
             )
             con.execute("COMMIT")
+        except ChunkValidationError as exc:
+            con.execute("ROLLBACK")
+            recent = chunk_end > now - RECENT
+            self._log_error(result, series, raw.chunk_ts, str(exc), recent=recent)
+            return
         except Exception:
             con.execute("ROLLBACK")
             raise

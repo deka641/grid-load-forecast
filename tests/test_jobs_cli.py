@@ -175,7 +175,12 @@ def test_cli_ingest_and_run(
     monkeypatch.setattr(jobs, "load", fake_load(calls, status="failed"))
     assert cli.main(["ingest"]) == 1
     assert cli.main(["run"]) == 1
-    assert calls[0] == {"mode": "incremental", "keys": None, "refetch_weeks": 4}
+    assert calls[0] == {
+        "mode": "incremental",
+        "keys": None,
+        "refetch_weeks": 4,
+        "accept_withdrawals": False,
+    }
     assert calls[1]["post_ingest"] is jobs.post_ingest_steps
     assert "error: load: boom" in capsys.readouterr().err
 

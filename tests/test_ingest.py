@@ -419,42 +419,101 @@ def _with_trailing_nulls(name: str, keep: int) -> bytes:
     return json.dumps(data).encode()
 
 
-def test_incomplete_chunk_is_completed_after_leaving_the_refetch_window(
+def _clock_at(moment: datetime):  # type: ignore[no-untyped-def]
+    def clock() -> datetime:
+        return moment
+
+    return clock
+
+
+def test_chunk_stored_while_open_is_completed_even_after_long_downtime(fake: FakeSmard) -> None:
+    week_end = datetime.fromtimestamp(chunk_end_ms(REGULAR) / 1000, UTC)
+    name = chunk_name(LOAD, REGULAR)
+    connection = duckdb.connect()
+    connection.execute("SET TimeZone = 'UTC'")
+    migrate(connection)
+    fake.use_index(LOAD, [REGULAR])
+    fake.override(name, _with_trailing_nulls(name, 100))
+    first = Ingestor(connection, fake.client(), clock=_clock_at(week_end - timedelta(hours=2)))
+    first.run([LOAD], mode="backfill")
+    assert count(connection, "SELECT count(*) FROM observations") == 100
+
+    # Two months later, five newer weeks exist (all failing), the chunk is far
+    # outside the refetch window but was stored while open, so it is reloaded.
+    later = week_end + timedelta(days=60)
+    newer = [REGULAR + i * 7 * 86_400_000 for i in range(1, 6)]
+    for ts in newer:
+        fake.override(chunk_name(LOAD, ts), b"", 404)
+    fake.use_index(LOAD, [REGULAR, *newer])
+    fake.responses.pop(name)
+    Ingestor(connection, fake.client(retries=0), clock=_clock_at(later)).run(
+        [LOAD], mode="incremental", refetch_weeks=1
+    )
+    complete = count(
+        connection,
+        "SELECT count(*) FROM observations WHERE ts_utc < make_timestamptz(? * 1000)",
+        [newer[0]],
+    )
+    assert complete == 672
+
+    # Fetched after it closed: final, not requested again.
+    fake.requests.clear()
+    Ingestor(connection, fake.client(retries=0), clock=_clock_at(later + timedelta(hours=1))).run(
+        [LOAD], mode="incremental", refetch_weeks=1
+    )
+    assert f"/app/chart_data/410/DE/{name}" not in fake.requests
+    connection.close()
+
+
+def test_unchanged_refetch_after_close_marks_the_chunk_final(fake: FakeSmard) -> None:
+    week_end = datetime.fromtimestamp(chunk_end_ms(REGULAR) / 1000, UTC)
+    name = chunk_name(LOAD, REGULAR)
+    partial = _with_trailing_nulls(name, 600)
+    connection = duckdb.connect()
+    connection.execute("SET TimeZone = 'UTC'")
+    migrate(connection)
+    fake.use_index(LOAD, [REGULAR, recorded_chunks(LOAD)[-1]])
+    fake.override(name, partial)
+    Ingestor(connection, fake.client(), clock=_clock_at(week_end - timedelta(hours=1))).run(
+        [LOAD], mode="backfill", refetch_weeks=0
+    )
+    # SMARD never fills the tail: the unchanged response after close is final.
+    Ingestor(connection, fake.client(), clock=_clock_at(week_end + timedelta(days=1))).run(
+        [LOAD], mode="incremental", refetch_weeks=0
+    )
+    fake.requests.clear()
+    Ingestor(connection, fake.client(), clock=_clock_at(week_end + timedelta(days=2))).run(
+        [LOAD], mode="incremental", refetch_weeks=0
+    )
+    assert f"/app/chart_data/410/DE/{name}" not in fake.requests
+    connection.close()
+
+
+def test_values_withdrawn_from_a_completed_chunk_are_kept_and_reported(
     con: duckdb.DuckDBPyConnection, fake: FakeSmard
 ) -> None:
-    fake.use_index(LOAD, [REGULAR])
-    fake.override(chunk_name(LOAD, REGULAR), _with_trailing_nulls(chunk_name(LOAD, REGULAR), 100))
     run(con, fake.client(), [LOAD])
-    assert count(con, "SELECT count(*) FROM observations") == 100
-
-    later = [REGULAR + i * 7 * 86_400_000 for i in range(1, 6)]
-    for ts in later:
-        fake.override(
-            chunk_name(LOAD, ts),
-            fixture_bytes(chunk_name(LOAD, REGULAR)).replace(str(REGULAR).encode(), b"0"),
-            404,
-        )
-    fake.use_index(LOAD, [REGULAR, *later])
-    fake.responses.pop(chunk_name(LOAD, REGULAR))
-    fake.requests.clear()
-    run(con, fake.client(retries=0), [LOAD], mode="incremental", refetch_weeks=1)
-    assert f"/app/chart_data/410/DE/{chunk_name(LOAD, REGULAR)}" in fake.requests
-    assert (
-        count(
-            con,
-            "SELECT count(*) FROM observations WHERE ts_utc < make_timestamptz(? * 1000)",
-            [later[0]],
-        )
-        == 672
-    )
+    before = count(con, "SELECT count(*) FROM observations")
+    name = chunk_name(LOAD, AUTUMN)
+    data = json.loads(fixture_bytes(name))
+    for point in data["series"][200:296]:
+        point[1] = None
+    fake.override(name, json.dumps(data).encode())
+    result = run(con, fake.client(), [LOAD], mode="incremental", refetch_weeks=4)
+    assert result.status in {"partial", "failed"}
+    assert any("now missing in a completed chunk" in e for e in result.errors)
+    assert count(con, "SELECT count(*) FROM observations") == before
 
 
-def test_recently_ended_chunk_may_still_have_trailing_nulls(fake: FakeSmard) -> None:
+def test_trailing_nulls_are_pending_shortly_after_the_week_and_a_gap_later(
+    fake: FakeSmard,
+) -> None:
     week_end = datetime.fromtimestamp(chunk_end_ms(REGULAR) / 1000, UTC)
     name = chunk_name(LOAD, REGULAR)
     fake.use_index(LOAD, [REGULAR, recorded_chunks(LOAD)[-1]])
     fake.override(name, _with_trailing_nulls(name, 668))
-    for hours_after, status in ((2, "ok"), (8, "failed")):
+    cases = ((2, None, "ok"), (8, "source gap: 4 quarter hours missing, first at ", "partial"))
+    for hours_after, message, status in cases:
         connection = duckdb.connect()
         connection.execute("SET TimeZone = 'UTC'")
         migrate(connection)
@@ -464,8 +523,46 @@ def test_recently_ended_chunk_may_still_have_trailing_nulls(fake: FakeSmard) -> 
             return at
 
         result = Ingestor(connection, fake.client(), clock=clock).run([LOAD], mode="backfill")
-        assert result.status == status, hours_after
+        assert result.status == status
+        row = connection.execute(
+            "SELECT message FROM load_log WHERE epoch_ms(chunk_ts) = ?", [REGULAR]
+        ).fetchone()
+        assert row is not None
+        if message is None:
+            assert row[0] is None
+        else:
+            assert row[0].startswith(message)
         connection.close()
+
+
+def test_permanent_gap_is_logged_and_not_refetched(fake: FakeSmard) -> None:
+    name = chunk_name(LOAD, SPRING)
+    data = json.loads(fixture_bytes(name))
+    for point in data["series"][100:196]:
+        point[1] = None
+    fake.override(name, json.dumps(data).encode())
+    fake.use_index(LOAD, [SPRING, *recorded_chunks(LOAD)[1:]])
+    connection = duckdb.connect()
+    connection.execute("SET TimeZone = 'UTC'")
+    migrate(connection)
+    result = Ingestor(connection, fake.client()).run([LOAD], mode="backfill", refetch_weeks=1)
+    assert result.status == "ok"
+    logged = connection.execute(
+        "SELECT message FROM load_log WHERE epoch_ms(chunk_ts) = ?", [SPRING]
+    ).fetchone()
+    assert logged is not None
+    assert logged[0].startswith("source gap: 96 quarter hours missing, first at 2025-03-25")
+    stored = count(
+        connection,
+        "SELECT count(*) FROM observations WHERE ts_utc >= make_timestamptz(? * 1000) "
+        "AND ts_utc < make_timestamptz(? * 1000)",
+        [SPRING, chunk_end_ms(SPRING)],
+    )
+    assert stored == 668 - 96
+    fake.requests.clear()
+    Ingestor(connection, fake.client()).run([LOAD], mode="incremental", refetch_weeks=1)
+    assert f"/app/chart_data/410/DE/{name}" not in fake.requests
+    connection.close()
 
 
 def test_old_chunk_errors_make_a_partial_run(
@@ -575,3 +672,36 @@ def test_warehouse_connection_has_resource_limits(tmp_path: Path) -> None:
         assert settings[:2] == (4, 1)
         assert settings[2] == "953.6 MiB"
         assert settings[3] == str(tmp_path / "duckdb-tmp")
+
+
+def test_withdrawals_can_be_accepted_explicitly(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    run(con, fake.client(), [LOAD])
+    before = count(con, "SELECT count(*) FROM observations")
+    name = chunk_name(LOAD, AUTUMN)
+    data = json.loads(fixture_bytes(name))
+    for point in data["series"][200:296]:
+        point[1] = None
+    fake.override(name, json.dumps(data).encode())
+    result = Ingestor(con, fake.client(), accept_withdrawals=True).run(
+        [LOAD], mode="incremental", refetch_weeks=4
+    )
+    assert result.rows_removed == 96
+    assert count(con, "SELECT count(*) FROM observations") == before - 96
+
+
+def test_recent_gap_is_logged_as_warning(fake: FakeSmard) -> None:
+    week_end = datetime.fromtimestamp(chunk_end_ms(REGULAR) / 1000, UTC)
+    name = chunk_name(LOAD, REGULAR)
+    fake.use_index(LOAD, [REGULAR, recorded_chunks(LOAD)[-1]])
+    fake.override(name, _with_trailing_nulls(name, 668))
+    connection = duckdb.connect()
+    connection.execute("SET TimeZone = 'UTC'")
+    migrate(connection)
+    Ingestor(connection, fake.client(), clock=_clock_at(week_end + timedelta(days=1))).run(
+        [LOAD], mode="backfill"
+    )
+    rows = connection.execute("SELECT status FROM load_log WHERE status = 'warning'").fetchall()
+    assert rows == [("warning",)]
+    connection.close()

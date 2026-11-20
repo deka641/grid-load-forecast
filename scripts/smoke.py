@@ -22,7 +22,7 @@ def main() -> int:
                     series,
                     index[-1],
                     client.chunk(series, index[-1]).payload,
-                    allow_trailing_nulls=True,
+                    is_open=True,
                 )
             except (SourceError, ChunkValidationError) as exc:
                 failures += 1
