@@ -8,6 +8,7 @@ __pycache__/
 .hypothesis/
 .coverage
 coverage.xml
+coverage.json
 htmlcov/
 .audit-requirements.txt
 

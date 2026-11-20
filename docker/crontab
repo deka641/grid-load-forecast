@@ -1,2 +1,3 @@
-# Daily pipeline run, times in UTC. Replaced by the real ingest and forecast job.
-30 10 * * * gridload --version
+# Hourly pipeline run (UTC): loads new, incomplete and recent data, runs the
+# follow-up steps and publishes the serving snapshot.
+5 * * * * gridload run
