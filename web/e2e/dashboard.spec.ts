@@ -126,6 +126,23 @@ for (const scheme of ['light', 'dark'] as const) {
       })
       await hoverCharts(page)
 
+      if (width < 600) {
+        const mix = page.locator('.chart-mix .chart-canvas')
+        await mix.scrollIntoViewIfNeeded()
+        const box = await mix.boundingBox()
+        if (box) {
+          await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5)
+          await page.screenshot({ path: join(SHOTS, `tooltip-mix-${scheme}-390.png`) })
+          await page.mouse.move(0, 0)
+        }
+        // Touch targets: every control is at least 44 px high.
+        const controls = page.locator('button, select, .theme-option span, .site-footer a')
+        for (const control of await controls.all()) {
+          const size = await control.boundingBox()
+          expect(size?.height ?? 0).toBeGreaterThanOrEqual(44)
+        }
+      }
+
       const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
       expect(scrollWidth).toBeLessThanOrEqual(width)
 
@@ -170,13 +187,17 @@ test('switches days, handles the 25 hour day and toggles the theme', async ({ br
   await expect(page.locator('.headline')).toContainText('Sunday 25 October')
   await expect(page.locator('.clock-change')).toContainText('25 hours')
   await expect(page.getByText('This day', { exact: true })).toBeVisible()
-  await page.locator('#forecast-title').scrollIntoViewIfNeeded()
-  await page.screenshot({ path: join(SHOTS, 'dashboard-light-25h-day.png') })
+  await page.locator('.chart-forecast').scrollIntoViewIfNeeded()
+  await page.locator('.chart-forecast').screenshot({ path: join(SHOTS, 'chart-25h-day.png') })
   await page.getByRole('button', { name: 'Previous day' }).click()
   await expect(page.locator('.headline')).toContainText('Saturday 24 October')
 
   await page.getByLabel('Dark').check()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await page.evaluate(() => {
+    window.scrollTo(0, 0)
+  })
+  await page.screenshot({ path: join(SHOTS, 'dashboard-dark-after-toggle.png') })
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await hoverCharts(page)

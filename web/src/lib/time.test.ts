@@ -36,6 +36,7 @@ describe('time helpers', () => {
     expect(dateTimeBerlin('2026-11-20T09:45:00Z')).toBe('20 Nov 2026, 10:45')
     expect(dateTimeBerlin('2026-07-01T09:45:00Z')).toBe('1 Jul 2026, 11:45')
     expect(dateTimeBerlin('2026-11-20T13:15:00+01:00', 15)).toBe('20 Nov 2026, 13:30')
+    expect(dateTimeBerlin('2026-11-20T13:56:12.345678+01:00')).toBe('20 Nov 2026, 13:56')
     expect(dateTimeBerlin(new Date(Date.UTC(2026, 11, 31, 23, 30)))).toBe('1 Jan 2027, 00:30')
   })
 })

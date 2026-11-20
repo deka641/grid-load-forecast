@@ -155,6 +155,16 @@ export const FORECAST_SERIES: readonly { key: ForecastKey | 'actual'; label: str
   ...MODELS.map((m) => ({ key: m.key, label: m.label })),
 ]
 
+const TICKS_25H = new Set(['00:00', '02:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00'])
+
+/** Every third hour; on 25-hour days both 02:00 hours instead of 03:00. */
+export function forecastTick(label: string, hours: number): boolean {
+  if (hours === 25) {
+    return TICKS_25H.has(label)
+  }
+  return Number(label.slice(0, 2)) % 3 === 0
+}
+
 /** Hours of a delivery day are labelled by local wall clock; 02:00 repeats on 25-hour days. */
 export function forecastOption(points: readonly ForecastPoint[], palette: Palette) {
   const option = base(palette)
@@ -187,7 +197,7 @@ export function forecastOption(points: readonly ForecastPoint[], palette: Palett
     xAxis: categoryAxis(
       palette,
       points.map((p) => wallClock(p.ts)),
-      points.map((p) => Number(wallClock(p.ts).slice(0, 2)) % 3 === 0),
+      points.map((p) => forecastTick(wallClock(p.ts), points.length)),
     ),
     yAxis: valueAxis(palette, 'GW'),
     series: FORECAST_SERIES.map((s) =>
@@ -343,7 +353,8 @@ export function priceOption(
         data: values,
         showSymbol: false,
         symbol: 'none',
-        step: 'start',
+        // A price holds for the hour that starts at its timestamp.
+        step: 'end',
         lineStyle: { color: palette.price, width: 1.5 },
         itemStyle: { color: palette.price },
         emphasis: { disabled: true },

@@ -725,10 +725,14 @@ a:hover {
     width: 100%;
   }
 
+  /* Inline padding enlarges the touch target without breaking the sentence. */
   .site-footer a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
+    padding-block: 14px;
+  }
+
+  .footer-meta {
+    flex-direction: column;
+    gap: 2px;
   }
 
   .table-hint {

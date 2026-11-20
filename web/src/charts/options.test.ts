@@ -54,8 +54,11 @@ describe('forecastOption', () => {
     expect(option.xAxis.data).toHaveLength(25)
     const labels = option.xAxis.data.map((v) => option.xAxis.axisLabel.formatter(v))
     expect(labels.filter((l) => l === '02:00')).toHaveLength(2)
-    expect(option.xAxis.axisLabel.interval(3)).toBe(false)
-    expect(option.xAxis.axisLabel.interval(4)).toBe(true)
+    // Both 02:00 hours carry a label; 03:00 gives way to them.
+    expect(option.xAxis.axisLabel.interval(2)).toBe(true)
+    expect(option.xAxis.axisLabel.interval(3)).toBe(true)
+    expect(option.xAxis.axisLabel.interval(4)).toBe(false)
+    expect(option.xAxis.axisLabel.interval(7)).toBe(true)
     expect(option.tooltip.formatter([{ dataIndex: 2 }])).toContain('02:00 (UTC+2)')
     expect(option.tooltip.formatter({ dataIndex: 3 })).toContain('02:00 (UTC+1)')
     expect(option.tooltip.formatter([{ dataIndex: 99 }])).toBe('')
@@ -66,6 +69,8 @@ describe('forecastOption', () => {
     const day = forecast('2026-03-29', false)
     const option = built(forecastOption(day.points, palette))
     expect(option.xAxis.data).toHaveLength(23)
+    expect(option.xAxis.axisLabel.interval(2)).toBe(true)
+    expect(option.xAxis.axisLabel.interval(1)).toBe(false)
     const [actual, model, baseline, tso] = option.series
     expect(actual?.data[0]).toBeNull()
     expect(model?.data[0]).toBeCloseTo(51)
