@@ -110,7 +110,7 @@ loadtest: ## Parallel dashboard requests against the prod-check stack
 	$(T) 300 $(UV) python scripts/loadtest.py --base http://127.0.0.1:8461 --project grid-load-forecast-check
 
 prod-down: ## Stop and remove the prod-check stack
-	docker compose -p grid-load-forecast-check -f docker-compose.yml -f docker-compose.check.yml down -v
+	docker compose -p grid-load-forecast-check -f compose.yaml -f compose.check.yaml down -v
 
 clean: ## Remove build artefacts
 	rm -rf site web/dist web/coverage .coverage coverage.json .pytest_cache .mypy_cache .ruff_cache

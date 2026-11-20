@@ -1,5 +1,5 @@
 # Isolated production-like instance for `make prod-check` and `make loadtest`.
-# Used as: docker compose -p grid-load-forecast-check -f docker-compose.yml -f docker-compose.check.yml
+# Used as: docker compose -p grid-load-forecast-check -f compose.yaml -f compose.check.yaml
 # Own image tags, so building the check stack never changes the images of the live stack.
 services:
   pipeline:

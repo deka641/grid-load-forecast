@@ -94,7 +94,7 @@ BYTE_BUDGET = 100 * 2**20
 BYTES_PER_POINT = 52
 SMALL_BODY_BYTES = 64 * 1024
 # All limits are per process; compose runs a single uvicorn worker. uvicorn's own
-# --limit-concurrency (256 in docker-compose.yml) is only a backstop far above them.
+# --limit-concurrency (256 in compose.yaml) is only a backstop far above them.
 HEALTH_PATH = "/api/v1/health"
 STATUS_PATH = "/api/v1/status"
 POINTS_PER_DAY = {Resolution.QUARTERHOUR: 96, Resolution.HOUR: 24}
@@ -194,7 +194,7 @@ class ChunkedResponse(Response):
                             }
                         )
         except TimeoutError:
-            log.warning("dropped a client that read %d bytes too slowly", len(body))
+            log.warning("dropped a client that was too slow to read a %d byte body", len(body))
         finally:
             self._done()
 

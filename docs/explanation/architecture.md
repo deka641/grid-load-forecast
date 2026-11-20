@@ -39,7 +39,7 @@ On an empty volume the first run is the full backfill of all series since 29 Dec
 
 Every service has a healthcheck. The pipeline counts as healthy while a run reports progress, or when the last run with status `ok` or `partial` is less than 26 hours old and the newest load value is less than 12 hours old. The second condition notices a source that stops publishing although every run succeeds.
 
-Memory limits are set in `docker-compose.yml` (pipeline 2 GB, api 512 MB, web 128 MB). DuckDB is configured below them: the pipeline uses 4 worker threads and 1 GB of memory and spills to a temporary directory on the volume; each API snapshot instance uses 2 threads and 128 MB. Without these settings DuckDB starts about five threads per host core and assumes 80 % of host memory, which would exceed the container limits on larger machines. The API also limits concurrent heavy requests and answers with a JSON 503 when it is saturated.
+Memory limits are set in `compose.yaml` (pipeline 2 GB, api 512 MB, web 128 MB). DuckDB is configured below them: the pipeline uses 4 worker threads and 1 GB of memory and spills to a temporary directory on the volume; each API snapshot instance uses 2 threads and 128 MB. Without these settings DuckDB starts about five threads per host core and assumes 80 % of host memory, which would exceed the container limits on larger machines. The API also limits concurrent heavy requests and answers with a JSON 503 when it is saturated.
 
 ## Web server
 

@@ -1,8 +1,0 @@
-# Copy to docker-compose.override.yml to stop containers from restarting on their own.
-services:
-  pipeline:
-    restart: "no"
-  api:
-    restart: "no"
-  web:
-    restart: "no"

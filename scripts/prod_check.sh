@@ -8,7 +8,7 @@ set -euo pipefail
 PROJECT=grid-load-forecast-check
 BASE=http://127.0.0.1:8461
 DATA_DIR=${GRIDLOAD_DATA_DIR:-data}
-COMPOSE=(docker compose -p "$PROJECT" -f docker-compose.yml -f docker-compose.check.yml)
+COMPOSE=(docker compose -p "$PROJECT" -f compose.yaml -f compose.check.yaml)
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 [[ -f "$DATA_DIR/serving.duckdb" ]] || fail "$DATA_DIR/serving.duckdb missing: run the pipeline first"
