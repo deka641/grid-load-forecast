@@ -36,6 +36,7 @@ class _Beat:
         self._last = float("-inf")
         previous = heartbeat.read(self._path)
         self.last_success = previous.last_success if previous else None
+        self.newest_load = previous.newest_load if previous else None
 
     def __call__(self, _series: str = "", _chunk: int = 0) -> None:
         now = time.monotonic()
@@ -43,15 +44,21 @@ class _Beat:
             self._last = now
             heartbeat.write(
                 self._path,
-                heartbeat.Heartbeat("running", heartbeat.now_iso(), self.last_success),
+                heartbeat.Heartbeat(
+                    "running", heartbeat.now_iso(), self.last_success, None, self.newest_load
+                ),
             )
 
-    def finish(self, status: str) -> None:
+    def finish(self, status: str, newest_load: datetime | None = None) -> None:
         if status in {"ok", "partial"}:
             self.last_success = heartbeat.now_iso()
+        if newest_load is not None:
+            self.newest_load = newest_load.astimezone(UTC).isoformat()
         heartbeat.write(
             self._path,
-            heartbeat.Heartbeat("idle", heartbeat.now_iso(), self.last_success, status),
+            heartbeat.Heartbeat(
+                "idle", heartbeat.now_iso(), self.last_success, status, self.newest_load
+            ),
         )
 
 
@@ -75,6 +82,7 @@ def load(
     beat()
     client = client_factory(settings)
     status = "failed"
+    newest: datetime | None = None
     try:
         with connect(settings.warehouse_path) as con:
             ingestor = Ingestor(con, client, progress=beat)
@@ -82,6 +90,10 @@ def load(
             try:
                 if post_ingest is not None:
                     post_ingest(con, settings)
+                row = con.execute(
+                    "SELECT max(ts_utc) FROM observations WHERE series_key = 'load'"
+                ).fetchone()
+                newest = row[0] if row else None
                 con.execute("CHECKPOINT")
                 snapshot.publish(con, settings.serving_path, exclude_series=excluded)
             except Exception:
@@ -90,7 +102,7 @@ def load(
         status = result.status
     finally:
         client.close()
-        beat.finish(status)
+        beat.finish(status, newest)
     return result
 
 

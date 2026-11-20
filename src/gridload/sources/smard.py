@@ -32,7 +32,15 @@ RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
 class SourceError(RuntimeError):
-    """The source could not be reached or answered with an error."""
+    """The source could not be reached or answered with an error.
+
+    ``transient`` marks timeouts, connection errors and overload statuses, which
+    point to an unavailable source rather than a problem with one file.
+    """
+
+    def __init__(self, message: str, *, transient: bool = False) -> None:
+        super().__init__(message)
+        self.transient = transient
 
 
 class ChunkValidationError(ValueError):
@@ -239,6 +247,6 @@ class SmardClient:
                     raise SourceError(f"{url}: {error}")
                 retry_after = _retry_after(response.headers.get("Retry-After"))
             if attempt >= self._retries:
-                raise SourceError(f"{url}: {error} after {attempt + 1} attempts")
+                raise SourceError(f"{url}: {error} after {attempt + 1} attempts", transient=True)
             self._sleep(max(self._backoff * 2**attempt, retry_after))
             attempt += 1

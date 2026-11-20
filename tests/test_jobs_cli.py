@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -42,7 +43,10 @@ def test_load_publishes_snapshot_and_heartbeat(settings: Settings, fake: FakeSma
     assert beat is not None
     assert (beat.state, beat.last_status) == ("idle", "ok")
     assert beat.last_success is not None
-    assert jobs.healthcheck(settings)
+    # The fixtures end on 2026-11-20, so data freshness decides health here.
+    assert jobs.healthcheck(settings) is (
+        datetime.now(UTC) - datetime(2026, 11, 20, 9, 45, tzinfo=UTC) <= timedelta(hours=12)
+    )
 
 
 def test_failed_load_keeps_previous_success(settings: Settings, fake: FakeSmard) -> None:
@@ -238,3 +242,19 @@ def test_failure_after_ingest_marks_run_failed(settings: Settings, fake: FakeSma
     beat = heartbeat.read(settings.heartbeat_path)
     assert beat is not None
     assert beat.last_status == "failed"
+
+
+def test_cli_does_not_hide_unexpected_value_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken(_settings: Settings, **_kwargs: object) -> RunResult:
+        raise ValueError("bug deep in the pipeline")
+
+    monkeypatch.setattr(jobs, "load", broken)
+    with pytest.raises(ValueError, match="bug deep"):
+        cli.main(["ingest"])
+
+
+def test_heartbeat_records_newest_load_value(settings: Settings, fake: FakeSmard) -> None:
+    jobs.load(settings, mode="backfill", keys=["load"], client_factory=lambda _s: fake.client())
+    beat = heartbeat.read(settings.heartbeat_path)
+    assert beat is not None
+    assert beat.newest_load == "2026-11-20T09:45:00+00:00"
