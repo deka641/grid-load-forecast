@@ -98,7 +98,7 @@
               },
               "type": "object"
             },
-            "description": "Metrics by model, then by scope (overall, hour, day_type)",
+            "description": "Metrics by model, then by scope (overall, hour, day_type, overall_tso_hours)",
             "title": "Metrics",
             "type": "object"
           },

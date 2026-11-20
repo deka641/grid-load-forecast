@@ -13,7 +13,7 @@ strictly past data.
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import numpy as np
 import polars as pl
@@ -155,14 +155,26 @@ MIN_WEEK_COVERAGE = 0.9
 def feature_gaps(history: History, delivery_day: date) -> list[str]:
     """Names of the history checks that fail for ``delivery_day`` (empty if none).
 
-    ``lag_7d`` is missing for some target hour, ``mean_24h`` or ``mean_168h``
-    could not be computed, or ``coverage_168h``: fewer than
+    A lag (``lag_1d``, ``lag_2d``, ``lag_7d``, ``lag_14d``) is missing for some
+    target hour where it should be known at the cutoff (``lag_1d`` only for the
+    hours of the previous day that ended before the cutoff), ``mean_24h`` or
+    ``mean_168h`` could not be computed, or ``coverage_168h``: fewer than
     ``MIN_WEEK_COVERAGE`` of the 168 hours before the cutoff exist.
     """
     cutoff = cal.cutoff_for(delivery_day)
+    targets = cal.day_hours(delivery_day)
     gaps = []
-    if any(math.isnan(v) for v in baseline_week(history, delivery_day)):
-        gaps.append("lag_7d")
+    for days in (1, 2, 7, 14):
+        missing = False
+        for ts in targets:
+            source = cal.shift_local(ts, days)
+            if source + timedelta(hours=1) > cutoff:
+                continue  # not yet published at the cutoff by design
+            if math.isnan(history.value_at(source, cutoff)):
+                missing = True
+                break
+        if missing:
+            gaps.append(f"lag_{days}d")
     for hours in (24, 168):
         if math.isnan(history.window_mean(cutoff, hours)):
             gaps.append(f"mean_{hours}h")
