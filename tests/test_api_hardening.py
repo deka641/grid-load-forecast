@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 import math
-import threading
 import time
 import tracemalloc
 from collections.abc import Iterator
@@ -17,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from gridload.api import queries
-from gridload.api.app import create_app
+from gridload.api.app import HEAVY_MAX_WAITING, create_app
 from gridload.api.models import Actuals, ForecastDay
 from gridload.api.store import NEWEST_UNOPENABLE
 from gridload.config import Settings
@@ -112,26 +111,31 @@ LIGHT = {"series": ALL_KEYS, "start": "2025-01-01", "end": "2025-05-18"}
 
 
 @pytest.fixture
-def forecast_client(empty_wh: duckdb.DuckDBPyConnection, settings: Settings) -> TestClient:
+def forecast_client(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings
+) -> Iterator[TestClient]:
     add_run(empty_wh, "r1", "lightgbm", DAY, ISSUED, 1.0)
     publish(empty_wh, settings)
-    return make_client(settings, heavy_wait=0.01, query_wait=0.01)
+    # As a context manager the client keeps one event loop, which the gates need.
+    with make_client(settings, heavy_wait=0.01, query_wait=0.01) as client:
+        yield client
 
 
-def hold(slots: threading.BoundedSemaphore, count: int) -> None:
+def hold(client: TestClient, name: str, count: int) -> None:
+    gate = getattr(client.app.state, name)  # type: ignore[attr-defined]
     for _ in range(count):
-        assert slots.acquire(blocking=False)
+        client.portal.call(gate.acquire)  # type: ignore[union-attr]
 
 
-def free(slots: threading.BoundedSemaphore, count: int) -> None:
+def free(client: TestClient, name: str, count: int) -> None:
+    gate = getattr(client.app.state, name)  # type: ignore[attr-defined]
     for _ in range(count):
-        slots.release()
+        client.portal.call(gate.release)  # type: ignore[union-attr]
 
 
 def test_only_large_actuals_requests_need_a_heavy_slot(forecast_client: TestClient) -> None:
     assert len(CATALOG) == 15
-    slots = forecast_client.app.state.heavy_slots  # type: ignore[attr-defined]
-    hold(slots, 2)
+    hold(forecast_client, "heavy_gate", 2)
     try:
         response = forecast_client.get("/api/v1/actuals", params=HEAVY)
         assert response.status_code == 503
@@ -145,15 +149,14 @@ def test_only_large_actuals_requests_need_a_heavy_slot(forecast_client: TestClie
         assert get(forecast_client, "/api/v1/status")["initialised"] is True
         assert get(forecast_client, "/api/v1/health")["status"] == "ok"
     finally:
-        free(slots, 2)
+        free(forecast_client, "heavy_gate", 2)
     assert forecast_client.get("/api/v1/actuals", params=HEAVY).status_code == 200
 
 
 def test_data_queries_answer_503_while_all_query_slots_are_taken(
     forecast_client: TestClient,
 ) -> None:
-    slots = forecast_client.app.state.query_slots  # type: ignore[attr-defined]
-    hold(slots, 8)
+    hold(forecast_client, "query_gate", 8)
     try:
         for url in ("/api/v1/forecasts", "/api/v1/forecasts/days", "/api/v1/backtest/metrics"):
             response = forecast_client.get(url)
@@ -162,7 +165,7 @@ def test_data_queries_answer_503_while_all_query_slots_are_taken(
         assert get(forecast_client, "/api/v1/status")["initialised"] is True
         assert get(forecast_client, "/api/v1/health")["status"] == "ok"
     finally:
-        free(slots, 8)
+        free(forecast_client, "query_gate", 8)
     assert forecast_client.get("/api/v1/forecasts").status_code == 200
 
 
@@ -171,9 +174,11 @@ def test_health_and_status_answer_while_heavy_requests_wait(
 ) -> None:
     publish(empty_wh, settings)
     app = create_app(settings, heavy_wait=2.0)
-    slots = app.state.heavy_slots
+    gate = app.state.heavy_gate
 
-    async def scenario() -> tuple[list[int], list[tuple[int, float]], float]:
+    async def scenario() -> tuple[list[int], list[tuple[int, float]], int, int]:
+        await gate.acquire()
+        await gate.acquire()
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://api") as client:
             # More waiting heavy requests than the worker thread pool has threads.
@@ -181,6 +186,8 @@ def test_health_and_status_answer_while_heavy_requests_wait(
                 asyncio.create_task(client.get("/api/v1/actuals", params=HEAVY)) for _ in range(60)
             ]
             await asyncio.sleep(0.2)
+            # Requests beyond the waiting limit are answered at once.
+            refused = sum(task.done() for task in waiting)
             probes = []
             for url in ("/api/v1/health", "/api/v1/status", "/api/v1/forecasts/days"):
                 started = time.monotonic()
@@ -188,17 +195,59 @@ def test_health_and_status_answer_while_heavy_requests_wait(
                 probes.append((response.status_code, time.monotonic() - started))
             pending = sum(not task.done() for task in waiting)
             codes = [r.status_code for r in await asyncio.gather(*waiting)]
-            return codes, probes, pending
+            gate.release()
+            gate.release()
+            assert (await client.get("/api/v1/actuals", params=HEAVY)).status_code == 200
+            return codes, probes, refused, pending
 
-    hold(slots, 2)
-    try:
-        codes, probes, pending = asyncio.run(scenario())
-    finally:
-        free(slots, 2)
-    assert pending == 60
+    codes, probes, refused, pending = asyncio.run(scenario())
+    assert refused == 60 - HEAVY_MAX_WAITING
+    assert pending == HEAVY_MAX_WAITING
     assert [code for code, _ in probes] == [200, 200, 200]
     assert max(seconds for _, seconds in probes) < 1.0
     assert codes == [503] * 60
+
+
+def test_requests_beyond_the_inflight_limit_are_refused_except_health_and_status(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings
+) -> None:
+    add_run(empty_wh, "r1", "lightgbm", DAY, ISSUED, 1.0)
+    publish(empty_wh, settings)
+    app = create_app(settings, heavy_wait=2.0, max_inflight=5)
+    gate = app.state.heavy_gate
+
+    async def scenario() -> tuple[list[int], list[httpx.Response], int]:
+        await gate.acquire()
+        await gate.acquire()
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://api") as client:
+            waiting = [
+                asyncio.create_task(client.get("/api/v1/actuals", params=HEAVY)) for _ in range(5)
+            ]
+            await asyncio.sleep(0.2)
+            probes = [
+                await client.get(url)
+                for url in (
+                    "/api/v1/health",
+                    "/api/v1/status",
+                    "/api/v1/forecasts",
+                    "/api/v1/series",
+                )
+            ]
+            pending = sum(not task.done() for task in waiting)
+            gate.release()
+            gate.release()
+            codes = [r.status_code for r in await asyncio.gather(*waiting)]
+            assert (await client.get("/api/v1/forecasts")).status_code == 200
+            return codes, probes, pending
+
+    codes, probes, pending = asyncio.run(scenario())
+    assert pending == 5
+    assert [r.status_code for r in probes] == [200, 200, 503, 503]
+    assert probes[2].headers["content-type"] == "application/json"
+    assert probes[2].json() == BUSY
+    assert probes[3].json() == BUSY
+    assert codes == [200] * 5
 
 
 # Revalidation --------------------------------------------------------------------------
@@ -250,18 +299,16 @@ def test_revalidation_needs_no_slot_and_errors_have_no_etag(
     forecast_client: TestClient,
 ) -> None:
     tag = forecast_client.get("/api/v1/actuals", params=HEAVY).headers["etag"]
-    heavy = forecast_client.app.state.heavy_slots  # type: ignore[attr-defined]
-    query = forecast_client.app.state.query_slots  # type: ignore[attr-defined]
-    hold(heavy, 2)
-    hold(query, 8)
+    hold(forecast_client, "heavy_gate", 2)
+    hold(forecast_client, "query_gate", 8)
     try:
         response = forecast_client.get(
             "/api/v1/actuals", params=HEAVY, headers={"If-None-Match": tag}
         )
         assert response.status_code == 304
     finally:
-        free(heavy, 2)
-        free(query, 8)
+        free(forecast_client, "heavy_gate", 2)
+        free(forecast_client, "query_gate", 8)
     for url, params in (
         ("/api/v1/forecasts", {"delivery_day": "2026-01-01"}),
         ("/api/v1/backtest/metrics", {}),

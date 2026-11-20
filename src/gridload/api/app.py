@@ -3,18 +3,18 @@
 import asyncio
 import hashlib
 import logging
-import threading
-import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Annotated, Any
+from weakref import WeakKeyDictionary
 
 import anyio
 import duckdb
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from gridload import __version__
 from gridload.api import queries
@@ -59,19 +59,25 @@ UNREADABLE = "the data snapshot cannot be read"
 BUSY = "the server is busy; try again shortly"
 # Actuals requests of more than this many points (series x days x points per day)
 # are heavy: at most HEAVY_CONCURRENCY of them run at a time, and a request that
-# finds no free slot within HEAVY_WAIT_SECONDS is answered with a JSON 503. One
+# finds no free slot within HEAVY_WAIT_SECONDS is answered with a JSON 503. At
+# most HEAVY_MAX_WAITING requests wait; any further one is answered at once. One
 # year of all series hourly is about 130,000 points and takes about 0.45 s alone.
-# Waiting holds no thread; with shorter waits scripts/loadtest.py measured more
-# than 5 % busy responses (8.3 % at 0.5 s, 5.1 % at 2 s, 2.1 % at 5 s).
+# Waiting holds no thread. With 5 s, scripts/loadtest.py (10 clients, 60 s)
+# measured no busy responses; waits of 0.5 s and 2 s exceeded its 5 % limit.
 HEAVY_POINTS = 50_000
 HEAVY_CONCURRENCY = 2
 HEAVY_WAIT_SECONDS = 5.0
+HEAVY_MAX_WAITING = 8
 # Every data query runs in a worker thread; at most QUERY_CONCURRENCY at a time,
 # which bounds the memory of the responses being built. Waiting requests hold no
 # thread, so /health and /status, which run on the event loop, stay responsive.
 QUERY_CONCURRENCY = 8
 QUERY_WAIT_SECONDS = 10.0
-GATE_POLL_SECONDS = 0.02
+QUERY_MAX_WAITING = 64
+# Requests in flight, apart from /health and /status.
+MAX_INFLIGHT = 64
+HEALTH_PATH = "/api/v1/health"
+STATUS_PATH = "/api/v1/status"
 POINTS_PER_DAY = {Resolution.QUARTERHOUR: 96, Resolution.HOUR: 24}
 MAX_DAYS = {Resolution.QUARTERHOUR: 31, Resolution.HOUR: 366}
 DEFAULT_DAYS_LIMIT = 400
@@ -100,25 +106,81 @@ class Gate:
     """Bound the number of concurrent requests of one kind.
 
     A request waits on the event loop, not in a worker thread, and gives up
-    after ``wait`` seconds. The slots are a thread semaphore polled without
-    blocking, so they work across event loops and tests can hold them.
+    after ``wait`` seconds; when ``max_waiting`` requests already wait, it gives
+    up at once. The semaphore is created per event loop, since asyncio
+    primitives are bound to the loop they first wait on.
     """
 
-    def __init__(self, slots: int, wait: float) -> None:
-        self.slots = threading.BoundedSemaphore(slots)
+    def __init__(self, slots: int, wait: float, max_waiting: int) -> None:
+        self._slots = slots
         self._wait = wait
+        self._max_waiting = max_waiting
+        self._semaphores: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+            WeakKeyDictionary()
+        )
+        self.waiting = 0
+
+    def _semaphore(self) -> asyncio.Semaphore:
+        loop = asyncio.get_running_loop()
+        semaphore = self._semaphores.get(loop)
+        if semaphore is None:
+            semaphore = self._semaphores[loop] = asyncio.Semaphore(self._slots)
+        return semaphore
+
+    async def acquire(self) -> None:
+        """Take a slot, or raise ServerBusyError."""
+        semaphore = self._semaphore()
+        if not semaphore.locked():
+            await semaphore.acquire()
+            return
+        if self.waiting >= self._max_waiting:
+            raise ServerBusyError(BUSY)
+        self.waiting += 1
+        try:
+            async with asyncio.timeout(self._wait):
+                await semaphore.acquire()
+        except TimeoutError:
+            raise ServerBusyError(BUSY) from None
+        finally:
+            self.waiting -= 1
+
+    def release(self) -> None:
+        self._semaphore().release()
 
     @asynccontextmanager
     async def __call__(self) -> AsyncIterator[None]:
-        deadline = time.monotonic() + self._wait
-        while not self.slots.acquire(blocking=False):
-            if time.monotonic() >= deadline:
-                raise ServerBusyError(BUSY)
-            await asyncio.sleep(GATE_POLL_SECONDS)
+        await self.acquire()
         try:
             yield
         finally:
-            self.slots.release()
+            self.release()
+
+
+class InflightLimit:
+    """Answer requests beyond ``limit`` in flight with a JSON 503.
+
+    /health and /status are neither counted nor limited, so they stay
+    reachable under any number of connections.
+    """
+
+    def __init__(self, app: ASGIApp, limit: int, exempt: frozenset[str]) -> None:
+        self.app = app
+        self.limit = limit
+        self.exempt = exempt
+        self.inflight = 0
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["path"] in self.exempt:
+            await self.app(scope, receive, send)
+            return
+        if self.inflight >= self.limit:
+            await _error_response(BUSY)(scope, receive, send)
+            return
+        self.inflight += 1
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            self.inflight -= 1
 
 
 def etag_matches(header: str | None, tag: str) -> bool:
@@ -293,6 +355,7 @@ def create_app(
     clock: Callable[[], datetime] = _utcnow,
     heavy_wait: float = HEAVY_WAIT_SECONDS,
     query_wait: float = QUERY_WAIT_SECONDS,
+    max_inflight: int = MAX_INFLIGHT,
 ) -> FastAPI:
     """Build the API application. The snapshot is opened lazily on the first request."""
     settings = settings or Settings.from_env()
@@ -301,8 +364,8 @@ def create_app(
     price_note = PRICE_NOTE if settings.include_prices else PRICE_NOTE_OFF
     data = DataService(
         store,
-        Gate(HEAVY_CONCURRENCY, heavy_wait),
-        Gate(QUERY_CONCURRENCY, query_wait),
+        Gate(HEAVY_CONCURRENCY, heavy_wait, HEAVY_MAX_WAITING),
+        Gate(QUERY_CONCURRENCY, query_wait, QUERY_MAX_WAITING),
         f"{__version__}|{settings.include_prices}",
     )
     serve = data.serve
@@ -324,10 +387,13 @@ def create_app(
     )
 
     _install_error_handlers(app)
-    app.state.heavy_slots = data.heavy.slots
-    app.state.query_slots = data.query.slots
+    app.add_middleware(
+        InflightLimit, limit=max_inflight, exempt=frozenset({HEALTH_PATH, STATUS_PATH})
+    )
+    app.state.heavy_gate = data.heavy
+    app.state.query_gate = data.query
 
-    @app.get("/api/v1/health", tags=["status"])
+    @app.get(HEALTH_PATH, tags=["status"])
     async def health() -> Health:
         """Report that the process is alive."""
         return Health(status="ok", version=__version__)
@@ -453,7 +519,7 @@ def create_app(
 
         return await serve(request, build)
 
-    @app.get("/api/v1/status", tags=["status"])
+    @app.get(STATUS_PATH, tags=["status"])
     async def status() -> Status:
         """Report data freshness, licence and attribution; works without a snapshot."""
         # Runs on the event loop: it needs no worker thread and no gate. The
