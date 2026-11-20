@@ -9,14 +9,16 @@ import tracemalloc
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import httpx2 as httpx
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from gridload.api import queries
-from gridload.api.app import HEAVY_MAX_WAITING, create_app
+from gridload.api.app import CHUNK_BYTES, HEAVY_MAX_WAITING, Limits, create_app
 from gridload.api.models import Actuals, ForecastDay
 from gridload.api.store import NEWEST_UNOPENABLE
 from gridload.config import Settings
@@ -117,7 +119,7 @@ def forecast_client(
     add_run(empty_wh, "r1", "lightgbm", DAY, ISSUED, 1.0)
     publish(empty_wh, settings)
     # As a context manager the client keeps one event loop, which the gates need.
-    with make_client(settings, heavy_wait=0.01, query_wait=0.01) as client:
+    with make_client(settings, limits=Limits(heavy_wait=0.01, query_wait=0.01)) as client:
         yield client
 
 
@@ -169,11 +171,183 @@ def test_data_queries_answer_503_while_all_query_slots_are_taken(
     assert forecast_client.get("/api/v1/forecasts").status_code == 200
 
 
+async def assert_free_slots(gate: Any, count: int) -> None:
+    """``count`` slots are free: taking them does not wait, and a further release fails."""
+    for _ in range(count):
+        await asyncio.wait_for(gate.acquire(), 0.1)
+    for _ in range(count):
+        gate.release()
+    with pytest.raises(ValueError, match="released too many times"):
+        gate.release()
+
+
+def http_scope(path: str, query: str = "") -> dict[str, Any]:
+    return {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": query.encode(),
+        "root_path": "",
+        "headers": [(b"host", b"api")],
+        "client": ("127.0.0.1", 1),
+        "server": ("api", 80),
+    }
+
+
+class RawClient:
+    """One ASGI request whose disconnect and reading speed the test controls."""
+
+    def __init__(self, gone: asyncio.Event, readable: asyncio.Event | None = None) -> None:
+        self.gone = gone
+        self.readable = readable
+        self.requested = False
+        self.messages: list[dict[str, Any]] = []
+
+    async def receive(self) -> dict[str, Any]:
+        if not self.requested:
+            self.requested = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await self.gone.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(self, message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body" and self.readable is not None:
+            await self.readable.wait()
+        self.messages.append(message)
+
+    async def call(self, app: FastAPI, path: str, query: str = "") -> None:
+        await app(http_scope(path, query), self.receive, self.send)  # type: ignore[arg-type]
+
+    @property
+    def status(self) -> int:
+        return int(self.messages[0]["status"])
+
+    @property
+    def body(self) -> bytes:
+        return b"".join(m["body"] for m in self.messages[1:])
+
+
+HEAVY_QUERY = "&".join(f"{k}={v}" for k, v in HEAVY.items())
+
+
+def test_disconnected_clients_leave_the_heavy_queue(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings
+) -> None:
+    publish(empty_wh, settings)
+    app = create_app(settings, limits=Limits(heavy_wait=5.0))
+    gate = app.state.heavy_gate
+
+    async def scenario() -> tuple[list[RawClient], float]:
+        await gate.acquire()
+        await gate.acquire()
+        gone = asyncio.Event()
+        clients = [RawClient(gone) for _ in range(HEAVY_MAX_WAITING)]
+        tasks = [asyncio.create_task(c.call(app, "/api/v1/actuals", HEAVY_QUERY)) for c in clients]
+        await asyncio.sleep(0.2)
+        assert gate.waiting == HEAVY_MAX_WAITING
+        started = time.monotonic()
+        gone.set()
+        await asyncio.gather(*tasks)
+        elapsed = time.monotonic() - started
+        assert gate.waiting == 0
+        gate.release()
+        gate.release()
+        await assert_free_slots(gate, 2)
+        return clients, elapsed
+
+    clients, elapsed = asyncio.run(scenario())
+    assert elapsed < 1.0
+    assert [c.status for c in clients] == [499] * HEAVY_MAX_WAITING
+    assert app.state.budget.used == 0
+
+
+def test_query_is_skipped_when_the_client_is_already_gone(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    publish(empty_wh, settings)
+    calls = []
+    original = queries.actuals_json
+
+    def counting(*args: Any) -> bytes:
+        calls.append(1)
+        return original(*args)
+
+    monkeypatch.setattr(queries, "actuals_json", counting)
+    app = create_app(settings)
+    gone = asyncio.Event()
+    gone.set()
+    client = RawClient(gone)
+    asyncio.run(client.call(app, "/api/v1/actuals", HEAVY_QUERY))
+    assert client.status == 499
+    assert calls == []
+    assert app.state.budget.used == 0
+    assert app.state.heavy_gate.waiting == 0
+
+
+def test_bodies_are_sent_in_chunks_and_held_bytes_are_bounded(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings
+) -> None:
+    fill_year(empty_wh)
+    publish(empty_wh, settings)
+    query = f"series={ALL_KEYS}&start=2025-03-01&end=2025-03-31"
+    expected = make_client(settings).get(f"/api/v1/actuals?{query}").content
+    assert len(expected) > 5 * CHUNK_BYTES
+    # Room for one response of this size (11,160 points, estimated at 52 bytes each).
+    app = create_app(settings, limits=Limits(byte_budget=len(expected) + 10_000))
+
+    async def scenario() -> tuple[RawClient, httpx.Response, httpx.Response]:
+        readable = asyncio.Event()
+        slow = RawClient(asyncio.Event(), readable)
+        task = asyncio.create_task(slow.call(app, "/api/v1/actuals", query))
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://api") as client:
+            await asyncio.sleep(0.5)
+            # The slow client still holds its body; a second large one does not fit.
+            assert app.state.budget.used == len(expected)
+            refused = await client.get(f"/api/v1/actuals?{query}")
+            readable.set()
+            await task
+            assert app.state.budget.used == 0
+            accepted = await client.get(f"/api/v1/actuals?{query}")
+        return slow, refused, accepted
+
+    slow, refused, accepted = asyncio.run(scenario())
+    assert slow.status == 200
+    assert slow.body == expected
+    chunks = [m for m in slow.messages[1:]]
+    assert len(chunks) == -(-len(expected) // CHUNK_BYTES)
+    assert all(len(m["body"]) <= CHUNK_BYTES for m in chunks)
+    assert [m["more_body"] for m in chunks] == [True] * (len(chunks) - 1) + [False]
+    assert refused.status_code == 503
+    assert refused.json() == BUSY
+    assert accepted.status_code == 200
+
+
+def test_a_client_that_does_not_read_is_dropped(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    publish(empty_wh, settings)
+    app = create_app(settings, limits=Limits(send_timeout=0.05))
+    client = RawClient(asyncio.Event(), asyncio.Event())  # never readable
+    started = time.monotonic()
+    with caplog.at_level(logging.WARNING, logger="gridload.api.app"):
+        asyncio.run(client.call(app, "/api/v1/forecasts/days"))
+    assert time.monotonic() - started < 1.0
+    assert client.status == 200
+    assert client.body == b""
+    assert app.state.budget.used == 0
+    assert "dropped a client that read nothing" in caplog.text
+
+
 def test_health_and_status_answer_while_heavy_requests_wait(
     empty_wh: duckdb.DuckDBPyConnection, settings: Settings
 ) -> None:
     publish(empty_wh, settings)
-    app = create_app(settings, heavy_wait=2.0)
+    app = create_app(settings, limits=Limits(heavy_wait=2.0))
     gate = app.state.heavy_gate
 
     async def scenario() -> tuple[list[int], list[tuple[int, float]], int, int]:
@@ -181,7 +355,8 @@ def test_health_and_status_answer_while_heavy_requests_wait(
         await gate.acquire()
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://api") as client:
-            # More waiting heavy requests than the worker thread pool has threads.
+            # More heavy requests than the worker thread pool has threads; only
+            # HEAVY_MAX_WAITING of them wait, the rest are refused at once.
             waiting = [
                 asyncio.create_task(client.get("/api/v1/actuals", params=HEAVY)) for _ in range(60)
             ]
@@ -195,8 +370,11 @@ def test_health_and_status_answer_while_heavy_requests_wait(
                 probes.append((response.status_code, time.monotonic() - started))
             pending = sum(not task.done() for task in waiting)
             codes = [r.status_code for r in await asyncio.gather(*waiting)]
+            # Timed out waiters leave no trace: no waiter count, no lost slot.
+            assert gate.waiting == 0
             gate.release()
             gate.release()
+            await assert_free_slots(gate, 2)
             assert (await client.get("/api/v1/actuals", params=HEAVY)).status_code == 200
             return codes, probes, refused, pending
 
@@ -213,7 +391,7 @@ def test_requests_beyond_the_inflight_limit_are_refused_except_health_and_status
 ) -> None:
     add_run(empty_wh, "r1", "lightgbm", DAY, ISSUED, 1.0)
     publish(empty_wh, settings)
-    app = create_app(settings, heavy_wait=2.0, max_inflight=5)
+    app = create_app(settings, limits=Limits(heavy_wait=2.0, max_inflight=5))
     gate = app.state.heavy_gate
 
     async def scenario() -> tuple[list[int], list[httpx.Response], int]:
@@ -293,6 +471,26 @@ def test_etag_depends_on_the_request_and_the_snapshot(
     assert response.status_code == 200
     assert response.json()["days"] == ["2026-11-13", "2026-11-12"]
     assert response.headers["etag"] != tag
+
+
+def test_etag_changes_with_the_build_and_the_price_setting(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    publish(empty_wh, settings)
+
+    def tag(config: Settings, build_id: str | None = None) -> str:
+        app = create_app(config, build_id=build_id)
+        return str(TestClient(app).get("/api/v1/forecasts/days").headers["etag"])
+
+    first = tag(settings, "a")
+    assert tag(settings, "a") == first
+    assert tag(settings, "b") != first
+    assert tag(Settings(data_dir=settings.data_dir, include_prices=False), "a") != first
+    monkeypatch.setenv("GRIDLOAD_BUILD_ID", "a")
+    assert tag(settings) == first
+    monkeypatch.delenv("GRIDLOAD_BUILD_ID")
+    # Without a build id the process start time stands in for it.
+    assert tag(settings) != first
 
 
 def test_revalidation_needs_no_slot_and_errors_have_no_etag(

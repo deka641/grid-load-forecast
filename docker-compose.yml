@@ -39,7 +39,7 @@ services:
   api:
     <<: *python
     pull_policy: never  # image is built by the pipeline service
-    command: ["uvicorn", "gridload.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+    command: ["uvicorn", "gridload.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header", "--limit-concurrency", "256"]
     depends_on:
       pipeline:
         condition: service_started
