@@ -1,0 +1,24 @@
+# Isolated production-like instance for `make prod-check` and `make loadtest`.
+# Used as: docker compose -p grid-load-forecast-check -f docker-compose.yml -f docker-compose.check.yml
+# Own image tags, so building the check stack never changes the images of the live stack.
+services:
+  pipeline:
+    image: grid-load-forecast-python:check
+    restart: "no"
+    # Serve the copied data without contacting SMARD: only the healthcheck runs.
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 5s
+  api:
+    image: grid-load-forecast-python:check
+    restart: "no"
+    healthcheck:
+      interval: 5s
+  web:
+    image: grid-load-forecast-web:check
+    restart: "no"
+    ports: !override
+      - "127.0.0.1:8461:8080"
+    healthcheck:
+      interval: 5s
