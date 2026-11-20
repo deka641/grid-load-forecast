@@ -1,4 +1,5 @@
 import json
+import os
 import zlib
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
@@ -559,3 +560,18 @@ def test_missing_files_do_not_trip_the_source_breaker(
     assert len([e for e in result.errors if "HTTP 404" in e]) == 6
     assert not any("source unavailable" in e for e in result.errors)
     assert count(con, "SELECT count(*) FROM raw_chunks WHERE series_key = 'price_day_ahead'") > 0
+
+
+def test_warehouse_connection_has_resource_limits(tmp_path: Path) -> None:
+    before = len(os.listdir("/proc/self/task"))
+    with connect(tmp_path / "w.duckdb") as con:
+        # DuckDB defaults would add about five threads per host core.
+        assert len(os.listdir("/proc/self/task")) - before <= 8
+        settings = con.execute(
+            "SELECT current_setting('threads'), current_setting('async_threads'), "
+            "current_setting('memory_limit'), current_setting('temp_directory')"
+        ).fetchone()
+        assert settings is not None
+        assert settings[:2] == (4, 1)
+        assert settings[2] == "953.6 MiB"
+        assert settings[3] == str(tmp_path / "duckdb-tmp")

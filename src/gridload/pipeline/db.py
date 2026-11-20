@@ -51,11 +51,29 @@ def migrate(con: duckdb.DuckDBPyConnection) -> int:
     return current
 
 
+def warehouse_config(temp_directory: Path) -> dict[str, str | bool | int | float | list[str]]:
+    """Explicit resource limits for the pipeline process.
+
+    DuckDB defaults to one worker thread per host core plus four async threads
+    per core and to 80 % of host memory. Inside the pipeline container (2 GB,
+    pids limit 256) that can exceed both limits, so DuckDB is capped well below
+    them and spills to a temporary directory on the data volume instead.
+    """
+    return {
+        "threads": 4,
+        "async_threads": 1,
+        "memory_limit": "1GB",
+        "temp_directory": str(temp_directory),
+        "max_temp_directory_size": "4GB",
+    }
+
+
 @contextmanager
 def connect(path: Path) -> Iterator[duckdb.DuckDBPyConnection]:
     """Open the warehouse for writing and make sure the schema is current."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect(str(path))
+    temp = path.parent / "duckdb-tmp"
+    con = duckdb.connect(str(path), config=warehouse_config(temp))
     try:
         con.execute("SET TimeZone = 'UTC'")
         migrate(con)
