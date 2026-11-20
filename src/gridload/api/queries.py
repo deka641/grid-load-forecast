@@ -198,17 +198,21 @@ def backtest(cur: duckdb.DuckDBPyConnection) -> BacktestMetrics | None:
     )
 
 
-def freshness(
-    cur: duckdb.DuckDBPyConnection, series: list[Series], now: datetime
-) -> list[SeriesFreshness]:
-    last = dict(
+def last_timestamps(cur: duckdb.DuckDBPyConnection) -> dict[str, datetime]:
+    """Return the newest quarter-hour timestamp of every series in the snapshot."""
+    return dict(
         cur.execute(
             "SELECT series_key, max(ts_utc) FROM observations GROUP BY series_key"
         ).fetchall()
     )
+
+
+def freshness(
+    last: dict[str, datetime], series: list[Series], now: datetime
+) -> list[SeriesFreshness]:
     result = []
     for s in series:
-        ts: datetime | None = last.get(s.key)
+        ts = last.get(s.key)
         result.append(
             SeriesFreshness(
                 key=s.key,

@@ -484,6 +484,13 @@ export interface operations {
                     "application/json": components["schemas"]["Actuals"];
                 };
             };
+            /** @description The ETag in If-None-Match is current; the data has not changed */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -521,6 +528,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["BacktestMetrics"];
                 };
+            };
+            /** @description The ETag in If-None-Match is current; the data has not changed */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description No matching data in the snapshot */
             404: {
@@ -562,6 +576,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ForecastDay"];
                 };
+            };
+            /** @description The ETag in If-None-Match is current; the data has not changed */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description No matching data in the snapshot */
             404: {
@@ -612,6 +633,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ForecastDays"];
                 };
+            };
+            /** @description The ETag in If-None-Match is current; the data has not changed */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -669,6 +697,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SeriesCatalog"];
+                };
+            };
+            /** @description The server is busy */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

@@ -1,4 +1,5 @@
-# Local quality gate. `make verify` runs every step in order and stops at the first failure.
+# Local quality gates. `make verify-fast` (during work) and `make verify` (before merging large
+# changes, before every push and release) run their steps in order and stop at the first failure.
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := help
@@ -7,8 +8,10 @@ SHELL := /bin/bash
 UV  := uv run --locked
 NPM := npm --prefix web
 T   := timeout -k 10
+# Scanner image pins are updated by hand (Dependabot does not read the Makefile).
+GITLEAKS := zricethezav/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9
 
-.PHONY: help install deps verify prod-check loadtest prod-down audit lint typecheck test openapi openapi-check build docs smoke clean
+.PHONY: help install deps verify-fast verify style secrets secrets-history test-fast prod-check loadtest prod-down audit lint typecheck test openapi openapi-check build docs smoke clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -18,13 +21,42 @@ install: ## Install Python and frontend dependencies from the lockfiles
 	$(NPM) ci --no-fund
 	sha256sum web/package-lock.json > web/node_modules/.lock.sha256
 
+# Detects a missing or outdated install. Packages added by hand outside the lockfiles
+# (uv pip install, npm install --no-save) are not detected.
 deps: ## Fail early if the locked environments are missing or out of date
 	@test -d web/node_modules || { echo "web/node_modules missing: run make install"; exit 1; }
 	@sha256sum --status -c web/node_modules/.lock.sha256 2>/dev/null || { echo "web/node_modules was not installed from the current package-lock.json: run make install"; exit 1; }
 	@$(T) 120 uv sync --quiet --locked --check || { echo "Python environment differs from uv.lock: run make install"; exit 1; }
 
-verify: deps audit lint typecheck test openapi-check build docs ## Full local gate
+verify-fast: deps lint typecheck style secrets test-fast ## Fast gate: lint, types, style, secrets, tests
+	@echo "verify-fast: all steps passed"
+
+verify: deps lint typecheck style secrets audit secrets-history test openapi-check build docs ## Full gate
 	@echo "verify: all steps passed"
+
+style: ## No emojis or em/en dashes in versioned text files
+	$(T) 60 $(UV) python scripts/check_style.py
+
+# Tracked and new (not ignored) files; the copy is removed even when a secret is found.
+secrets: ## Secret scan of the working tree
+	@trap 'rm -rf .gitleaks-scan' EXIT; rm -rf .gitleaks-scan; mkdir .gitleaks-scan; \
+	git ls-files -z --cached --others --exclude-standard \
+	  | while IFS= read -r -d '' f; do [ -f "$$f" ] && printf '%s\0' "$$f"; done \
+	  | xargs -0r cp --parents -t .gitleaks-scan; \
+	$(T) 120 docker run --rm -v "$(CURDIR)/.gitleaks-scan:/scan:ro" $(GITLEAKS) dir /scan --no-banner --redact
+
+# Mounts the shared git directory too, so the scan also works inside a git worktree,
+# and fails if no commit was scanned.
+secrets-history: ## Secret scan over the full git history
+	@g=$$(git rev-parse --path-format=absolute --git-common-dir); \
+	out=$$($(T) 300 docker run --rm -v "$(CURDIR):$(CURDIR):ro" -v "$$g:$$g:ro" $(GITLEAKS) \
+	  git "$(CURDIR)" --no-banner --redact 2>&1) || { echo "$$out"; exit 1; }; \
+	echo "$$out" | tail -2; \
+	! echo "$$out" | grep -q " 0 commits scanned" || { echo "secrets-history: no commits scanned"; exit 1; }
+
+test-fast: ## Tests without coverage
+	$(T) 600 $(UV) pytest -q -p no:cacheprovider
+	$(T) 300 $(NPM) run --silent test
 
 audit: ## Dependency vulnerability audit (needs network to the package indexes)
 	$(T) 300 uv export --quiet --locked --no-emit-project --format requirements.txt -o .audit-requirements.txt
@@ -78,7 +110,7 @@ loadtest: ## Parallel dashboard requests against the prod-check stack
 	$(T) 300 $(UV) python scripts/loadtest.py --base http://127.0.0.1:8461 --project grid-load-forecast-check
 
 prod-down: ## Stop and remove the prod-check stack
-	docker compose -p grid-load-forecast-check -f docker-compose.yml -f docker-compose.check.yml down -v
+	docker compose -p grid-load-forecast-check -f compose.yaml -f compose.check.yaml down -v
 
 clean: ## Remove build artefacts
 	rm -rf site web/dist web/coverage .coverage coverage.json .pytest_cache .mypy_cache .ruff_cache

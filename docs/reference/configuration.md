@@ -10,4 +10,4 @@ The pipeline and the API read the same environment variables.
 
 ## Compose
 
-`docker-compose.yml` sets the project name `grid-load-forecast`, binds the dashboard to `127.0.0.1:8460`, and defines healthchecks, memory limits (pipeline 2 GB, api 512 MB, web 128 MB) and `restart: unless-stopped`. For local work, copy `docker-compose.override.example.yml` to `docker-compose.override.yml` (git-ignored) to stop containers from restarting on their own. `GRIDLOAD_INCLUDE_PRICES` can be set in the shell or in a `.env` file next to the compose file.
+`compose.yaml` sets the project name `grid-load-forecast`, binds the dashboard to `127.0.0.1:8460`, and defines healthchecks, memory limits (pipeline 2 GB, api 512 MB, web 128 MB) and `restart: unless-stopped`. For local work, copy `compose.override.example.yaml` to `compose.override.yaml` (git-ignored) to stop containers from restarting on their own. `GRIDLOAD_INCLUDE_PRICES` can be set in the shell or in a `.env` file next to the compose file.

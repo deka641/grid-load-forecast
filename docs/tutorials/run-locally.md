@@ -11,7 +11,7 @@ Docker with Compose v2 and a free port 8460 on `127.0.0.1`. The containers have 
 ```bash
 git clone https://github.com/deka641/grid-load-forecast.git
 cd grid-load-forecast
-cp docker-compose.override.example.yml docker-compose.override.yml   # optional: no automatic restarts
+cp compose.override.example.yaml compose.override.yaml   # optional: no automatic restarts
 docker compose up -d --build
 ```
 

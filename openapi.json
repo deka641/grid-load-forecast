@@ -751,6 +751,9 @@
             },
             "description": "Successful Response"
           },
+          "304": {
+            "description": "The ETag in If-None-Match is current; the data has not changed"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -792,6 +795,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "304": {
+            "description": "The ETag in If-None-Match is current; the data has not changed"
           },
           "404": {
             "content": {
@@ -855,6 +861,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "304": {
+            "description": "The ETag in If-None-Match is current; the data has not changed"
           },
           "404": {
             "content": {
@@ -924,6 +933,9 @@
             },
             "description": "Successful Response"
           },
+          "304": {
+            "description": "The ETag in If-None-Match is current; the data has not changed"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -987,6 +999,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The server is busy"
           }
         },
         "summary": "Series",
