@@ -1,15 +1,16 @@
 import json
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pytest
 
 from gridload import cli
 from gridload.config import Settings
 from gridload.forecast import calendar as cal
-from gridload.forecast import report, service
+from gridload.forecast import features, report, service
 from gridload.forecast.backtest import BacktestResult, run_backtest
 from gridload.pipeline import jobs
 from gridload.pipeline.db import connect
@@ -104,6 +105,7 @@ def test_post_ingest_issues_forecast_and_backtest(tmp_path: Path) -> None:
             ("lightgbm", date(2025, 4, 30)),
         ]
         assert json.loads(runs[1][2])["degraded"] is False
+        assert json.loads(runs[1][2])["degraded_checks"] == []
         assert con.execute("SELECT count(*) FROM backtest_runs").fetchone() == (1,)
         assert len(ticks) > 1
     finally:
@@ -134,7 +136,8 @@ def test_forecast_waits_for_data_and_is_degraded_late(
         ).fetchone()
         assert details is not None
         assert json.loads(details[0])["degraded"] is True
-        assert "(degraded)" in caplog.text
+        assert json.loads(details[0])["degraded_checks"] == ["cutoff_hour_missing"]
+        assert "(degraded: cutoff_hour_missing)" in caplog.text
     finally:
         con.close()
 
@@ -325,3 +328,64 @@ def test_backtest_attempt_file_problems_mean_due(tmp_path: Path) -> None:
     assert jobs._backtest_due(path, now)
     path.write_text('{"attempted_at": "2025-02-07T00:00:00"}')
     assert jobs._backtest_due(path, now)
+
+
+def test_hollowed_week_marks_the_forecast_degraded(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO)
+    settings = _settings_with_warehouse(tmp_path, FIRST, LAST)
+    con = duckdb.connect(str(settings.warehouse_path))
+    try:
+        # 40 hours vanish a week before the delivery day; the cutoff hour is present.
+        con.execute(
+            "DELETE FROM observations WHERE series_key = 'load' AND ts_utc >= ? AND ts_utc < ?",
+            [
+                datetime(2025, 4, 23, tzinfo=cal.BERLIN),
+                datetime(2025, 4, 24, 16, tzinfo=cal.BERLIN),
+            ],
+        )
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 4, 29, 12, 30, tzinfo=cal.BERLIN))
+        details = con.execute(
+            "SELECT details FROM forecast_runs WHERE model = 'lightgbm'"
+        ).fetchone()
+        assert details is not None
+        stored = json.loads(details[0])
+        assert stored["degraded"] is True
+        assert stored["degraded_checks"] == ["lag_7d", "coverage_168h"]
+        assert "(degraded: lag_7d, coverage_168h)" in caplog.text
+    finally:
+        con.close()
+
+
+def test_feature_gaps_name_each_failing_check() -> None:
+    load = synthetic.history(FIRST, LAST)
+    day = date(2025, 4, 30)
+    cutoff = cal.cutoff_for(day)
+    assert features.feature_gaps(load, day) == []
+
+    def without(hours_before: range) -> features.History:
+        drop = {int((cutoff - timedelta(hours=h)).timestamp() * 1000) for h in hours_before}
+        keep = np.array([int(t) not in drop for t in load.ts])
+        return features.History(load.ts[keep], load.values[keep])
+
+    # The 13 hours before the cutoff: under half of the last 24 hours remain.
+    assert features.feature_gaps(without(range(1, 14)), day) == ["mean_24h"]
+    # 20 hours earlier in the week: only the coverage check fails.
+    assert features.feature_gaps(without(range(30, 50)), day) == ["coverage_168h"]
+    # Most of the week is gone: both window checks fail, lag_7d too.
+    assert features.feature_gaps(without(range(1, 160)), day) == [
+        "lag_7d",
+        "mean_24h",
+        "mean_168h",
+        "coverage_168h",
+    ]
+
+
+@pytest.mark.parametrize(
+    "day",
+    [date(2025, 3, 30), date(2025, 3, 31), date(2025, 4, 6), date(2025, 10, 26), date(2025, 11, 2)],
+)
+def test_complete_history_is_not_degraded_around_clock_changes(day: date) -> None:
+    load = synthetic.history(date(2025, 2, 1), date(2025, 11, 30))
+    assert service.degraded_checks(load, day, cutoff_hour_missing=False) == []

@@ -73,11 +73,20 @@ class History:
         i = self._index.get(to_ms(ts))
         return math.nan if i is None else float(self.values[i])
 
-    def window_mean(self, cutoff: datetime, hours: int) -> float:
-        """Mean of the ``hours`` hours that ended last by ``cutoff``; NaN if under half exist."""
+    def _window(self, cutoff: datetime, hours: int) -> tuple[int, int]:
         end_ms = to_ms(cutoff)
         lo = int(np.searchsorted(self.ts, end_ms - hours * HOUR_MS, side="left"))
         hi = int(np.searchsorted(self.ts, end_ms - HOUR_MS, side="right"))
+        return lo, hi
+
+    def hours_present(self, cutoff: datetime, hours: int) -> int:
+        """How many of the ``hours`` hours that ended last by ``cutoff`` exist."""
+        lo, hi = self._window(cutoff, hours)
+        return hi - lo
+
+    def window_mean(self, cutoff: datetime, hours: int) -> float:
+        """Mean of the ``hours`` hours that ended last by ``cutoff``; NaN if under half exist."""
+        lo, hi = self._window(cutoff, hours)
         if (hi - lo) * 2 < hours:
             return math.nan
         return float((self._cumsum[hi] - self._cumsum[lo]) / (hi - lo))
@@ -136,6 +145,30 @@ def day_features(history: History, delivery_day: date) -> DayRows:
             ]
         )
     return DayRows(delivery_day, targets, np.asarray(rows, dtype=np.float64))
+
+
+# Share of the 168 hours before the cutoff that must exist for a forecast that
+# is not marked as degraded.
+MIN_WEEK_COVERAGE = 0.9
+
+
+def feature_gaps(history: History, delivery_day: date) -> list[str]:
+    """Names of the history checks that fail for ``delivery_day`` (empty if none).
+
+    ``lag_7d`` is missing for some target hour, ``mean_24h`` or ``mean_168h``
+    could not be computed, or ``coverage_168h``: fewer than
+    ``MIN_WEEK_COVERAGE`` of the 168 hours before the cutoff exist.
+    """
+    cutoff = cal.cutoff_for(delivery_day)
+    gaps = []
+    if any(math.isnan(v) for v in baseline_week(history, delivery_day)):
+        gaps.append("lag_7d")
+    for hours in (24, 168):
+        if math.isnan(history.window_mean(cutoff, hours)):
+            gaps.append(f"mean_{hours}h")
+    if history.hours_present(cutoff, 168) < MIN_WEEK_COVERAGE * 168:
+        gaps.append("coverage_168h")
+    return gaps
 
 
 def baseline_week(history: History, delivery_day: date) -> np.ndarray:
