@@ -1,7 +1,7 @@
 import json
 import zlib
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -317,16 +317,22 @@ def test_before_the_switch_quarter_hour_prices_repeat_the_hourly_price(
 
 
 def test_incomplete_hours_are_not_reported(con: duckdb.DuckDBPyConnection, fake: FakeSmard) -> None:
-    run(con, fake.client(), [LOAD])
-    latest = recorded_chunks(LOAD)[-1]
+    solar = BY_KEY["gen_solar"]
+    run(con, fake.client(), [solar])
+    latest = recorded_chunks(solar)[-1]
     quarters = count(
         con,
-        "SELECT count(*) FROM observations WHERE ts_utc >= make_timestamptz(? * 1000)",
+        "SELECT count(*) FROM observations WHERE series_key = 'gen_solar' "
+        "AND ts_utc >= make_timestamptz(? * 1000)",
         [latest],
     )
     hours = count(
-        con, "SELECT count(*) FROM hourly WHERE ts_utc >= make_timestamptz(? * 1000)", [latest]
+        con,
+        "SELECT count(*) FROM hourly WHERE series_key = 'gen_solar' "
+        "AND ts_utc >= make_timestamptz(? * 1000)",
+        [latest],
     )
+    assert quarters % 4 == 1  # one partial hour at the end
     assert hours == quarters // 4
 
 
@@ -399,3 +405,141 @@ def test_store_rolls_back_on_database_error(
         Ingestor(proxy, fake.client()).run([LOAD], mode="backfill")  # type: ignore[arg-type]
     assert count(con, "SELECT count(*) FROM observations") == 0
     assert count(con, "SELECT count(*) FROM load_log") == 0
+
+
+# Review regressions --------------------------------------------------------------------
+
+
+def _with_trailing_nulls(name: str, keep: int) -> bytes:
+    data = json.loads(fixture_bytes(name))
+    for point in data["series"][keep:]:
+        point[1] = None
+    return json.dumps(data).encode()
+
+
+def test_incomplete_chunk_is_completed_after_leaving_the_refetch_window(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    fake.use_index(LOAD, [REGULAR])
+    fake.override(chunk_name(LOAD, REGULAR), _with_trailing_nulls(chunk_name(LOAD, REGULAR), 100))
+    run(con, fake.client(), [LOAD])
+    assert count(con, "SELECT count(*) FROM observations") == 100
+
+    later = [REGULAR + i * 7 * 86_400_000 for i in range(1, 6)]
+    for ts in later:
+        fake.override(
+            chunk_name(LOAD, ts),
+            fixture_bytes(chunk_name(LOAD, REGULAR)).replace(str(REGULAR).encode(), b"0"),
+            404,
+        )
+    fake.use_index(LOAD, [REGULAR, *later])
+    fake.responses.pop(chunk_name(LOAD, REGULAR))
+    fake.requests.clear()
+    run(con, fake.client(retries=0), [LOAD], mode="incremental", refetch_weeks=1)
+    assert f"/app/chart_data/410/DE/{chunk_name(LOAD, REGULAR)}" in fake.requests
+    assert (
+        count(
+            con,
+            "SELECT count(*) FROM observations WHERE ts_utc < make_timestamptz(? * 1000)",
+            [later[0]],
+        )
+        == 672
+    )
+
+
+def test_recently_ended_chunk_may_still_have_trailing_nulls(fake: FakeSmard) -> None:
+    week_end = datetime.fromtimestamp(chunk_end_ms(REGULAR) / 1000, UTC)
+    name = chunk_name(LOAD, REGULAR)
+    fake.use_index(LOAD, [REGULAR, recorded_chunks(LOAD)[-1]])
+    fake.override(name, _with_trailing_nulls(name, 668))
+    for hours_after, status in ((2, "ok"), (8, "failed")):
+        connection = duckdb.connect()
+        connection.execute("SET TimeZone = 'UTC'")
+        migrate(connection)
+        now = week_end + timedelta(hours=hours_after)
+
+        def clock(at: datetime = now) -> datetime:
+            return at
+
+        result = Ingestor(connection, fake.client(), clock=clock).run([LOAD], mode="backfill")
+        assert result.status == status, hours_after
+        connection.close()
+
+
+def test_old_chunk_errors_make_a_partial_run(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    fake.override(chunk_name(LOAD, SPRING), b"")
+    result = run(con, fake.client(), [LOAD], refetch_weeks=2)
+    assert result.status == "partial"
+    assert result.recent_errors == 0
+    fake.override(chunk_name(LOAD, recorded_chunks(LOAD)[-1]), b"")
+    assert run(con, fake.client(), [LOAD], mode="incremental", refetch_weeks=2).status == "failed"
+
+
+def test_values_no_longer_published_are_removed(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    latest = recorded_chunks(LOAD)[-1]
+    name = chunk_name(LOAD, latest)
+    run(con, fake.client(), [LOAD])
+    full = count(
+        con,
+        "SELECT count(*) FROM observations WHERE ts_utc >= make_timestamptz(? * 1000)",
+        [latest],
+    )
+    fake.override(name, _with_trailing_nulls(name, full - 3))
+    result = run(con, fake.client(), [LOAD], mode="incremental")
+    assert result.rows_removed == 3
+    after = count(
+        con,
+        "SELECT count(*) FROM observations WHERE ts_utc >= make_timestamptz(? * 1000)",
+        [latest],
+    )
+    assert after == full - 3
+    message = con.execute(
+        "SELECT message FROM load_log WHERE message IS NOT NULL AND status = 'loaded'"
+    ).fetchone()
+    assert message == ("removed 3 values no longer published",)
+
+
+def test_run_stops_when_the_source_is_down(con: duckdb.DuckDBPyConnection) -> None:
+    fake = FakeSmard()
+    fake.override("index_quarterhour.json", b"down", 503)
+    result = run(con, fake.client(retries=0), select())
+    assert result.status == "failed"
+    assert "source unavailable" in result.errors[-1]
+    assert len(fake.requests) == 5
+
+
+def test_stale_running_rows_are_marked_aborted(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    con.execute(
+        "INSERT INTO load_runs VALUES ('old', 'backfill', ?, NULL, 'running')",
+        [datetime(2026, 1, 1, tzinfo=UTC)],
+    )
+    run(con, fake.client(), [LOAD])
+    assert con.execute("SELECT status FROM load_runs WHERE run_id = 'old'").fetchone() == (
+        "aborted",
+    )
+
+
+def test_reader_keeps_old_snapshot_and_failed_publish_keeps_file(
+    tmp_path: Path, con: duckdb.DuckDBPyConnection, fake: FakeSmard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "serving.duckdb"
+    run(con, fake.client(), [LOAD])
+    snapshot.publish(con, target)
+    reader = duckdb.connect(str(target), read_only=True)
+    before = count(reader, "SELECT count(*) FROM observations")
+    run(con, fake.client(), [PRICE])
+    snapshot.publish(con, target)
+    assert count(reader, "SELECT count(*) FROM observations") == before
+    reader.close()
+    published = target.read_bytes()
+
+    monkeypatch.setattr(snapshot, "SERVING_TABLES", ("schema_version", "missing_table"))
+    with pytest.raises(duckdb.CatalogException):
+        snapshot.publish(con, target)
+    assert target.read_bytes() == published

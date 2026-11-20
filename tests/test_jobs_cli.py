@@ -78,23 +78,34 @@ def test_running_heartbeat_is_throttled(settings: Settings) -> None:
     beat = jobs._Beat(settings, interval=3600)
     beat()
     first = heartbeat.read(settings.heartbeat_path)
+    assert first is not None
     beat()
     assert heartbeat.read(settings.heartbeat_path) == first
 
 
 def test_status_before_and_after_load(settings: Settings, fake: FakeSmard) -> None:
-    assert jobs.status(settings) == {
-        "warehouse": str(settings.warehouse_path),
-        "initialised": False,
-    }
+    assert jobs.status(settings) == {"snapshot": str(settings.serving_path), "initialised": False}
     fake.override(chunk_name(CATALOG[0], recorded_chunks(CATALOG[0])[0]), b"")
-    jobs.load(settings, mode="backfill", keys=["load"], client_factory=lambda _s: fake.client())
+    jobs.load(
+        settings,
+        mode="backfill",
+        keys=["load"],
+        refetch_weeks=2,
+        client_factory=lambda _s: fake.client(),
+    )
     report = jobs.status(settings)
     assert report["initialised"] is True
-    assert report["runs"][0]["status"] == "failed"
+    # The broken chunk is older than the refetch window, so the run is partial.
+    assert report["runs"][0]["status"] == "partial"
     assert report["series"][0]["series"] == "load"
     assert report["errors_last_run"][0]["message"] == "empty response body"
     json.loads(jobs.dumps(report))
+
+
+def test_status_works_while_the_warehouse_is_locked(settings: Settings, fake: FakeSmard) -> None:
+    jobs.load(settings, mode="backfill", keys=["load"], client_factory=lambda _s: fake.client())
+    with connect(settings.warehouse_path):
+        assert jobs.status(settings)["initialised"] is True
 
 
 def test_default_client_uses_settings(settings: Settings) -> None:
@@ -154,7 +165,7 @@ def test_cli_ingest_and_run(
     monkeypatch.setattr(jobs, "load", fake_load(calls, status="failed"))
     assert cli.main(["ingest"]) == 1
     assert cli.main(["run"]) == 1
-    assert calls[0] == {"mode": "incremental", "keys": None}
+    assert calls[0] == {"mode": "incremental", "keys": None, "refetch_weeks": 4}
     assert calls[1]["post_ingest"] is jobs.post_ingest_steps
     assert "error: load: boom" in capsys.readouterr().err
 
@@ -176,3 +187,54 @@ def test_post_ingest_steps_without_data_does_nothing(settings: Settings) -> None
     with connect(settings.warehouse_path) as con:
         jobs.post_ingest_steps(con, settings)
         assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)
+
+
+def test_cli_reports_value_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("GRIDLOAD_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("GRIDLOAD_INCLUDE_PRICES", "false")
+    assert cli.main(["backfill", "--series", "price_day_ahead"]) == 2
+    assert "prices are switched off" in capsys.readouterr().err
+
+
+def test_cli_partial_run_exits_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(jobs, "load", fake_load(calls, status="partial"))
+    assert cli.main(["ingest", "--refetch-weeks", "9999"]) == 0
+    assert calls[0]["refetch_weeks"] == 9999
+
+
+def test_prices_loaded_earlier_disappear_when_switched_off(tmp_path: Path, fake: FakeSmard) -> None:
+    jobs.load(Settings(data_dir=tmp_path), mode="backfill", client_factory=lambda _s: fake.client())
+    off = Settings(data_dir=tmp_path, include_prices=False)
+    jobs.load(off, mode="incremental", client_factory=lambda _s: fake.client())
+    con = duckdb.connect(str(off.serving_path), read_only=True)
+    try:
+        for table in ("observations", "hourly", "series", "load_log"):
+            row = con.execute(
+                f"SELECT count(*) FROM {table} WHERE series_key = 'price_day_ahead'"  # noqa: S608
+            ).fetchone()
+            assert row == (0,), table
+        assert con.execute("SELECT count(*) FROM observations").fetchone() != (0,)
+    finally:
+        con.close()
+
+
+def test_failure_after_ingest_marks_run_failed(settings: Settings, fake: FakeSmard) -> None:
+    def broken(_con: duckdb.DuckDBPyConnection, _settings: Settings) -> None:
+        raise RuntimeError("forecast failed")
+
+    with pytest.raises(RuntimeError, match="forecast failed"):
+        jobs.load(
+            settings,
+            mode="backfill",
+            keys=["load"],
+            client_factory=lambda _s: fake.client(),
+            post_ingest=broken,
+        )
+    with connect(settings.warehouse_path) as con:
+        assert con.execute("SELECT status FROM load_runs").fetchall() == [("failed",)]
+    beat = heartbeat.read(settings.heartbeat_path)
+    assert beat is not None
+    assert beat.last_status == "failed"

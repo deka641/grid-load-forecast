@@ -6,7 +6,7 @@ The project processes data published by the Bundesnetzagentur on [SMARD.de](http
 
 ## Wholesale prices
 
-The Bundesnetzagentur reviews the licensing of the wholesale electricity prices shown on SMARD.de in its HEDWIG procedure. Until that review is concluded, this project uses price data with that reservation. Price ingestion is planned as an optional feature that can be switched off, and the repository is meant to contain only a small excerpt of price data as test fixtures.
+The Bundesnetzagentur reviews the licensing of the wholesale electricity prices shown on SMARD.de in its HEDWIG procedure. Until that review is concluded, this project uses price data with that reservation. Price data can be switched off with `GRIDLOAD_INCLUDE_PRICES=false`: the pipeline then stops loading prices and removes them from the data it publishes, including prices loaded earlier. The repository contains only a small excerpt of price data as test fixtures.
 
 ## Data in this repository
 

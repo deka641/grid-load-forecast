@@ -87,14 +87,17 @@ def parse_index(payload: bytes) -> list[int]:
     return list(stamps)
 
 
-def parse_chunk(series: Series, chunk_ts: int, payload: bytes, *, is_latest: bool) -> pl.DataFrame:
+def parse_chunk(
+    series: Series, chunk_ts: int, payload: bytes, *, allow_trailing_nulls: bool
+) -> pl.DataFrame:
     """Validate a chunk and return its non-null values.
 
     Rules:
     - the series starts exactly at ``chunk_ts`` and advances in 15 minute steps;
     - it covers the whole local week (668, 672 or 676 values, depending on clock changes);
-    - ``null`` is only allowed as a trailing run in the newest chunk, where it
-      marks points in the future;
+    - ``null`` is only allowed as a trailing run, and only when
+      ``allow_trailing_nulls`` is set (newest or recently ended chunk), where it
+      marks points not yet published;
     - values are finite numbers, energy values are not negative.
     """
     data = _load_json(payload)
@@ -134,7 +137,7 @@ def parse_chunk(series: Series, chunk_ts: int, payload: bytes, *, is_latest: boo
     first_null = next((i for i, v in enumerate(values) if v is None), len(values))
     if any(v is not None for v in values[first_null:]):
         raise ChunkValidationError(f"{series.key} chunk {chunk_ts}: null inside the series")
-    if first_null < len(values) and not is_latest:
+    if first_null < len(values) and not allow_trailing_nulls:
         raise ChunkValidationError(
             f"{series.key} chunk {chunk_ts}: trailing nulls in a completed chunk"
         )
@@ -154,6 +157,14 @@ def _load_json(payload: bytes) -> Any:
         return json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise ChunkValidationError(f"response is not valid JSON: {exc}") from exc
+
+
+def _retry_after(value: str | None, cap: float = 60.0) -> float:
+    """Seconds from a Retry-After header (numeric form only), capped."""
+    try:
+        return min(max(float(value), 0.0), cap) if value else 0.0
+    except ValueError:
+        return 0.0
 
 
 class SmardClient:
@@ -200,6 +211,10 @@ class SmardClient:
         url = f"{self._base_url}/{series.filter_id}/{series.region}/{name}"
         return RawChunk(series.key, chunk_ts, self._get(url))
 
+    def fetch(self, path: str) -> bytes:
+        """Fetch any file below the base URL (throttled, with retry)."""
+        return self._get(f"{self._base_url}/{path.lstrip('/')}")
+
     def _throttle(self) -> None:
         if self._last_request is not None:
             wait = self._min_interval - (self._clock() - self._last_request)
@@ -210,6 +225,7 @@ class SmardClient:
     def _get(self, url: str) -> bytes:
         attempt = 0
         while True:
+            retry_after = 0.0
             self._throttle()
             try:
                 response = self._client.get(url)
@@ -221,7 +237,8 @@ class SmardClient:
                 error = f"HTTP {response.status_code}"
                 if response.status_code not in RETRY_STATUS:
                     raise SourceError(f"{url}: {error}")
+                retry_after = _retry_after(response.headers.get("Retry-After"))
             if attempt >= self._retries:
                 raise SourceError(f"{url}: {error} after {attempt + 1} attempts")
-            self._sleep(self._backoff * 2**attempt)
+            self._sleep(max(self._backoff * 2**attempt, retry_after))
             attempt += 1

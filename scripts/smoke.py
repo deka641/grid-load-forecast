@@ -19,7 +19,10 @@ def main() -> int:
             try:
                 index = client.index(series)
                 frame = parse_chunk(
-                    series, index[-1], client.chunk(series, index[-1]).payload, is_latest=True
+                    series,
+                    index[-1],
+                    client.chunk(series, index[-1]).payload,
+                    allow_trailing_nulls=True,
                 )
             except (SourceError, ChunkValidationError) as exc:
                 failures += 1

@@ -83,5 +83,11 @@ def select(keys: list[str] | None = None, *, include_prices: bool = True) -> lis
     else:
         chosen = list(CATALOG)
     if not include_prices:
+        if keys and any(s.category is Category.PRICE for s in chosen):
+            raise ValueError("price series requested, but prices are switched off")
         chosen = [s for s in chosen if s.category is not Category.PRICE]
     return chosen
+
+
+def price_keys() -> list[str]:
+    return [s.key for s in CATALOG if s.category is Category.PRICE]

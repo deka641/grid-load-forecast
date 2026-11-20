@@ -21,12 +21,17 @@ def main(report: Path = ROOT / "coverage.json") -> int:
     files = json.loads(report.read_text(encoding="utf-8"))["files"]
     failed = False
     for prefix, threshold in REQUIRED.items():
-        covered = total = 0
+        covered = total = matched = 0
         for name, data in files.items():
             if name.startswith(prefix):
+                matched += 1
                 summary = data["summary"]
                 covered += summary["covered_lines"] + summary.get("covered_branches", 0)
                 total += summary["num_statements"] + summary.get("num_branches", 0)
+        if matched == 0:
+            failed = True
+            print(f"{prefix:28} no measured files  FAIL")
+            continue
         percent = 100.0 if total == 0 else 100.0 * covered / total
         ok = percent >= threshold
         failed |= not ok

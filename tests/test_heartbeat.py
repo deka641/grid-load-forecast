@@ -24,6 +24,13 @@ def test_missing_or_corrupt_file_reads_as_none(tmp_path: Path) -> None:
     assert heartbeat.read(tmp_path / "bad.json") is None
     (tmp_path / "wrong.json").write_text('{"unexpected": 1}')
     assert heartbeat.read(tmp_path / "wrong.json") is None
+    (tmp_path / "bad_ts.json").write_text('{"state": "idle", "updated_at": "yesterday"}')
+    assert heartbeat.read(tmp_path / "bad_ts.json") is None
+    (tmp_path / "naive.json").write_text(
+        '{"state": "idle", "updated_at": "2026-11-20T10:00:00+00:00", '
+        '"last_success": "2026-11-20T09:00:00"}'
+    )
+    assert heartbeat.read(tmp_path / "naive.json") is None
 
 
 def test_health_rules() -> None:
