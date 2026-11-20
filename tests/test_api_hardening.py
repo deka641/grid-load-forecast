@@ -17,6 +17,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from gridload.api import app as app_module
 from gridload.api import queries
 from gridload.api.app import CHUNK_BYTES, HEAVY_MAX_WAITING, Limits, create_app
 from gridload.api.models import Actuals, ForecastDay
@@ -340,7 +341,64 @@ def test_a_client_that_does_not_read_is_dropped(
     assert client.status == 200
     assert client.body == b""
     assert app.state.budget.used == 0
-    assert "dropped a client that read nothing" in caplog.text
+    assert "dropped a client that read" in caplog.text
+
+
+class TricklingClient(RawClient):
+    """Reads one chunk every ``pause`` seconds: never idle long, but far too slow."""
+
+    def __init__(self, pause: float) -> None:
+        super().__init__(asyncio.Event())
+        self.pause = pause
+
+    async def send(self, message: dict[str, Any]) -> None:
+        if message["type"] == "http.response.body":
+            await asyncio.sleep(self.pause)
+        self.messages.append(message)
+
+
+def test_a_client_that_reads_too_slowly_overall_is_dropped(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    fill_year(empty_wh)
+    publish(empty_wh, settings)
+    query = f"series={ALL_KEYS}&start=2025-03-01&end=2025-03-31"
+    # About 560 kB: the whole body is due within 0.3 s + 560 kB / 1 MB/s, about 0.86 s,
+    # and a chunk every 0.2 s (well within the 0.3 s per chunk) needs about 1.8 s.
+    limits = Limits(send_timeout=0.3, min_throughput=2**20)
+    app = create_app(settings, limits=limits)
+    client = TricklingClient(0.2)
+    started = time.monotonic()
+    with caplog.at_level(logging.WARNING, logger="gridload.api.app"):
+        asyncio.run(client.call(app, "/api/v1/actuals", query))
+    elapsed = time.monotonic() - started
+    chunks = client.messages[1:]
+    assert client.status == 200
+    assert 2 <= len(chunks) < 8
+    assert chunks[-1]["more_body"] is True
+    assert elapsed < 1.5
+    assert app.state.budget.used == 0
+    assert "dropped a client that read" in caplog.text
+
+
+def test_a_body_larger_than_its_estimate_must_fit_the_budget(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fill_year(empty_wh)
+    publish(empty_wh, settings)
+    query = f"series={ALL_KEYS}&start=2025-03-01&end=2025-03-31"
+    size = len(make_client(settings).get(f"/api/v1/actuals?{query}").content)
+    monkeypatch.setattr(app_module, "BYTES_PER_POINT", 1)
+    # The estimate (11,160 bytes) fits, the real body does not.
+    client = make_client(settings, limits=Limits(byte_budget=size - 1))
+    response = client.get(f"/api/v1/actuals?{query}")
+    assert response.status_code == 503
+    assert response.json() == BUSY
+    assert client.app.state.budget.used == 0  # type: ignore[attr-defined]
+    small = client.get(
+        "/api/v1/actuals", params={"series": "load", "start": "2025-03-01", "end": "2025-03-01"}
+    )
+    assert small.status_code == 200
 
 
 def test_health_and_status_answer_while_heavy_requests_wait(

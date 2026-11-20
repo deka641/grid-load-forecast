@@ -82,11 +82,14 @@ MAX_INFLIGHT = 64
 QUERY_MAX_WAITING = MAX_INFLIGHT - QUERY_CONCURRENCY
 # Response bodies are sent in chunks, and each chunk waits until the client has
 # read enough of the previous ones (uvicorn's write flow control). A client that
-# reads nothing for SEND_TIMEOUT_SECONDS is dropped. Bodies held for sending
+# reads nothing for SEND_TIMEOUT_SECONDS is dropped, and so is one that has not
+# read the whole body within SEND_TIMEOUT_SECONDS plus its size at
+# MIN_THROUGHPUT bytes per second. Bodies held for sending
 # count against BYTE_BUDGET; a request that would exceed it gets a JSON 503. One
 # year of all series hourly is about 6.6 MB, about 50 bytes per point.
 CHUNK_BYTES = 64 * 1024
 SEND_TIMEOUT_SECONDS = 10.0
+MIN_THROUGHPUT = 64 * 1024
 BYTE_BUDGET = 100 * 2**20
 BYTES_PER_POINT = 52
 SMALL_BODY_BYTES = 64 * 1024
@@ -130,6 +133,7 @@ class Limits:
     max_inflight: int = MAX_INFLIGHT
     byte_budget: int = BYTE_BUDGET
     send_timeout: float = SEND_TIMEOUT_SECONDS
+    min_throughput: float = MIN_THROUGHPUT
 
 
 @dataclass
@@ -151,7 +155,9 @@ class ByteBudget:
 class ChunkedResponse(Response):
     """Send the body in chunks so a slow client applies backpressure.
 
-    ``done`` runs once the body is handed over or the client is dropped.
+    ``done`` runs once the body is handed over or the client is dropped: after
+    ``send_timeout`` seconds without progress, or when the whole body is not
+    sent within ``send_timeout`` plus its size at ``min_throughput``.
     """
 
     def __init__(
@@ -159,35 +165,36 @@ class ChunkedResponse(Response):
         content: bytes,
         headers: dict[str, str],
         done: Callable[[], None],
-        send_timeout: float,
+        limits: Limits,
     ) -> None:
         super().__init__(content=content, media_type="application/json", headers=headers)
         self._done = done
-        self._send_timeout = send_timeout
+        self._limits = limits
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        body = memoryview(self.body)
+        total = self._limits.send_timeout + len(body) / self._limits.min_throughput
         try:
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": self.status_code,
-                    "headers": self.raw_headers,
-                }
-            )
-            body = memoryview(self.body)
-            for offset in range(0, max(len(body), 1), CHUNK_BYTES):
-                end = offset + CHUNK_BYTES
-                message = {
-                    "type": "http.response.body",
-                    "body": bytes(body[offset:end]),
-                    "more_body": end < len(body),
-                }
-                try:
-                    async with asyncio.timeout(self._send_timeout):
-                        await send(message)
-                except TimeoutError:
-                    log.warning("dropped a client that read nothing for %s s", self._send_timeout)
-                    return
+            async with asyncio.timeout(total):
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": self.status_code,
+                        "headers": self.raw_headers,
+                    }
+                )
+                for offset in range(0, max(len(body), 1), CHUNK_BYTES):
+                    end = offset + CHUNK_BYTES
+                    async with asyncio.timeout(self._limits.send_timeout):
+                        await send(
+                            {
+                                "type": "http.response.body",
+                                "body": bytes(body[offset:end]),
+                                "more_body": end < len(body),
+                            }
+                        )
+        except TimeoutError:
+            log.warning("dropped a client that read %d bytes too slowly", len(body))
         finally:
             self._done()
 
@@ -405,7 +412,7 @@ class DataService:
         self.heavy = Gate(HEAVY_CONCURRENCY, limits.heavy_wait, HEAVY_MAX_WAITING)
         self.query = Gate(QUERY_CONCURRENCY, limits.query_wait, QUERY_MAX_WAITING)
         self.budget = ByteBudget(limits.byte_budget)
-        self._send_timeout = limits.send_timeout
+        self._limits = limits
         # Build and settings that change a response without a new snapshot.
         self._variant = variant
 
@@ -465,8 +472,9 @@ class DataService:
             # The client is gone; nobody reads this.
             return Response(status_code=499)
         size = len(body)
-        self.budget.used += size
-        return ChunkedResponse(body, headers, lambda: self.budget.release(size), self._send_timeout)
+        # The estimate may have been low: the real size must fit as well.
+        self.budget.reserve(size)
+        return ChunkedResponse(body, headers, lambda: self.budget.release(size), self._limits)
 
 
 PROCESS_START = str(time.time_ns())
