@@ -29,7 +29,10 @@ nothing is stored for that chunk.
 Run status: ``failed`` if the run crashed, the source was unavailable, an index
 could not be read or a recent chunk (one that ended in the last 7 days, which
 includes the open chunk of an active series) failed; ``partial`` if only older chunks failed,
-including older chunks reloaded through ``refetch_weeks``; otherwise ``ok``.
+including older chunks reloaded through ``refetch_weeks``; otherwise ``ok``. A chunk
+whose stored values were kept because the response withdrew some of them counts
+as recent only for the grid load, the forecast target: in any other series the
+stored data is intact, so the run is ``partial`` and the error stays in the log.
 """
 
 import uuid
@@ -41,7 +44,7 @@ from datetime import UTC, datetime, timedelta
 import duckdb
 import polars as pl
 
-from gridload.series import Series
+from gridload.series import Category, Series
 from gridload.sources.smard import (
     RESOLUTION,
     ChunkValidationError,
@@ -181,9 +184,10 @@ class Ingestor:
             if self._progress is not None:
                 self._progress(series.key, ts)
             end = chunk_end_ms(ts)
-            # One rule for every error of this chunk: recent means it ended within
-            # RECENT. The newest chunk of an active series ends in the future; the
-            # last chunk of an ended series ages out like any other.
+            # One rule for every error of this chunk (withdrawals aside, see below):
+            # recent means it ended within RECENT. The newest chunk of an active
+            # series ends in the future; the last chunk of an ended series ages out
+            # like any other.
             recent = end > recent_ms
             try:
                 raw = self._client.chunk(series, ts)
@@ -204,7 +208,12 @@ class Ingestor:
                     # A gap in a week that just ended is worth a look: run becomes partial.
                     result.errors.append(f"{series.key}: {note}")
                     self._log(result.run_id, series, ts, status="warning", rows=0, message=note)
-            self._store(result, series, raw, frame, note=note, is_open=is_open, recent=recent)
+            # _store only reports withdrawals, which keep the stored values; a recent
+            # one fails the run only for the forecast target.
+            withdrawal_recent = recent and series.category is Category.LOAD
+            self._store(
+                result, series, raw, frame, note=note, is_open=is_open, recent=withdrawal_recent
+            )
 
     def _count_source_error(self, exc: Exception) -> None:
         if not (isinstance(exc, SourceError) and exc.transient):

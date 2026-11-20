@@ -84,7 +84,9 @@ def load(
     The load run gets its final status and ``finished_at`` once the follow-up steps
     are done, just before the snapshot that contains it is published. A failed
     follow-up step (forecast, backtest) marks the run partial; a failed checkpoint
-    or publish marks it failed.
+    or publish marks it failed. The heartbeat records a success for ``ok`` and
+    ``partial``, so a withdrawal reported for a series other than the grid load
+    (see :mod:`gridload.pipeline.ingest`) does not make the pipeline unhealthy.
     """
     series = select(keys, include_prices=settings.include_prices)
     excluded = [] if settings.include_prices else price_keys()
