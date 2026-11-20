@@ -24,6 +24,12 @@ SERVING_TABLES = (
     "backtest_metrics",
 )
 
+# SMARD publishes quarter-hour values with at most SOURCE_DECIMALS decimals. The
+# sum of four such values has as many, and their mean (a quarter of the sum) two more.
+SOURCE_DECIMALS = 2
+SUM_DECIMALS = SOURCE_DECIMALS
+MEAN_DECIMALS = SOURCE_DECIMALS + 2
+
 
 def publish(
     con: duckdb.DuckDBPyConnection, target: Path, *, exclude_series: Sequence[str] = ()
@@ -76,11 +82,16 @@ def _copy(con: duckdb.DuckDBPyConnection, excluded: list[str]) -> None:
         "ORDER BY series_key, ts_utc",
         [excluded],
     )
+    # The sum or mean of four floats carries rounding noise in the last digits
+    # (43648.21000000001), which can differ between two snapshots of the same
+    # data. Rounded to the decimals the exact result has, the values are exact.
     con.execute(
-        "CREATE TABLE snap.hourly AS SELECT * FROM main.hourly WHERE "
-        "series_key NOT IN (SELECT unnest(?::VARCHAR[])) "
-        "ORDER BY series_key, ts_utc",
-        [excluded],
+        "CREATE TABLE snap.hourly AS SELECT h.series_key, h.ts_utc, "
+        "round(h.value, CASE s.aggregation WHEN 'sum' THEN ? ELSE ? END) AS value "
+        "FROM main.hourly h JOIN main.series s USING (series_key) "
+        "WHERE h.series_key NOT IN (SELECT unnest(?::VARCHAR[])) "
+        "ORDER BY h.series_key, h.ts_utc",
+        [SUM_DECIMALS, MEAN_DECIMALS, excluded],
     )
     con.execute(
         "CREATE TABLE snap.load_log AS SELECT * FROM main.load_log "

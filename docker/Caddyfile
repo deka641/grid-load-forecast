@@ -4,7 +4,10 @@
 }
 
 :8080 {
-	encode zstd gzip
+	# gzip only: under `make loadtest` the zstd encoders took this container past its
+	# 128 MB memory limit, while gzip peaked at 56 MiB. Offering zstd would let any
+	# client that asks for it exhaust the limit with parallel large downloads.
+	encode gzip
 
 	header {
 		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"

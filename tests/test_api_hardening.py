@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 
 from gridload.api import app as app_module
 from gridload.api import queries
-from gridload.api.app import CHUNK_BYTES, HEAVY_MAX_WAITING, Limits, create_app
+from gridload.api.app import BYTES_PER_POINT, CHUNK_BYTES, HEAVY_MAX_WAITING, Limits, create_app
 from gridload.api.models import Actuals, ForecastDay
 from gridload.api.store import NEWEST_UNOPENABLE
 from gridload.config import Settings
@@ -77,10 +77,10 @@ def test_maximal_actuals_request_stays_within_a_memory_bound(
     finally:
         tracemalloc.stop()
     assert response.status_code == 200
-    assert len(response.content) > 7_500_000
+    assert len(response.content) > 6_500_000
     body = response.json()
     assert [len(s["points"]) for s in body["series"]] == [8784] * len(CATALOG)
-    # Measured: 22.7 MB peak of Python allocations for this request (7.8 MB body,
+    # Measured: 20.4 MB peak of Python allocations for this request (6.7 MB body,
     # 131,760 points), including the test client's copy of the body. With one
     # pydantic model per point, a comparable snapshot (8.1 MB body) peaked at 96.6 MB.
     assert peak < 40 * 2**20
@@ -298,7 +298,8 @@ def test_bodies_are_sent_in_chunks_and_held_bytes_are_bounded(
     expected = make_client(settings).get(f"/api/v1/actuals?{query}").content
     assert len(expected) > 5 * CHUNK_BYTES
     # Room for one response of this size (11,160 points, estimated at 52 bytes each).
-    app = create_app(settings, limits=Limits(byte_budget=len(expected) + 10_000))
+    room = max(len(expected), 11_160 * BYTES_PER_POINT)
+    app = create_app(settings, limits=Limits(byte_budget=room + 10_000))
 
     async def scenario() -> tuple[RawClient, httpx.Response, httpx.Response]:
         readable = asyncio.Event()

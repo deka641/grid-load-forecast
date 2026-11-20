@@ -288,6 +288,16 @@ export interface components {
              */
             created_at: string;
             /**
+             * Degraded
+             * @description Whether the forecast was issued with incomplete inputs: true if any check in degraded_checks failed, false if all passed, null if the run was not assessed (baseline runs and runs stored before the checks existed)
+             */
+            degraded?: boolean | null;
+            /**
+             * Degraded Checks
+             * @description Failed input checks of a degraded forecast: cutoff_hour_missing (the newest usable hour was missing at issue time), lag_1d, lag_2d, lag_7d, lag_14d (load of the same hour that many days earlier missing), mean_24h, mean_168h (mean load of the last 24 or 168 hours not computable), coverage_168h (too few of the last 168 hours present); empty if none failed, null if the run was not assessed
+             */
+            degraded_checks?: string[] | null;
+            /**
              * Issued At
              * Format: date-time
              */
@@ -312,6 +322,16 @@ export interface components {
         };
         /** LastForecast */
         LastForecast: {
+            /**
+             * Degraded
+             * @description Whether the forecast was issued with incomplete inputs: true if any check in degraded_checks failed, false if all passed, null if the run was not assessed (baseline runs and runs stored before the checks existed)
+             */
+            degraded?: boolean | null;
+            /**
+             * Degraded Checks
+             * @description Failed input checks of a degraded forecast: cutoff_hour_missing (the newest usable hour was missing at issue time), lag_1d, lag_2d, lag_7d, lag_14d (load of the same hour that many days earlier missing), mean_24h, mean_168h (mean load of the last 24 or 168 hours not computable), coverage_168h (too few of the last 168 hours present); empty if none failed, null if the run was not assessed
+             */
+            degraded_checks?: string[] | null;
             /**
              * Delivery Day
              * Format: date

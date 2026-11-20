@@ -68,10 +68,26 @@ class ForecastPoint(BaseModel):
     actual: float | None
 
 
+DEGRADED = (
+    "Whether the forecast was issued with incomplete inputs: true if any check in "
+    "degraded_checks failed, false if all passed, null if the run was not assessed "
+    "(baseline runs and runs stored before the checks existed)"
+)
+DEGRADED_CHECKS = (
+    "Failed input checks of a degraded forecast: cutoff_hour_missing (the newest usable hour "
+    "was missing at issue time), lag_1d, lag_2d, lag_7d, lag_14d (load of the same "
+    "hour that many days earlier missing), mean_24h, mean_168h (mean load of the last "
+    "24 or 168 hours not computable), coverage_168h (too few of the last 168 hours "
+    "present); empty if none failed, null if the run was not assessed"
+)
+
+
 class ForecastRunInfo(BaseModel):
     run_id: str
     issued_at: datetime
     created_at: datetime
+    degraded: bool | None = Field(default=None, description=DEGRADED)
+    degraded_checks: list[str] | None = Field(default=None, description=DEGRADED_CHECKS)
 
 
 class ForecastDay(BaseModel):
@@ -130,6 +146,8 @@ class LastForecast(BaseModel):
     model: str
     delivery_day: date
     issued_at: datetime
+    degraded: bool | None = Field(default=None, description=DEGRADED)
+    degraded_checks: list[str] | None = Field(default=None, description=DEGRADED_CHECKS)
 
 
 class Status(BaseModel):
