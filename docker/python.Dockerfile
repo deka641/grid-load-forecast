@@ -34,6 +34,6 @@ COPY --from=build /app/.venv /app/.venv
 COPY docker/crontab /app/crontab
 ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 GRIDLOAD_DATA_DIR=/data
 # Fail the build early if a native dependency cannot be loaded.
-RUN python -c "import duckdb, fastapi, lightgbm, polars, sklearn"
+RUN python -c "import duckdb, fastapi, lightgbm, numpy, polars, pyarrow"
 WORKDIR /app
 USER gridload
