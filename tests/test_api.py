@@ -621,6 +621,8 @@ def test_status_reports_freshness_runs_and_licence(
         "model": "lightgbm",
         "delivery_day": "2026-11-21",
         "issued_at": "2026-11-20T10:00:00+01:00",
+        "degraded": None,
+        "degraded_checks": None,
     }
     assert body["attribution"] == "Bundesnetzagentur | SMARD.de"
     assert body["licence"] == "CC BY 4.0"

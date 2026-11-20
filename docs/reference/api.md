@@ -16,6 +16,19 @@ All timestamps in responses are ISO 8601 with the Europe/Berlin offset (`+01:00`
 | `GET /forecasts/days` | Delivery days that have forecasts, newest first | `limit` (1 to 5000, default 400) |
 | `GET /backtest/metrics` | Newest stored backtest: period, configuration and metrics per model and scope | none |
 
+## Degraded forecasts
+
+Every run in `runs` of `/forecasts` and the `last_forecast` of `/status` carry `degraded` and `degraded_checks`. A LightGBM forecast is degraded when some of its inputs were missing at the cutoff; it is still published, but its error is likely larger than the backtest suggests. `degraded_checks` names the failed checks:
+
+| Check | Fails when |
+|---|---|
+| `cutoff_hour_missing` | the newest hour a forecast may use (09:00 to 10:00 local time on the day before delivery) was not yet published when the forecast was issued |
+| `lag_1d`, `lag_2d`, `lag_7d`, `lag_14d` | the load of the same hour one, two, seven or 14 days earlier is missing for some delivery hour |
+| `mean_24h`, `mean_168h` | the mean load of the 24 or 168 hours before the cutoff could not be computed |
+| `coverage_168h` | fewer than 90 % of the 168 hours before the cutoff are present |
+
+`degraded` is `true` if any check failed and `false` with an empty `degraded_checks` if all passed. Both are `null` when the run was not assessed: baseline runs (`baseline_week`) and runs stored before the assessment was recorded. A client should treat `null` as unknown, not as a complete forecast.
+
 ## Limits and errors
 
 - `/actuals` accepts at most 31 days in quarter-hour resolution and 366 days in hourly resolution; `end` must not be before `start`. Unknown series keys, invalid dates and exceeded limits return 422 with the standard FastAPI error body.

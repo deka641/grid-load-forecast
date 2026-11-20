@@ -95,6 +95,27 @@ def _finite(value: float | None) -> float | None:
     return value if value is not None and math.isfinite(value) else None
 
 
+def assessment(details: str | None) -> tuple[bool | None, list[str] | None]:
+    """``degraded`` and ``degraded_checks`` from the JSON details of a forecast run.
+
+    Baseline runs and runs stored before the checks were recorded carry no
+    assessment; each value is None unless it is present with the expected type.
+    """
+    try:
+        parsed = json.loads(details) if details is not None else None
+    except ValueError:
+        parsed = None
+    if not isinstance(parsed, dict):
+        return None, None
+    degraded = parsed.get("degraded")
+    checks = parsed.get("degraded_checks")
+    valid_checks = isinstance(checks, list) and all(isinstance(c, str) for c in checks)
+    return (
+        degraded if isinstance(degraded, bool) else None,
+        checks if valid_checks else None,
+    )
+
+
 def latest_forecast_day(cur: duckdb.DuckDBPyConnection) -> date | None:
     row = cur.execute(
         "SELECT max(delivery_day) FROM forecast_runs WHERE model = ?", [PRIMARY_MODEL]
@@ -116,7 +137,7 @@ def forecast_days(cur: duckdb.DuckDBPyConnection, limit: int) -> list[date]:
 def forecast_day(cur: duckdb.DuckDBPyConnection, day: date) -> ForecastDay | None:
     """Return the forecasts for one delivery day, or None if no model has a run for it."""
     runs = cur.execute(
-        "SELECT model, run_id, issued_at, created_at FROM forecast_runs "
+        "SELECT model, run_id, issued_at, created_at, details FROM forecast_runs "
         "WHERE delivery_day = ? AND list_contains(?, model) "
         "QUALIFY row_number() OVER "
         "(PARTITION BY model ORDER BY issued_at DESC, created_at DESC, run_id DESC) = 1",
@@ -124,7 +145,7 @@ def forecast_day(cur: duckdb.DuckDBPyConnection, day: date) -> ForecastDay | Non
     ).fetchall()
     if not runs:
         return None
-    model_of_run = {run_id: model for model, run_id, _, _ in runs}
+    model_of_run = {run_id: model for model, run_id, *_ in runs}
     start, end = day_range(day, day)
     values: dict[tuple[str, datetime], float] = {}
     for run_id, ts, value in cur.execute(
@@ -153,12 +174,23 @@ def forecast_day(cur: duckdb.DuckDBPyConnection, day: date) -> ForecastDay | Non
         delivery_day=day,
         unit="MWh",
         runs={
-            model: ForecastRunInfo(
-                run_id=run_id, issued_at=to_local(issued), created_at=to_local(created)
-            )
-            for model, run_id, issued, created in sorted(runs)
+            model: _run_info(run_id, issued, created, details)
+            for model, run_id, issued, created, details in sorted(runs)
         },
         points=points,
+    )
+
+
+def _run_info(
+    run_id: str, issued: datetime, created: datetime, details: str | None
+) -> ForecastRunInfo:
+    degraded, checks = assessment(details)
+    return ForecastRunInfo(
+        run_id=run_id,
+        issued_at=to_local(issued),
+        created_at=to_local(created),
+        degraded=degraded,
+        degraded_checks=checks,
     )
 
 
@@ -243,14 +275,21 @@ def last_load_run(cur: duckdb.DuckDBPyConnection) -> LoadRunInfo | None:
 
 def last_forecast(cur: duckdb.DuckDBPyConnection) -> LastForecast | None:
     row = cur.execute(
-        "SELECT model, delivery_day, issued_at FROM forecast_runs WHERE model = ? "
-        "ORDER BY delivery_day DESC, issued_at DESC LIMIT 1",
+        "SELECT model, delivery_day, issued_at, details FROM forecast_runs WHERE model = ? "
+        "ORDER BY delivery_day DESC, issued_at DESC, created_at DESC, run_id DESC LIMIT 1",
         [PRIMARY_MODEL],
     ).fetchone()
     if row is None:
         return None
-    model, delivery_day, issued_at = row
-    return LastForecast(model=model, delivery_day=delivery_day, issued_at=to_local(issued_at))
+    model, delivery_day, issued_at, details = row
+    degraded, checks = assessment(details)
+    return LastForecast(
+        model=model,
+        delivery_day=delivery_day,
+        issued_at=to_local(issued_at),
+        degraded=degraded,
+        degraded_checks=checks,
+    )
 
 
 def schema_version(cur: duckdb.DuckDBPyConnection) -> int | None:

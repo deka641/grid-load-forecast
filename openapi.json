@@ -264,6 +264,33 @@
             "title": "Created At",
             "type": "string"
           },
+          "degraded": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the forecast was issued with incomplete inputs: true if any check in degraded_checks failed, false if all passed, null if the run was not assessed (baseline runs and runs stored before the checks existed)",
+            "title": "Degraded"
+          },
+          "degraded_checks": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Failed input checks of a degraded forecast: cutoff_hour_missing (the newest usable hour was missing at issue time), lag_1d, lag_2d, lag_7d, lag_14d (load of the same hour that many days earlier missing), mean_24h, mean_168h (mean load of the last 24 or 168 hours not computable), coverage_168h (too few of the last 168 hours present); empty if none failed, null if the run was not assessed",
+            "title": "Degraded Checks"
+          },
           "issued_at": {
             "format": "date-time",
             "title": "Issued At",
@@ -316,6 +343,33 @@
       },
       "LastForecast": {
         "properties": {
+          "degraded": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the forecast was issued with incomplete inputs: true if any check in degraded_checks failed, false if all passed, null if the run was not assessed (baseline runs and runs stored before the checks existed)",
+            "title": "Degraded"
+          },
+          "degraded_checks": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Failed input checks of a degraded forecast: cutoff_hour_missing (the newest usable hour was missing at issue time), lag_1d, lag_2d, lag_7d, lag_14d (load of the same hour that many days earlier missing), mean_24h, mean_168h (mean load of the last 24 or 168 hours not computable), coverage_168h (too few of the last 168 hours present); empty if none failed, null if the run was not assessed",
+            "title": "Degraded Checks"
+          },
           "delivery_day": {
             "format": "date",
             "title": "Delivery Day",

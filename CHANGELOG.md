@@ -6,6 +6,10 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ## [Unreleased]
 
+### Added
+
+- `/forecasts` and `/status` report whether a forecast was issued with incomplete inputs (`degraded`) and which input checks failed (`degraded_checks`), so a client can mark such a forecast instead of presenting it as complete. Both are `null` for baseline runs and for runs stored before the checks were recorded.
+
 ### Changed
 
 - The pipeline and API image runs on Python 3.15 instead of 3.14. The backtest in this image reproduces `reports/backtest.json`, `reports/backtest.md` and the scored rows byte for byte. Local development still works with Python 3.14.
