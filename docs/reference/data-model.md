@@ -56,3 +56,5 @@ Scopes in `backtest_metrics`:
 ## Serving snapshot
 
 `serving.duckdb` contains `schema_version`, `series`, `load_runs`, `forecast_runs`, `forecasts`, `backtest_runs`, `backtest_metrics`, the quarter-hour `observations` with `series_key`, `ts_utc` and `value` only, `hourly` as a table, and the `load_log` of the last 30 runs. Price series are left out entirely when prices are switched off.
+
+The hourly values in the snapshot, and so in the API, are rounded to the decimals their exact value has. SMARD publishes quarter-hour values with at most two decimals (in the local warehouse, no quarter-hour value of any series has more), so the hourly sum of an energy has at most two decimals and the hourly mean of a price, a quarter of a sum, at most four. The rounding therefore loses no information; it removes the floating-point noise of the summation, which would otherwise show up as 43648.21000000001 instead of 43648.21 and could differ between two snapshots of the same data. The view `hourly` in the warehouse, which the forecast and the backtest read, is not rounded, so model inputs and backtest results do not depend on it.
