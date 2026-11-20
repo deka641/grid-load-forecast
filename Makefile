@@ -37,7 +37,8 @@ typecheck: ## mypy strict and tsc
 	$(T) 180 $(NPM) run --silent typecheck
 
 test: ## pytest and Vitest with coverage thresholds
-	$(T) 600 $(UV) pytest --cov --cov-report=term
+	$(T) 600 $(UV) pytest --cov --cov-report=term --cov-report=json
+	$(T) 60 $(UV) python scripts/check_coverage.py
 	$(T) 300 $(NPM) run --silent test:coverage
 
 build: ## Frontend production build with size budget
@@ -48,7 +49,7 @@ docs: ## MkDocs strict build
 	$(T) 180 $(UV) mkdocs build --strict --site-dir site
 
 smoke: ## Live request against SMARD (not part of verify)
-	@echo "smoke: no live checks yet"
+	$(T) 120 $(UV) python scripts/smoke.py
 
 clean: ## Remove build artefacts
-	rm -rf site web/dist web/coverage .coverage .pytest_cache .mypy_cache .ruff_cache
+	rm -rf site web/dist web/coverage .coverage coverage.json .pytest_cache .mypy_cache .ruff_cache

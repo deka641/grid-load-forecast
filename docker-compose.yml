@@ -20,16 +20,20 @@ services:
     build:
       context: .
       dockerfile: docker/python.Dockerfile
-    command: ["supercronic", "/app/crontab"]
+    # First run at start-up (a full backfill on an empty volume), then hourly.
+    command: ["sh", "-c", "gridload run; exec supercronic /app/crontab"]
+    environment:
+      GRIDLOAD_INCLUDE_PRICES: ${GRIDLOAD_INCLUDE_PRICES:-true}
     volumes:
       - gridload-data:/data
     mem_limit: 2g
     healthcheck:
-      # Liveness placeholder. Replaced by a check of the last successful run.
-      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      # Healthy while a run reports progress, or if the last successful run is under 26 h old.
+      test: ["CMD", "gridload", "healthcheck"]
       interval: 60s
-      timeout: 5s
+      timeout: 10s
       retries: 3
+      start_period: 120s
 
   api:
     <<: *python
