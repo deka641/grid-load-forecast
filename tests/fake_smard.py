@@ -1,7 +1,9 @@
 """Serve recorded SMARD responses through an in-memory HTTP transport."""
 
+import itertools
 import json
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx2
@@ -13,6 +15,22 @@ from gridload.sources.smard import SmardClient
 FIXTURES = Path(__file__).parent / "fixtures" / "smard"
 
 Handler = Callable[[httpx2.Request], httpx2.Response | None]
+
+# A moment shortly after the fixtures were recorded: the newest recorded chunks end
+# after it and are still open (their last value is 09:45 UTC). Tests whose
+# result depends on "now" use this instead of the wall clock, so they do not change
+# as the fixtures age.
+FIXTURE_NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+
+
+def fixture_clock() -> datetime:
+    return FIXTURE_NOW
+
+
+def advancing_clock(start: datetime = FIXTURE_NOW) -> Callable[[], datetime]:
+    """A clock that starts at ``start`` and moves one second forward per reading."""
+    ticks = itertools.count()
+    return lambda: start + timedelta(seconds=next(ticks))
 
 
 def fixture_bytes(name: str) -> bytes:

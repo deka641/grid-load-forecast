@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import zlib
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
@@ -14,7 +15,14 @@ from gridload.pipeline.db import connect, migrate
 from gridload.pipeline.ingest import Ingestor
 from gridload.series import BY_KEY, CATALOG, Series, select
 from gridload.sources.smard import SmardClient, chunk_end_ms
-from tests.fake_smard import FakeSmard, chunk_name, fixture_bytes, recorded_chunks
+from tests.fake_smard import (
+    FIXTURE_NOW,
+    FakeSmard,
+    chunk_name,
+    fixture_bytes,
+    fixture_clock,
+    recorded_chunks,
+)
 
 LOAD = BY_KEY["load"]
 PRICE = BY_KEY["price_day_ahead"]
@@ -46,8 +54,8 @@ def fake() -> FakeSmard:
 
 
 def run(con: duckdb.DuckDBPyConnection, client: SmardClient, series: list[Series], **kw: object):  # type: ignore[no-untyped-def]
-    clock = kw.pop("clock", None)
-    ingestor = Ingestor(con, client) if clock is None else Ingestor(con, client, clock=clock)  # type: ignore[arg-type]
+    clock = kw.pop("clock", fixture_clock)
+    ingestor = Ingestor(con, client, clock=clock)  # type: ignore[arg-type]
     return ingestor.run(series, mode=str(kw.pop("mode", "backfill")), **kw)  # type: ignore[arg-type]
 
 
@@ -259,18 +267,34 @@ def test_unexpected_exception_marks_run_failed(
             raise RuntimeError("bug")
 
     with pytest.raises(RuntimeError):
-        Ingestor(con, Exploding()).run([LOAD], mode="backfill", finish=finish)
+        Ingestor(con, Exploding(), clock=fixture_clock).run([LOAD], mode="backfill", finish=finish)
     rows = con.execute("SELECT status, finished_at IS NOT NULL FROM load_runs").fetchall()
     assert rows == [("failed", True)]
+
+
+def test_default_clock_is_the_wall_clock(con: duckdb.DuckDBPyConnection) -> None:
+    class NoChunks(SmardClient):
+        def __init__(self) -> None:
+            pass
+
+        def index(self, series: Series) -> list[int]:
+            return []
+
+    before = datetime.fromtimestamp(time.time(), UTC)
+    assert Ingestor(con, NoChunks()).run([LOAD], mode="backfill").status == "ok"
+    after = datetime.fromtimestamp(time.time(), UTC)
+    row = con.execute("SELECT started_at, finished_at FROM load_runs").fetchone()
+    assert row is not None
+    assert before <= row[0] <= row[1] <= after
 
 
 def test_progress_callback_sees_every_chunk(
     con: duckdb.DuckDBPyConnection, fake: FakeSmard
 ) -> None:
     seen: list[tuple[str, int]] = []
-    Ingestor(con, fake.client(), progress=lambda s, ts: seen.append((s, ts))).run(
-        [LOAD], mode="backfill"
-    )
+    Ingestor(
+        con, fake.client(), clock=fixture_clock, progress=lambda s, ts: seen.append((s, ts))
+    ).run([LOAD], mode="backfill")
     assert seen == [("load", ts) for ts in recorded_chunks(LOAD)]
 
 
@@ -417,7 +441,7 @@ def test_store_rolls_back_on_database_error(
 
     proxy = FailingRawInsert(con)
     with pytest.raises(duckdb.IOException):
-        Ingestor(proxy, fake.client()).run([LOAD], mode="backfill")  # type: ignore[arg-type]
+        Ingestor(proxy, fake.client(), clock=fixture_clock).run([LOAD], mode="backfill")  # type: ignore[arg-type]
     assert count(con, "SELECT count(*) FROM observations") == 0
     assert count(con, "SELECT count(*) FROM load_log") == 0
 
@@ -558,7 +582,9 @@ def test_permanent_gap_is_logged_and_not_refetched(fake: FakeSmard) -> None:
     connection = duckdb.connect()
     connection.execute("SET TimeZone = 'UTC'")
     migrate(connection)
-    result = Ingestor(connection, fake.client()).run([LOAD], mode="backfill", refetch_weeks=1)
+    result = Ingestor(connection, fake.client(), clock=fixture_clock).run(
+        [LOAD], mode="backfill", refetch_weeks=1
+    )
     assert result.status == "ok"
     logged = connection.execute(
         "SELECT message FROM load_log WHERE epoch_ms(chunk_ts) = ?", [SPRING]
@@ -573,7 +599,9 @@ def test_permanent_gap_is_logged_and_not_refetched(fake: FakeSmard) -> None:
     )
     assert stored == 668 - 96
     fake.requests.clear()
-    Ingestor(connection, fake.client()).run([LOAD], mode="incremental", refetch_weeks=1)
+    Ingestor(connection, fake.client(), clock=fixture_clock).run(
+        [LOAD], mode="incremental", refetch_weeks=1
+    )
     assert f"/app/chart_data/410/DE/{name}" not in fake.requests
     connection.close()
 
@@ -698,7 +726,7 @@ def test_withdrawals_can_be_accepted_explicitly(
     for point in data["series"][200:296]:
         point[1] = None
     fake.override(name, json.dumps(data).encode())
-    result = Ingestor(con, fake.client(), accept_withdrawals=True).run(
+    result = Ingestor(con, fake.client(), clock=fixture_clock, accept_withdrawals=True).run(
         [LOAD], mode="incremental", refetch_weeks=4
     )
     assert result.rows_removed == 96
@@ -799,7 +827,9 @@ def test_withdrawals_from_the_open_chunk_can_be_accepted_explicitly(
     run(con, fake.client(), [LOAD])
     full = _newest_stored(con)
     fake.override(name, _with_trailing_nulls(name, 0))
-    result = Ingestor(con, fake.client(), accept_withdrawals=True).run([LOAD], mode="incremental")
+    result = Ingestor(con, fake.client(), clock=fixture_clock, accept_withdrawals=True).run(
+        [LOAD], mode="incremental"
+    )
     assert result.status == "ok"
     assert result.rows_removed == full
     assert _newest_stored(con) == 0
@@ -900,8 +930,7 @@ def test_last_chunk_of_an_ended_series_is_neither_open_nor_recent(
 
 
 SOLAR = BY_KEY["gen_solar"]
-# The newest recorded chunks are open at this moment (their last value is 09:45 UTC).
-OPEN_NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+OPEN_NOW = FIXTURE_NOW
 
 
 def _with_interior_nulls(series: Series, ts: int, points: range) -> bytes:

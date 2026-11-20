@@ -2,6 +2,7 @@
 
 import os
 import threading
+import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
@@ -257,9 +258,13 @@ def test_repeated_swaps_do_not_leak_threads_or_files(
     assert _fd_count() <= fds + 2
 
 
+def _wall_clock() -> datetime:
+    return datetime.fromtimestamp(time.time(), UTC)
+
+
 def test_status_uses_the_wall_clock_by_default(settings: Settings) -> None:
-    before = datetime.now(UTC)
+    before = _wall_clock()
     body = get(TestClient(create_app(settings)), "/api/v1/status")
     generated = datetime.fromisoformat(body["generated_at"])
-    assert before <= generated <= datetime.now(UTC)
+    assert before <= generated <= _wall_clock()
     assert generated.utcoffset() is not None
