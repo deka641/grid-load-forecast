@@ -1,7 +1,6 @@
 """FastAPI application factory and the read-only HTTP API under ``/api/v1``."""
 
 import logging
-import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 
@@ -43,7 +42,13 @@ from gridload.api.routes import (
     health_router,
     status_router,
 )
-from gridload.api.service import PROCESS_START, UNREADABLE, DataService, etag_matches
+from gridload.api.service import (
+    PROCESS_START,
+    UNREADABLE,
+    DataService,
+    default_build_id,
+    etag_matches,
+)
 from gridload.api.status import (
     ATTRIBUTION,
     LICENCE,
@@ -127,11 +132,12 @@ def create_app(
 ) -> FastAPI:
     """Build the API application. The snapshot is opened lazily on the first request.
 
-    ``build_id`` (default: GRIDLOAD_BUILD_ID, else the process start time) is
-    part of every ETag, so a deployment invalidates the tags of the previous one.
+    ``build_id`` (default: GRIDLOAD_BUILD_ID, else the content hash stored by
+    the image build, else the process start time) is part of every ETag, so a
+    deployment of changed code invalidates the tags of the previous one.
     """
     limits = limits or Limits()
-    build_id = build_id or os.environ.get("GRIDLOAD_BUILD_ID") or PROCESS_START
+    build_id = build_id or default_build_id()
     settings = settings or Settings.from_env()
     store = SnapshotStore(settings.serving_path)
     configured = {s.key: s for s in select(include_prices=settings.include_prices)}

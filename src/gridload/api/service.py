@@ -2,14 +2,17 @@
 
 import asyncio
 import hashlib
+import os
 import time
 from collections.abc import Callable
 from contextlib import AsyncExitStack
+from pathlib import Path
 
 import anyio
 import duckdb
 from fastapi import Request, Response
 
+import gridload
 from gridload.api.limits import (
     HEAVY_CONCURRENCY,
     HEAVY_MAX_WAITING,
@@ -25,6 +28,21 @@ from gridload.api.store import Snapshot, SnapshotStore
 
 UNREADABLE = "the data snapshot cannot be read"
 PROCESS_START = str(time.time_ns())
+# The image build stores a content hash of the code and the lockfile next to the
+# installed package (docker/python.Dockerfile); a local checkout has none.
+BUILD_ID_FILE = Path(gridload.__file__).parent / "BUILD_ID"
+
+
+def default_build_id() -> str:
+    """GRIDLOAD_BUILD_ID, else the build id of the image, else the process start time."""
+    from_env = os.environ.get("GRIDLOAD_BUILD_ID")
+    if from_env:
+        return from_env
+    try:
+        stored = BUILD_ID_FILE.read_text(encoding="ascii").strip()
+    except OSError, UnicodeDecodeError:
+        stored = ""
+    return stored or PROCESS_START
 
 
 def etag_matches(header: str | None, tag: str) -> bool:

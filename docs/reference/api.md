@@ -41,4 +41,4 @@ Every run in `runs` of `/forecasts` and the `last_forecast` of `/status` carry `
 
 ## Caching
 
-Data responses carry `Cache-Control: no-cache` and an `ETag` that changes with every new snapshot, a restart of the API and the price setting. A request with a matching `If-None-Match` header gets `304 Not Modified` without running a query, so a dashboard that reloads within the hour transfers almost nothing.
+Data responses carry `Cache-Control: no-cache` and an `ETag` that changes with every new snapshot, every image with changed code or dependencies, and the price setting; a restart of the same image keeps it (see [Configuration](configuration.md)). A request with a matching `If-None-Match` header gets `304 Not Modified` without running a query, so a dashboard that reloads within the hour transfers almost nothing.

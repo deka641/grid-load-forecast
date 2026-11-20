@@ -8,7 +8,13 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE DATA-LICENSE.md ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY src ./src
-RUN uv sync --locked --no-dev --no-editable
+# Build id for the API's ETags: a hash of the code and the locked dependencies, so it
+# changes exactly when they do and a container restart keeps every ETag valid. It is
+# stored next to the installed package, where the API reads it.
+RUN find src pyproject.toml uv.lock -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum \
+        | sha256sum | cut -c1-32 > /tmp/build-id \
+    && uv sync --locked --no-dev --no-editable \
+    && cp /tmp/build-id "$(/app/.venv/bin/python -c 'import gridload, pathlib; print(pathlib.Path(gridload.__file__).parent)')/BUILD_ID"
 
 FROM python:3.15-slim-trixie@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS runtime
 ARG TARGETARCH
