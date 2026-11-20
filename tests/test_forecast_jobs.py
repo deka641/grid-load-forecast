@@ -57,7 +57,7 @@ def test_report_marks_missing_day_types(result: BacktestResult) -> None:
         result.first_day,
         result.last_day,
         result.config,
-        metrics=[m for m in result.metrics if m.scope_value != "saturday" and m.scope_value != "5"],
+        metrics=[m for m in result.metrics if m.scope_value not in {"saturday", "5"}],
     )
     text = report.to_markdown(partial)
     assert "| Saturdays | n/a" in text
