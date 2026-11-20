@@ -15,18 +15,20 @@ Changed values overwrite the stored value and increase its revision counter, so
 there are never duplicate timestamps. In an open chunk, a short run of values at
 its very end that the source no longer publishes (at most
 ``MAX_OPEN_WITHDRAWAL`` quarter hours, all newer than the newest value still
-published) is removed as a revision. Any other stored value that turns null,
-in an open or a completed chunk, points to a degraded response: the stored
-values are kept and the chunk is reported as an error, unless withdrawals are
-accepted explicitly (``gridload ingest --accept-withdrawals``). Quarter hours
+published) is removed as a revision. Any other stored value that turns null
+points to a degraded response, unless withdrawals are accepted explicitly
+(``gridload ingest --accept-withdrawals``): in an open chunk the stored values
+are kept, new values are still written, the payload is not stored (so the
+chunk is fetched again) and the chunk is reported as an error; in a completed
+chunk nothing is written and the chunk is reported as an error. Quarter hours
 that SMARD leaves out of a completed chunk (permanent gaps in the source) are
 not stored as values; the load log records how many are missing and where the
 gap starts. Any source or validation error is written to ``load_log`` and
 nothing is stored for that chunk.
 
 Run status: ``failed`` if the run crashed, the source was unavailable, an index
-could not be read or a recent chunk (the newest chunk in the index or one that
-ended in the last 7 days) failed; ``partial`` if only older chunks failed,
+could not be read or a recent chunk (one that ended in the last 7 days, which
+includes the open chunk of an active series) failed; ``partial`` if only older chunks failed,
 including older chunks reloaded through ``refetch_weeks``; otherwise ``ok``.
 """
 
@@ -164,7 +166,6 @@ class Ingestor:
             self._count_source_error(exc)
             return
 
-        latest = index[-1]
         if since is not None:
             since_ms = int(since.timestamp() * 1000)
             index = [ts for ts in index if chunk_end_ms(ts) > since_ms]
@@ -180,13 +181,14 @@ class Ingestor:
             if self._progress is not None:
                 self._progress(series.key, ts)
             end = chunk_end_ms(ts)
-            # One rule for every error of this chunk: recent means the newest chunk
-            # or one that ended within RECENT.
-            recent = ts == latest or end > recent_ms
+            # One rule for every error of this chunk: recent means it ended within
+            # RECENT. The newest chunk of an active series ends in the future; the
+            # last chunk of an ended series ages out like any other.
+            recent = end > recent_ms
             try:
                 raw = self._client.chunk(series, ts)
                 self._source_errors = 0
-                is_open = ts == latest or end > late_ms
+                is_open = end > late_ms
                 frame = parse_chunk(series, ts, raw.payload, is_open=is_open)
             except (SourceError, ChunkValidationError) as exc:
                 self._log_error(result, series, ts, str(exc), recent=recent)
@@ -299,15 +301,12 @@ class Ingestor:
             removed = int(removed_row[0]) if removed_row else 0
             # Removed values at or before the newest value still published.
             interior = int(removed_row[1]) if removed_row else 0
-            too_many = removed > MAX_OPEN_WITHDRAWAL or interior > 0
-            if is_open and too_many and not self._accept_withdrawals:
-                # Only a short tail may vanish from an open week; anything more (for
-                # example a response with every value null) is not a revision.
-                raise ChunkValidationError(
-                    f"{series.key} chunk {raw.chunk_ts}: {removed} stored values are now "
-                    f"missing in an open chunk (more than {MAX_OPEN_WITHDRAWAL} or not at "
-                    "its end); kept the stored values"
-                )
+            # Only a short tail may vanish from an open week; anything more (for
+            # example a response with every value null) is not a revision.
+            suspicious = (
+                removed > MAX_OPEN_WITHDRAWAL or interior > 0 or (removed > 0 and frame.is_empty())
+            )
+            rejected = is_open and suspicious and not self._accept_withdrawals
             if removed and not is_open and not self._accept_withdrawals:
                 # A completed week whose stored values turn null points to a degraded
                 # response, not a correction: keep the stored values and report it.
@@ -315,7 +314,7 @@ class Ingestor:
                     f"{series.key} chunk {raw.chunk_ts}: {removed} stored values are now "
                     "missing in a completed chunk; kept the stored values"
                 )
-            if removed:
+            if removed and not rejected:
                 con.execute(
                     """
                     DELETE FROM observations
@@ -337,6 +336,21 @@ class Ingestor:
                 """,
                 [now],
             )
+            if rejected:
+                # Keep the stored values but take the new ones; the payload is not
+                # stored, so the chunk is fetched again by the next run.
+                self._log_error(
+                    result,
+                    series,
+                    raw.chunk_ts,
+                    f"{series.key} chunk {raw.chunk_ts}: {removed} stored values are now "
+                    f"missing in an open chunk (more than {MAX_OPEN_WITHDRAWAL}, not at its "
+                    f"end or no value left); kept the stored values, wrote {changed} new values",
+                    recent=recent,
+                )
+                con.execute("COMMIT")
+                result.rows_written += changed
+                return
             con.execute(
                 "INSERT OR REPLACE INTO raw_chunks VALUES (?, ?, ?, ?, ?, ?)",
                 [series.key, RESOLUTION, chunk_at, now, raw.sha256, zlib.compress(raw.payload, 9)],

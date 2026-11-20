@@ -15,6 +15,7 @@ import numpy as np
 from gridload.config import Settings
 from gridload.forecast import calendar as fcal
 from gridload.forecast import service
+from gridload.forecast.model import MODEL_NAME
 from gridload.pipeline import heartbeat, snapshot
 from gridload.pipeline.db import connect
 from gridload.pipeline.ingest import Ingestor, RunResult
@@ -263,7 +264,11 @@ def _forecast_step(con: duckdb.DuckDBPyConnection, current: datetime) -> None:
     if run_id is None:
         log.warning("forecast for %s skipped: not enough training history", day)
         return
-    checks = service.degraded_checks(load, day, cutoff_hour_missing=not complete)
+    row = con.execute(
+        "SELECT details FROM forecast_runs WHERE model = ? AND delivery_day = ?",
+        [MODEL_NAME, day],
+    ).fetchone()
+    checks = json.loads(row[0])["degraded_checks"] if row else []
     note = f" (degraded: {', '.join(checks)})" if checks else ""
     log.info("forecast issued for delivery day %s%s", day, note)
 
