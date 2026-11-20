@@ -28,7 +28,8 @@ services:
       - gridload-data:/data
     mem_limit: 2g
     healthcheck:
-      # Healthy while a run reports progress, or if the last successful run is under 26 h old.
+      # Healthy while a run reports progress, or if the last ok or partial run is under
+      # 26 h old and the newest load value under 12 h old.
       test: ["CMD", "gridload", "healthcheck"]
       interval: 60s
       timeout: 10s

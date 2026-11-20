@@ -1,8 +1,9 @@
 import json
 import zlib
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import duckdb
 import pytest
@@ -543,3 +544,18 @@ def test_reader_keeps_old_snapshot_and_failed_publish_keeps_file(
     with pytest.raises(duckdb.CatalogException):
         snapshot.publish(con, target)
     assert target.read_bytes() == published
+
+
+def test_missing_files_do_not_trip_the_source_breaker(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    berlin = ZoneInfo("Europe/Berlin")
+    mondays = [date(2026, 11, 9) - timedelta(weeks=i) for i in range(6, 0, -1)]
+    stamps = [
+        int(datetime(d.year, d.month, d.day, tzinfo=berlin).timestamp() * 1000) for d in mondays
+    ]
+    fake.use_index(LOAD, [*stamps, REGULAR])
+    result = run(con, fake.client(), [LOAD, PRICE], refetch_weeks=0)
+    assert len([e for e in result.errors if "HTTP 404" in e]) == 6
+    assert not any("source unavailable" in e for e in result.errors)
+    assert count(con, "SELECT count(*) FROM raw_chunks WHERE series_key = 'price_day_ahead'") > 0

@@ -34,14 +34,25 @@ def test_missing_or_corrupt_file_reads_as_none(tmp_path: Path) -> None:
 
 
 def test_health_rules() -> None:
+    fresh = iso(timedelta(hours=2))
     assert not is_healthy(None, NOW)
     assert is_healthy(Heartbeat("running", iso(timedelta(minutes=5))), NOW)
     assert not is_healthy(Heartbeat("running", iso(timedelta(minutes=30))), NOW)
-    assert is_healthy(Heartbeat("idle", iso(timedelta()), iso(timedelta(hours=25))), NOW)
-    assert not is_healthy(Heartbeat("idle", iso(timedelta()), iso(timedelta(hours=27))), NOW)
-    assert not is_healthy(Heartbeat("idle", iso(timedelta()), None, "failed"), NOW)
+    assert is_healthy(
+        Heartbeat("idle", iso(timedelta()), iso(timedelta(hours=25)), "ok", fresh), NOW
+    )
+    assert not is_healthy(
+        Heartbeat("idle", iso(timedelta()), iso(timedelta(hours=27)), "ok", fresh), NOW
+    )
+    assert not is_healthy(Heartbeat("idle", iso(timedelta()), None, "failed", fresh), NOW)
+    # Every run succeeds, but the source stopped publishing new values.
+    stale_data = Heartbeat(
+        "idle", iso(timedelta()), iso(timedelta(hours=1)), "ok", iso(timedelta(hours=13))
+    )
+    assert not is_healthy(stale_data, NOW)
+    assert not is_healthy(Heartbeat("idle", iso(timedelta()), iso(timedelta(hours=1)), "ok"), NOW)
     stale_run_recent_success = Heartbeat(
-        "running", iso(timedelta(hours=2)), iso(timedelta(hours=3))
+        "running", iso(timedelta(hours=2)), iso(timedelta(hours=3)), None, fresh
     )
     assert is_healthy(stale_run_recent_success, NOW)
 

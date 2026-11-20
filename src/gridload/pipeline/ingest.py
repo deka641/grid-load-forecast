@@ -54,7 +54,7 @@ MAX_CONSECUTIVE_SOURCE_ERRORS = 5
 
 
 class SourceUnavailableError(RuntimeError):
-    """Too many consecutive source errors; the rest of the run is skipped."""
+    """Too many consecutive transient source errors; the rest of the run is skipped."""
 
 
 @dataclass
@@ -174,7 +174,7 @@ class Ingestor:
             self._store(result, series, raw, frame)
 
     def _count_source_error(self, exc: Exception) -> None:
-        if not isinstance(exc, SourceError):
+        if not (isinstance(exc, SourceError) and exc.transient):
             return
         self._source_errors += 1
         if self._source_errors >= MAX_CONSECUTIVE_SOURCE_ERRORS:

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from gridload import __version__
 from gridload.config import Settings
 from gridload.pipeline import jobs
+from gridload.series import select
 
 
 def _date(value: str) -> datetime:
@@ -50,17 +51,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "healthcheck":
         return 0 if jobs.healthcheck(settings) else 1
     try:
-        if args.command == "backfill":
-            result = jobs.load(settings, mode="backfill", keys=args.series, since=args.since)
-        elif args.command == "ingest":
-            result = jobs.load(
-                settings, mode="incremental", keys=args.series, refetch_weeks=args.refetch_weeks
-            )
-        else:
-            result = jobs.load(settings, mode="incremental", post_ingest=jobs.post_ingest_steps)
+        select(getattr(args, "series", None), include_prices=settings.include_prices)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    if args.command == "backfill":
+        result = jobs.load(settings, mode="backfill", keys=args.series, since=args.since)
+    elif args.command == "ingest":
+        result = jobs.load(
+            settings, mode="incremental", keys=args.series, refetch_weeks=args.refetch_weeks
+        )
+    else:
+        result = jobs.load(settings, mode="incremental", post_ingest=jobs.post_ingest_steps)
     print(
         f"run {result.run_id} {result.status}: {result.loaded} chunks loaded, "
         f"{result.unchanged} unchanged, {result.rows_written} values written, "
