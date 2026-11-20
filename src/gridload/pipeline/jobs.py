@@ -73,6 +73,7 @@ def load(
     keys: list[str] | None = None,
     since: datetime | None = None,
     refetch_weeks: int = 4,
+    accept_withdrawals: bool = False,
     client_factory: ClientFactory = default_client,
     post_ingest: PostIngest | None = None,
 ) -> RunResult:
@@ -89,7 +90,7 @@ def load(
     newest: datetime | None = None
     try:
         with connect(settings.warehouse_path) as con:
-            ingestor = Ingestor(con, client, progress=beat)
+            ingestor = Ingestor(con, client, progress=beat, accept_withdrawals=accept_withdrawals)
             result = ingestor.run(series, mode=mode, since=since, refetch_weeks=refetch_weeks)
             try:
                 failed_steps = [] if post_ingest is None else post_ingest(con, settings, beat)
@@ -135,7 +136,8 @@ def status(settings: Settings) -> dict[str, Any]:
             "GROUP BY series_key ORDER BY series_key"
         ).fetchall()
         errors = con.execute(
-            "SELECT series_key, chunk_ts, message FROM load_log WHERE status = 'error' "
+            "SELECT series_key, chunk_ts, message FROM load_log "
+            "WHERE status IN ('error', 'warning') "
             "AND run_id = (SELECT run_id FROM load_runs ORDER BY started_at DESC LIMIT 1)"
         ).fetchall()
     finally:

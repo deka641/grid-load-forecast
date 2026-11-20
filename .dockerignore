@@ -15,3 +15,5 @@ web/coverage
 .env*
 **/.env*
 docker-compose.override.yml
+web/test-results
+web/playwright-report

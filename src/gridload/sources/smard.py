@@ -95,18 +95,18 @@ def parse_index(payload: bytes) -> list[int]:
     return list(stamps)
 
 
-def parse_chunk(
-    series: Series, chunk_ts: int, payload: bytes, *, allow_trailing_nulls: bool
-) -> pl.DataFrame:
+def parse_chunk(series: Series, chunk_ts: int, payload: bytes, *, is_open: bool) -> pl.DataFrame:
     """Validate a chunk and return its non-null values.
 
     Rules:
     - the series starts exactly at ``chunk_ts`` and advances in 15 minute steps;
     - it covers the whole local week (668, 672 or 676 values, depending on clock changes);
-    - ``null`` is only allowed as a trailing run, and only when
-      ``allow_trailing_nulls`` is set (newest or recently ended chunk), where it
-      marks points not yet published;
-    - values are finite numbers, energy values are not negative.
+    - values are finite numbers, energy values are not negative;
+    - ``null`` marks a value SMARD does not publish. It is expected at the end of
+      an open chunk (the newest one, or one that ended a few hours ago) and also
+      occurs as a permanent gap in older data (the first days of the history,
+      some single days). Null points are never returned as values; the caller
+      records gaps. A completed chunk without a single value is an error.
     """
     data = _load_json(payload)
     rows = data.get("series") if isinstance(data, dict) else None
@@ -142,16 +142,12 @@ def parse_chunk(
         stamps.append(ts)
         values.append(value)
 
-    first_null = next((i for i, v in enumerate(values) if v is None), len(values))
-    if any(v is not None for v in values[first_null:]):
-        raise ChunkValidationError(f"{series.key} chunk {chunk_ts}: null inside the series")
-    if first_null < len(values) and not allow_trailing_nulls:
-        raise ChunkValidationError(
-            f"{series.key} chunk {chunk_ts}: trailing nulls in a completed chunk"
-        )
+    present = [i for i, v in enumerate(values) if v is not None]
+    if not present and not is_open:
+        raise ChunkValidationError(f"{series.key} chunk {chunk_ts}: no values in a completed chunk")
 
     return pl.DataFrame(
-        {"ts_ms": stamps[:first_null], "value": values[:first_null]},
+        {"ts_ms": [stamps[i] for i in present], "value": [values[i] for i in present]},
         schema={"ts_ms": pl.Int64, "value": pl.Float64},
     ).with_columns(
         pl.from_epoch("ts_ms", time_unit="ms").dt.replace_time_zone("UTC").alias("ts_utc")
@@ -250,3 +246,19 @@ class SmardClient:
                 raise SourceError(f"{url}: {error} after {attempt + 1} attempts", transient=True)
             self._sleep(max(self._backoff * 2**attempt, retry_after))
             attempt += 1
+
+
+def missing_points(frame: pl.DataFrame, chunk_ts: int, *, is_open: bool) -> tuple[int, int | None]:
+    """Count quarter hours the source left out of a chunk, and the first of them.
+
+    For an open chunk the trailing run after the newest value is not a gap (those
+    values are simply not published yet).
+    """
+    expected = (chunk_end_ms(chunk_ts) - chunk_ts) // QUARTER_HOUR_MS
+    stamps = set(frame["ts_ms"].to_list())
+    grid = [chunk_ts + i * QUARTER_HOUR_MS for i in range(expected)]
+    if is_open:
+        newest = max(stamps) if stamps else chunk_ts - QUARTER_HOUR_MS
+        grid = [t for t in grid if t <= newest]
+    missing = [t for t in grid if t not in stamps]
+    return len(missing), (missing[0] if missing else None)

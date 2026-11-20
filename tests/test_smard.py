@@ -15,6 +15,7 @@ from gridload.sources.smard import (
     SmardClient,
     SourceError,
     chunk_end_ms,
+    missing_points,
     parse_chunk,
     parse_index,
 )
@@ -53,9 +54,7 @@ def latest_of(series: Series) -> int:
 def test_every_recorded_chunk_is_valid(series: Series) -> None:
     latest = latest_of(series)
     for ts in recorded_chunks(series):
-        frame = parse_chunk(
-            series, ts, fixture_bytes(chunk_name(series, ts)), allow_trailing_nulls=ts == latest
-        )
+        frame = parse_chunk(series, ts, fixture_bytes(chunk_name(series, ts)), is_open=ts == latest)
         assert frame.height > 0
         assert frame["ts_utc"].is_sorted()
         assert frame["ts_utc"].n_unique() == frame.height
@@ -63,9 +62,7 @@ def test_every_recorded_chunk_is_valid(series: Series) -> None:
 
 @pytest.mark.parametrize(("chunk", "points"), [(SPRING, 668), (AUTUMN, 676), (REGULAR, 672)])
 def test_clock_change_weeks_have_23_and_25_hour_sundays(chunk: int, points: int) -> None:
-    frame = parse_chunk(
-        LOAD, chunk, fixture_bytes(chunk_name(LOAD, chunk)), allow_trailing_nulls=False
-    )
+    frame = parse_chunk(LOAD, chunk, fixture_bytes(chunk_name(LOAD, chunk)), is_open=False)
     assert frame.height == points
     local_days = frame["ts_utc"].dt.convert_time_zone("Europe/Berlin").dt.date().value_counts()
     sunday = local_days.sort("ts_utc")["count"].to_list()[-1]
@@ -76,13 +73,13 @@ def test_newest_chunk_drops_future_nulls() -> None:
     latest = latest_of(LOAD)
     payload = fixture_bytes(chunk_name(LOAD, latest))
     total = len(json.loads(payload)["series"])
-    frame = parse_chunk(LOAD, latest, payload, allow_trailing_nulls=True)
+    frame = parse_chunk(LOAD, latest, payload, is_open=True)
     assert 0 < frame.height < total
 
 
 def test_negative_prices_are_valid() -> None:
     payload = fixture_bytes(chunk_name(PRICE, NEGATIVE))
-    frame = parse_chunk(PRICE, NEGATIVE, payload, allow_trailing_nulls=False)
+    frame = parse_chunk(PRICE, NEGATIVE, payload, is_open=False)
     assert frame["value"].min() == pytest.approx(-250.32)
 
 
@@ -110,33 +107,33 @@ WEEK = monday_ms(date(2026, 11, 9))
 )
 def test_empty_or_broken_responses_are_errors(payload: bytes, message: str) -> None:
     with pytest.raises(ChunkValidationError, match=message):
-        parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=True)
+        parse_chunk(LOAD, WEEK, payload, is_open=True)
 
 
 def test_truncated_chunk_is_an_error() -> None:
     values = full_week(WEEK)[:-4]
     with pytest.raises(ChunkValidationError, match="expected 672"):
-        parse_chunk(LOAD, WEEK, series_payload(WEEK, values), allow_trailing_nulls=False)
+        parse_chunk(LOAD, WEEK, series_payload(WEEK, values), is_open=False)
 
 
 def test_gap_is_an_error() -> None:
     rows = [[WEEK + i * QUARTER_HOUR_MS, 1.0] for i in range(673) if i != 100]
     payload = json.dumps({"series": rows}).encode()
     with pytest.raises(ChunkValidationError, match="gap or wrong step at point 100"):
-        parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=False)
+        parse_chunk(LOAD, WEEK, payload, is_open=False)
 
 
 def test_duplicate_timestamp_is_an_error() -> None:
     rows = [[WEEK + i * QUARTER_HOUR_MS, 1.0] for i in range(672)]
     rows[5][0] = rows[4][0]
     with pytest.raises(ChunkValidationError, match="point 5"):
-        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), allow_trailing_nulls=False)
+        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), is_open=False)
 
 
 def test_hourly_resolution_is_rejected_as_wrong_step() -> None:
     rows = [[WEEK + i * 4 * QUARTER_HOUR_MS, 1.0] for i in range(672)]
     with pytest.raises(ChunkValidationError, match="point 1"):
-        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), allow_trailing_nulls=False)
+        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), is_open=False)
 
 
 def test_chunk_must_start_at_its_timestamp() -> None:
@@ -145,29 +142,59 @@ def test_chunk_must_start_at_its_timestamp() -> None:
             LOAD,
             WEEK,
             series_payload(WEEK + QUARTER_HOUR_MS, full_week(WEEK)),
-            allow_trailing_nulls=False,
+            is_open=False,
         )
 
 
-def test_null_inside_series_is_an_error() -> None:
+def test_source_gaps_are_left_out_and_counted() -> None:
     values = full_week(WEEK)
-    values[10] = None
-    with pytest.raises(ChunkValidationError, match="null inside"):
-        parse_chunk(LOAD, WEEK, series_payload(WEEK, values), allow_trailing_nulls=True)
+    values[10:106] = [None] * 96  # one missing day, as in real SMARD data
+    frame = parse_chunk(LOAD, WEEK, series_payload(WEEK, values), is_open=False)
+    assert frame.height == 672 - 96
+    assert frame["value"].null_count() == 0
+    assert missing_points(frame, WEEK, is_open=False) == (96, WEEK + 10 * QUARTER_HOUR_MS)
 
 
-def test_trailing_nulls_only_allowed_in_newest_chunk() -> None:
+def test_leading_gap_at_the_start_of_the_history() -> None:
+    first = 1419807600000  # 2014-12-29: SMARD values start on 2015-01-01
+    values: list[float | None] = [None] * 288 + [1.0] * 384
+    frame = parse_chunk(LOAD, first, series_payload(first, values), is_open=False)
+    assert frame.height == 384
+    assert missing_points(frame, first, is_open=False) == (288, first)
+
+
+def test_trailing_nulls_are_pending_in_open_chunks_and_gaps_in_completed_ones() -> None:
     values = full_week(WEEK)
     values[-8:] = [None] * 8
     payload = series_payload(WEEK, values)
-    assert parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=True).height == 664
-    with pytest.raises(ChunkValidationError, match="trailing nulls in a completed chunk"):
-        parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=False)
+    open_frame = parse_chunk(LOAD, WEEK, payload, is_open=True)
+    assert open_frame.height == 664
+    assert missing_points(open_frame, WEEK, is_open=True) == (0, None)
+    closed = parse_chunk(LOAD, WEEK, payload, is_open=False)
+    assert missing_points(closed, WEEK, is_open=False) == (8, WEEK + 664 * QUARTER_HOUR_MS)
+
+
+def test_open_chunk_counts_gaps_before_the_newest_value() -> None:
+    values = full_week(WEEK)
+    values[5] = None
+    values[-8:] = [None] * 8
+    frame = parse_chunk(LOAD, WEEK, series_payload(WEEK, values), is_open=True)
+    assert missing_points(frame, WEEK, is_open=True) == (1, WEEK + 5 * QUARTER_HOUR_MS)
+
+
+def test_completed_chunk_without_values_is_an_error() -> None:
+    with pytest.raises(ChunkValidationError, match="no values in a completed chunk"):
+        parse_chunk(LOAD, WEEK, series_payload(WEEK, [None] * 672), is_open=False)
+
+
+def test_empty_open_chunk_has_no_gap() -> None:
+    frame = parse_chunk(LOAD, WEEK, series_payload(WEEK, [None] * 672), is_open=True)
+    assert missing_points(frame, WEEK, is_open=True) == (0, None)
 
 
 def test_newest_chunk_without_any_value_yields_no_rows() -> None:
     payload = series_payload(WEEK, [None] * 672)
-    assert parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=True).height == 0
+    assert parse_chunk(LOAD, WEEK, payload, is_open=True).height == 0
 
 
 @pytest.mark.parametrize(
@@ -184,7 +211,7 @@ def test_malformed_points_are_errors(row: object, message: str) -> None:
     rows: list[object] = [[WEEK + i * QUARTER_HOUR_MS, 1.0] for i in range(672)]
     rows[0] = row
     with pytest.raises(ChunkValidationError, match=message):
-        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), allow_trailing_nulls=False)
+        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), is_open=False)
 
 
 @pytest.mark.parametrize("bad", ["12", True, [1]])
@@ -192,7 +219,7 @@ def test_non_numeric_values_are_errors(bad: object) -> None:
     rows: list[list[object]] = [[WEEK + i * QUARTER_HOUR_MS, 1.0] for i in range(672)]
     rows[3][1] = bad
     with pytest.raises(ChunkValidationError, match="bad value at 3"):
-        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), allow_trailing_nulls=False)
+        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), is_open=False)
 
 
 @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
@@ -200,7 +227,7 @@ def test_non_finite_values_are_errors(literal: str) -> None:
     rows = [[WEEK + i * QUARTER_HOUR_MS, 1.0] for i in range(672)]
     text = json.dumps({"series": rows}).replace("1.0]", f"{literal}]", 1)
     with pytest.raises(ChunkValidationError, match="non-finite"):
-        parse_chunk(LOAD, WEEK, text.encode(), allow_trailing_nulls=False)
+        parse_chunk(LOAD, WEEK, text.encode(), is_open=False)
 
 
 def test_negative_energy_is_an_error_but_negative_price_is_not() -> None:
@@ -208,13 +235,13 @@ def test_negative_energy_is_an_error_but_negative_price_is_not() -> None:
     values[0] = -5.0
     payload = series_payload(WEEK, values)
     with pytest.raises(ChunkValidationError, match="negative"):
-        parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=False)
-    assert parse_chunk(PRICE, WEEK, payload, allow_trailing_nulls=False)["value"][0] == -5.0
+        parse_chunk(LOAD, WEEK, payload, is_open=False)
+    assert parse_chunk(PRICE, WEEK, payload, is_open=False)["value"][0] == -5.0
 
 
 def test_integer_values_are_accepted_as_float() -> None:
     values: list[float | None] = [int(v) if v is not None else None for v in full_week(WEEK, 7)]
-    frame = parse_chunk(LOAD, WEEK, series_payload(WEEK, values), allow_trailing_nulls=False)
+    frame = parse_chunk(LOAD, WEEK, series_payload(WEEK, values), is_open=False)
     assert frame["value"].dtype.is_float()
 
 
