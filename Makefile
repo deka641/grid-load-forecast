@@ -1,4 +1,5 @@
-# Local quality gate. `make verify` runs every step in order and stops at the first failure.
+# Local quality gates. `make verify-fast` (during work) and `make verify` (before merging large
+# changes, before every push and release) run their steps in order and stop at the first failure.
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := help
@@ -7,8 +8,10 @@ SHELL := /bin/bash
 UV  := uv run --locked
 NPM := npm --prefix web
 T   := timeout -k 10
+GITLEAKS := zricethezav/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9
+SCAN_DIR := .gitleaks-scan
 
-.PHONY: help install deps verify prod-check loadtest prod-down audit lint typecheck test openapi openapi-check build docs smoke clean
+.PHONY: help install deps verify-fast verify style secrets secrets-history test-fast prod-check loadtest prod-down audit lint typecheck test openapi openapi-check build docs smoke clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -23,8 +26,28 @@ deps: ## Fail early if the locked environments are missing or out of date
 	@sha256sum --status -c web/node_modules/.lock.sha256 2>/dev/null || { echo "web/node_modules was not installed from the current package-lock.json: run make install"; exit 1; }
 	@$(T) 120 uv sync --quiet --locked --check || { echo "Python environment differs from uv.lock: run make install"; exit 1; }
 
-verify: deps audit lint typecheck test openapi-check build docs ## Full local gate
+verify-fast: deps lint typecheck style secrets test-fast ## Fast gate: lint, types, style, secrets, tests
+	@echo "verify-fast: all steps passed"
+
+verify: deps lint typecheck style secrets audit secrets-history test openapi-check build docs ## Full gate
 	@echo "verify: all steps passed"
+
+style: ## No emojis or em/en dashes in versioned text files
+	$(T) 60 $(UV) python scripts/check_style.py
+
+secrets: ## Secret scan of the versioned files in the working tree
+	rm -rf $(SCAN_DIR)
+	mkdir $(SCAN_DIR)
+	git ls-files -z | xargs -0 cp --parents -t $(SCAN_DIR)
+	$(T) 120 docker run --rm -v "$(CURDIR)/$(SCAN_DIR):/scan:ro" $(GITLEAKS) dir /scan --no-banner --redact
+	rm -rf $(SCAN_DIR)
+
+secrets-history: ## Secret scan over the full git history
+	$(T) 300 docker run --rm -v "$(CURDIR):/repo:ro" $(GITLEAKS) git /repo --no-banner --redact
+
+test-fast: ## Tests without coverage
+	$(T) 600 $(UV) pytest -q -p no:cacheprovider
+	$(T) 300 $(NPM) run --silent test
 
 audit: ## Dependency vulnerability audit (needs network to the package indexes)
 	$(T) 300 uv export --quiet --locked --no-emit-project --format requirements.txt -o .audit-requirements.txt

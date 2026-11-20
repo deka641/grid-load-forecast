@@ -12,7 +12,7 @@ dependencies = [
     "fastapi",
     "holidays",
     "tzdata",
-    "httpx2>=2.16.2,<3",
+    "httpx2>=2.16,<3",
     "lightgbm",
     "polars",
     "pyarrow",
@@ -39,6 +39,10 @@ dev = [
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]
 build-backend = "uv_build"
+
+[tool.uv]
+# Only resolve package versions published at least seven days ago.
+exclude-newer = "7 days"
 
 [tool.uv.build-backend]
 module-name = "gridload"

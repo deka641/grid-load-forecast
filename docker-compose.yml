@@ -7,12 +7,21 @@ x-hardening: &hardening
   security_opt:
     - no-new-privileges:true
   pids_limit: 256
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 x-python: &python
   <<: *hardening
   image: grid-load-forecast-python:local
   environment:
     GRIDLOAD_INCLUDE_PRICES: ${GRIDLOAD_INCLUDE_PRICES:-true}
+    # Fixed thread pools instead of one or more threads per host core.
+    POLARS_MAX_THREADS: "2"
+    OPENBLAS_NUM_THREADS: "2"
+    OMP_NUM_THREADS: "2"
   tmpfs:
     - /tmp:size=64m,noexec,nosuid
 
@@ -27,6 +36,7 @@ services:
     volumes:
       - gridload-data:/data
     mem_limit: 2g
+    memswap_limit: 2g
     healthcheck:
       # Healthy while a run reports progress, or if the last ok or partial run is under
       # 26 h old and the newest load value under 12 h old.
@@ -46,6 +56,7 @@ services:
     volumes:
       - gridload-data:/data:ro
     mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
       interval: 30s
@@ -59,17 +70,19 @@ services:
       context: .
       dockerfile: docker/web.Dockerfile
     image: grid-load-forecast-web:local
-    cap_add: [NET_BIND_SERVICE]
+    # Caddy listens on 8080, so it runs without root and without capabilities.
+    user: "10002:10002"
     ports:
       - "127.0.0.1:8460:8080"
     depends_on:
       api:
         condition: service_healthy
     mem_limit: 128m
+    memswap_limit: 128m
     tmpfs:
       - /tmp:size=16m,noexec,nosuid
-      - /config:size=4m
-      - /data:size=4m
+      - /config:size=4m,uid=10002,gid=10002
+      - /data:size=4m,uid=10002,gid=10002
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
       interval: 30s

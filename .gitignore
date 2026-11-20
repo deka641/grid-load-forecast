@@ -22,7 +22,6 @@ site/
 
 # Data and local state
 data/
-.audit/
-.remember/
 docker-compose.override.yml
 .env
+.gitleaks-scan/
