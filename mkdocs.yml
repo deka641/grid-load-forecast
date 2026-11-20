@@ -24,13 +24,31 @@ validation:
     anchors: warn
     absolute_links: warn
     unrecognized_links: warn
+markdown_extensions:
+  - tables
+  - admonition
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 nav:
   - Home: index.md
   - Tutorials:
-      - tutorials/index.md
+      - Run the stack locally: tutorials/run-locally.md
   - How-to guides:
-      - how-to/index.md
+      - Operate the pipeline: how-to/operate.md
+      - Develop and verify changes: how-to/develop.md
   - Reference:
-      - reference/index.md
+      - Data model: reference/data-model.md
+      - HTTP API: reference/api.md
+      - Configuration: reference/configuration.md
+      - Command line: reference/cli.md
+      - Backtest report: reference/backtest.md
   - Explanation:
-      - explanation/index.md
+      - Architecture: explanation/architecture.md
+      - Forecast and backtest method: explanation/forecast.md
+      - Data source: explanation/data-source.md

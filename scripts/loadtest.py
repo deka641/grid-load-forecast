@@ -10,8 +10,9 @@ status, the forecast of the newest delivery day, the backtest metrics, the last
 seven days of generation and price, and the largest allowed actuals requests
 (one year of all series hourly, 31 days quarter-hourly). Container memory is
 sampled with ``docker stats`` during the run and compared with the configured
-limits. Exit code 1 if a request failed with anything other than the API's own
-"busy" 503, or if a container used more than 90 % of its memory limit.
+limits. Exit code 1 if any request returned something other than 200 or the
+API's own busy 503, if busy responses exceed 5 % of all requests, if a container
+used more than 90 % of its memory limit, or if memory sampling failed.
 """
 
 import argparse
@@ -122,6 +123,7 @@ def sample_memory(
             _sample_once(project, peaks)
         except (OSError, ValueError, KeyError) as exc:
             print(f"memory sampling failed: {exc}", file=sys.stderr)
+            peaks.clear()  # partial samples would understate the peak: fail the run
             return
         stop.wait(1.0)
 

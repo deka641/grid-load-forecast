@@ -1,12 +1,13 @@
 # grid-load-forecast
 
-This project forecasts the German grid load for the next delivery day from public data published by the Bundesnetzagentur on SMARD.de. Release 0.1.0 will contain the data pipeline, the forecast model with a reproducible backtest, an HTTP API and a dashboard. The current state is the project skeleton.
+This project forecasts the German grid load for the next delivery day from public data published by the Bundesnetzagentur on SMARD.de. It loads the data with a validated, idempotent pipeline, trains a LightGBM model, measures its accuracy with a reproducible backtest against a naive baseline and the forecast SMARD publishes, and shows the result in a dashboard backed by a read-only API.
 
-The documentation follows four kinds of pages:
+Where to start:
 
-- [Tutorials](tutorials/index.md) take you from a fresh clone to a running stack.
-- [How-to guides](how-to/index.md) solve specific tasks such as a backfill.
-- [Reference](reference/index.md) describes the data model, the API and the configuration.
-- [Explanation](explanation/index.md) covers design decisions and the backtest method.
+- To see it running, follow [Run the stack locally](tutorials/run-locally.md).
+- To understand how good the forecast is and why the numbers can be trusted, read [Forecast and backtest method](explanation/forecast.md) and the [backtest report](reference/backtest.md).
+- To understand the moving parts, read [Architecture](explanation/architecture.md) and [Data source](explanation/data-source.md).
+- For day-to-day tasks, see [Operate the pipeline](how-to/operate.md) and [Develop and verify changes](how-to/develop.md).
+- For exact definitions, see the [data model](reference/data-model.md), the [HTTP API](reference/api.md), the [configuration](reference/configuration.md) and the [command line](reference/cli.md).
 
 Data source: Bundesnetzagentur | SMARD.de, licensed under CC BY 4.0.
