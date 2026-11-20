@@ -79,7 +79,9 @@ def load(
 ) -> RunResult:
     """Ingest, run follow-up steps, publish the snapshot and update the heartbeat.
 
-    If a step after ingestion fails, the load run is marked failed as well.
+    The load run gets its final status and ``finished_at`` once the follow-up steps
+    are done, just before the snapshot that contains it is published. If a step
+    after ingestion fails, the load run is marked failed as well.
     """
     series = select(keys, include_prices=settings.include_prices)
     excluded = [] if settings.include_prices else price_keys()
@@ -91,7 +93,9 @@ def load(
     try:
         with connect(settings.warehouse_path) as con:
             ingestor = Ingestor(con, client, progress=beat, accept_withdrawals=accept_withdrawals)
-            result = ingestor.run(series, mode=mode, since=since, refetch_weeks=refetch_weeks)
+            result = ingestor.run(
+                series, mode=mode, since=since, refetch_weeks=refetch_weeks, finish=False
+            )
             try:
                 failed_steps = [] if post_ingest is None else post_ingest(con, settings, beat)
                 if failed_steps:
@@ -99,7 +103,7 @@ def load(
                     result.errors.extend(f"step failed: {name}" for name in failed_steps)
                     if result.status == "ok":
                         result.status = "partial"
-                        ingestor.finish(result.run_id, "partial")
+                ingestor.finish(result.run_id, result.status)
                 row = con.execute(
                     "SELECT max(ts_utc) FROM observations WHERE series_key = 'load'"
                 ).fetchone()

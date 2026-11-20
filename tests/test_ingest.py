@@ -247,7 +247,10 @@ def test_week_containing_since_is_included(con: duckdb.DuckDBPyConnection, fake:
     assert result.loaded == 4
 
 
-def test_unexpected_exception_marks_run_failed(con: duckdb.DuckDBPyConnection) -> None:
+@pytest.mark.parametrize("finish", [True, False])
+def test_unexpected_exception_marks_run_failed(
+    con: duckdb.DuckDBPyConnection, finish: bool
+) -> None:
     class Exploding(SmardClient):
         def __init__(self) -> None:
             pass
@@ -256,8 +259,9 @@ def test_unexpected_exception_marks_run_failed(con: duckdb.DuckDBPyConnection) -
             raise RuntimeError("bug")
 
     with pytest.raises(RuntimeError):
-        Ingestor(con, Exploding()).run([LOAD], mode="backfill")
-    assert con.execute("SELECT status FROM load_runs").fetchall() == [("failed",)]
+        Ingestor(con, Exploding()).run([LOAD], mode="backfill", finish=finish)
+    rows = con.execute("SELECT status, finished_at IS NOT NULL FROM load_runs").fetchall()
+    assert rows == [("failed", True)]
 
 
 def test_progress_callback_sees_every_chunk(

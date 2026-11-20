@@ -108,7 +108,14 @@ class Ingestor:
         mode: str,
         since: datetime | None = None,
         refetch_weeks: int = 4,
+        finish: bool = True,
     ) -> RunResult:
+        """Load the series and set the run status.
+
+        With ``finish=False`` the run stays ``running`` and the caller sets the final
+        status with :meth:`finish` after its own follow-up steps; a crash still marks
+        the run failed here.
+        """
         result = RunResult(run_id=uuid.uuid4().hex, mode=mode)
         started = self._clock()
         # Runs left in 'running' were killed; the file lock guarantees no other writer.
@@ -134,7 +141,8 @@ class Ingestor:
                 result.status = "failed"
             else:
                 result.status = "partial" if result.errors else "ok"
-            self.finish(result.run_id, result.status)
+            if finish or crashed:
+                self.finish(result.run_id, result.status)
         return result
 
     def finish(self, run_id: str, status: str) -> None:

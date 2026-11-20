@@ -316,3 +316,33 @@ def test_failed_step_after_a_partial_ingest_keeps_partial(
     )
     assert result.status == "partial"
     assert result.errors[-1] == "step failed: forecast"
+
+
+def test_run_finishes_after_the_follow_up_steps(settings: Settings, fake: FakeSmard) -> None:
+    seen: list[tuple[object, ...]] = []
+
+    def steps(
+        con: duckdb.DuckDBPyConnection, _settings: Settings, _tick: Callable[[], None]
+    ) -> list[str]:
+        row = con.execute("SELECT status, finished_at, now() FROM load_runs").fetchone()
+        assert row is not None
+        seen.append(row)
+        return []
+
+    result = jobs.load(
+        settings,
+        mode="backfill",
+        keys=["load"],
+        client_factory=lambda _s: fake.client(),
+        post_ingest=steps,
+    )
+    assert result.status == "ok"
+    assert seen[0][:2] == ("running", None)
+    served = duckdb.connect(str(settings.serving_path), read_only=True)
+    try:
+        row = served.execute("SELECT status, finished_at FROM load_runs").fetchone()
+    finally:
+        served.close()
+    assert row is not None
+    assert row[0] == "ok"
+    assert row[1] >= seen[0][2]
