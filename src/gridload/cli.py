@@ -49,6 +49,8 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    # One line per HTTP request would bury the run summary.
+    logging.getLogger("httpx2").setLevel(logging.WARNING)
     settings = Settings.from_env()
     if args.command == "status":
         print(jobs.dumps(jobs.status(settings)))
