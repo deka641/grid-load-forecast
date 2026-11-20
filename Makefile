@@ -8,7 +8,7 @@ UV  := uv run --locked
 NPM := npm --prefix web
 T   := timeout -k 10
 
-.PHONY: help install deps verify loadtest audit lint typecheck test openapi openapi-check build docs smoke clean
+.PHONY: help install deps verify prod-check loadtest prod-down audit lint typecheck test openapi openapi-check build docs smoke clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -69,6 +69,15 @@ docs: ## MkDocs strict build
 
 smoke: ## Live request against SMARD (not part of verify)
 	$(T) 120 $(UV) python scripts/smoke.py
+
+prod-check: ## Production-like build on port 8461 with a copy of the local data
+	$(T) 900 ./scripts/prod_check.sh
+
+loadtest: ## Parallel dashboard requests against the prod-check stack
+	$(T) 300 $(UV) python scripts/loadtest.py --base http://127.0.0.1:8461 --project grid-load-forecast-check
+
+prod-down: ## Stop and remove the prod-check stack
+	docker compose -p grid-load-forecast-check -f docker-compose.yml -f docker-compose.check.yml down -v
 
 clean: ## Remove build artefacts
 	rm -rf site web/dist web/coverage .coverage coverage.json .pytest_cache .mypy_cache .ruff_cache

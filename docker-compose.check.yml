@@ -1,0 +1,15 @@
+# Isolated production-like instance for `make prod-check` and `make loadtest`.
+# Used as: docker compose -p grid-load-forecast-check -f docker-compose.yml -f docker-compose.check.yml
+services:
+  pipeline:
+    restart: "no"
+    # Serve the copied data without contacting SMARD: only the healthcheck runs.
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "true"]
+  api:
+    restart: "no"
+  web:
+    restart: "no"
+    ports: !override
+      - "127.0.0.1:8461:8080"
