@@ -1,25 +1,31 @@
 name: grid-load-forecast
 
-x-python: &python
-  build:
-    context: .
-    dockerfile: docker/python.Dockerfile
-  image: grid-load-forecast-python:local
+x-hardening: &hardening
   restart: unless-stopped
-  volumes:
-    - ./data:/data
   read_only: true
-  tmpfs:
-    - /tmp
+  cap_drop: [ALL]
   security_opt:
     - no-new-privileges:true
+  pids_limit: 256
+
+x-python: &python
+  <<: *hardening
+  image: grid-load-forecast-python:local
+  tmpfs:
+    - /tmp:size=64m,noexec,nosuid
 
 services:
   pipeline:
     <<: *python
+    build:
+      context: .
+      dockerfile: docker/python.Dockerfile
     command: ["supercronic", "/app/crontab"]
+    volumes:
+      - gridload-data:/data
     mem_limit: 2g
     healthcheck:
+      # Liveness placeholder. Replaced by a check of the last successful run.
       test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
       interval: 60s
       timeout: 5s
@@ -28,6 +34,11 @@ services:
   api:
     <<: *python
     command: ["uvicorn", "gridload.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+    depends_on:
+      pipeline:
+        condition: service_started
+    volumes:
+      - gridload-data:/data:ro
     mem_limit: 512m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
@@ -37,26 +48,27 @@ services:
       start_period: 10s
 
   web:
+    <<: *hardening
     build:
       context: .
       dockerfile: docker/web.Dockerfile
     image: grid-load-forecast-web:local
-    restart: unless-stopped
+    cap_add: [NET_BIND_SERVICE]
     ports:
       - "127.0.0.1:8460:8080"
     depends_on:
       api:
         condition: service_healthy
     mem_limit: 128m
-    read_only: true
     tmpfs:
-      - /tmp
-      - /config
-      - /data
-    security_opt:
-      - no-new-privileges:true
+      - /tmp:size=16m,noexec,nosuid
+      - /config:size=4m
+      - /data:size=4m
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
       interval: 30s
       timeout: 5s
       retries: 3
+
+volumes:
+  gridload-data:

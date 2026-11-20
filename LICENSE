@@ -20,22 +20,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
--------------------------------------------------------------------------------
-
-Data
-
-The MIT License above covers the source code only. It does not cover data.
-
-This project processes data published by the Bundesnetzagentur on SMARD.de.
-SMARD data is licensed under the Creative Commons Attribution 4.0
-International licence (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/).
-Required attribution: "Bundesnetzagentur | SMARD.de".
-
-Wholesale price data: the Bundesnetzagentur reviews the licensing of wholesale
-electricity prices shown on SMARD.de in its HEDWIG procedure. Until that review
-is concluded, price data is used here with that reservation. Price ingestion can
-be switched off, and the repository contains only a small excerpt of price data
-as test fixtures.
-
-The data files under tests/fixtures/ are excerpts of SMARD data and fall under
-CC BY 4.0 with the attribution above.

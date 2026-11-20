@@ -469,7 +469,7 @@ requires-dist = [
     { name = "duckdb" },
     { name = "fastapi" },
     { name = "holidays" },
-    { name = "httpx2" },
+    { name = "httpx2", specifier = ">=2.16.2,<3" },
     { name = "lightgbm" },
     { name = "polars" },
     { name = "pydantic" },

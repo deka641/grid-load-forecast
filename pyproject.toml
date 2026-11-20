@@ -4,14 +4,14 @@ version = "0.0.0"
 description = "Day-ahead forecast of German grid load from public SMARD data"
 readme = "README.md"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "DATA-LICENSE.md"]
 authors = [{ name = "Dennis Kasper" }]
 requires-python = ">=3.14"
 dependencies = [
     "duckdb",
     "fastapi",
     "holidays",
-    "httpx2",
+    "httpx2>=2.16.2,<3",
     "lightgbm",
     "polars",
     "pydantic",

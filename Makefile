@@ -2,10 +2,11 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := help
+.NOTPARALLEL:
 
 UV  := uv run --locked
 NPM := npm --prefix web
-T   := timeout
+T   := timeout -k 10
 
 .PHONY: help install verify audit lint typecheck test build docs smoke clean
 

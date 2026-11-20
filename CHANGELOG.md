@@ -9,3 +9,5 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 ### Added
 
 - Project skeleton: Python package, frontend, container setup, local quality gate and documentation site.
+
+[Unreleased]: https://github.com/deka641/grid-load-forecast/commits/master

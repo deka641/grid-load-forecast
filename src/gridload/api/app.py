@@ -18,7 +18,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="grid-load-forecast API",
         version=__version__,
-        docs_url="/api/docs",
+        docs_url=None,
         redoc_url=None,
         openapi_url="/api/openapi.json",
     )
