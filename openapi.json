@@ -1,0 +1,1009 @@
+{
+  "components": {
+    "schemas": {
+      "Actuals": {
+        "properties": {
+          "end": {
+            "description": "Last local day (Europe/Berlin), inclusive",
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/Resolution"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesValues"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "start": {
+            "description": "First local day (Europe/Berlin), inclusive",
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution",
+          "start",
+          "end",
+          "series"
+        ],
+        "title": "Actuals",
+        "type": "object"
+      },
+      "BacktestMetric": {
+        "properties": {
+          "mae": {
+            "description": "Mean absolute error in MWh per hour",
+            "title": "Mae",
+            "type": "number"
+          },
+          "mape": {
+            "description": "Mean absolute percentage error in percent",
+            "title": "Mape",
+            "type": "number"
+          },
+          "n": {
+            "description": "Number of evaluated hours",
+            "title": "N",
+            "type": "integer"
+          },
+          "scope_value": {
+            "title": "Scope Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope_value",
+          "mae",
+          "mape",
+          "n"
+        ],
+        "title": "BacktestMetric",
+        "type": "object"
+      },
+      "BacktestMetrics": {
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "first_day": {
+            "format": "date",
+            "title": "First Day",
+            "type": "string"
+          },
+          "last_day": {
+            "format": "date",
+            "title": "Last Day",
+            "type": "string"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "items": {
+                  "$ref": "#/components/schemas/BacktestMetric"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            },
+            "description": "Metrics by model, then by scope (overall, hour, day_type)",
+            "title": "Metrics",
+            "type": "object"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "created_at",
+          "first_day",
+          "last_day",
+          "config",
+          "metrics"
+        ],
+        "title": "BacktestMetrics",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "Error body for 404 and 503 responses.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "ForecastDay": {
+        "properties": {
+          "delivery_day": {
+            "description": "Local delivery day (Europe/Berlin)",
+            "format": "date",
+            "title": "Delivery Day",
+            "type": "string"
+          },
+          "points": {
+            "description": "One point per delivery hour: 23, 24 or 25 on clock-change days",
+            "items": {
+              "$ref": "#/components/schemas/ForecastPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "runs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ForecastRunInfo"
+            },
+            "description": "Run used per forecast model (lightgbm, baseline_week); missing if none",
+            "title": "Runs",
+            "type": "object"
+          },
+          "unit": {
+            "description": "Unit of all values: energy per hour",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivery_day",
+          "unit",
+          "runs",
+          "points"
+        ],
+        "title": "ForecastDay",
+        "type": "object"
+      },
+      "ForecastDays": {
+        "properties": {
+          "days": {
+            "description": "Delivery days with a forecast, newest first",
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "days",
+          "limit"
+        ],
+        "title": "ForecastDays",
+        "type": "object"
+      },
+      "ForecastPoint": {
+        "properties": {
+          "actual": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual"
+          },
+          "baseline_week": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Week"
+          },
+          "lightgbm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lightgbm"
+          },
+          "ts": {
+            "description": "Start of the delivery hour, Europe/Berlin offset",
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "tso": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tso"
+          }
+        },
+        "required": [
+          "ts",
+          "lightgbm",
+          "baseline_week",
+          "tso",
+          "actual"
+        ],
+        "title": "ForecastPoint",
+        "type": "object"
+      },
+      "ForecastRunInfo": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "issued_at",
+          "created_at"
+        ],
+        "title": "ForecastRunInfo",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Health": {
+        "description": "Liveness response.",
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "LastForecast": {
+        "properties": {
+          "delivery_day": {
+            "format": "date",
+            "title": "Delivery Day",
+            "type": "string"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "delivery_day",
+          "issued_at"
+        ],
+        "title": "LastForecast",
+        "type": "object"
+      },
+      "LoadRunInfo": {
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "mode",
+          "status",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "LoadRunInfo",
+        "type": "object"
+      },
+      "Point": {
+        "properties": {
+          "ts": {
+            "description": "Start of the interval, Europe/Berlin offset",
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "ts",
+          "value"
+        ],
+        "title": "Point",
+        "type": "object"
+      },
+      "Resolution": {
+        "enum": [
+          "hour",
+          "quarterhour"
+        ],
+        "title": "Resolution",
+        "type": "string"
+      },
+      "SeriesCatalog": {
+        "properties": {
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesInfo"
+            },
+            "title": "Series",
+            "type": "array"
+          }
+        },
+        "required": [
+          "series"
+        ],
+        "title": "SeriesCatalog",
+        "type": "object"
+      },
+      "SeriesFreshness": {
+        "properties": {
+          "age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Seconds from the end of the newest quarter hour to now; negative for forecast series that extend into the future",
+            "title": "Age Seconds"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Start of the newest quarter hour",
+            "title": "Last Ts"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "last_ts",
+          "age_seconds"
+        ],
+        "title": "SeriesFreshness",
+        "type": "object"
+      },
+      "SeriesInfo": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "category"
+        ],
+        "title": "SeriesInfo",
+        "type": "object"
+      },
+      "SeriesValues": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "points"
+        ],
+        "title": "SeriesValues",
+        "type": "object"
+      },
+      "Status": {
+        "properties": {
+          "attribution": {
+            "title": "Attribution",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "initialised": {
+            "description": "Whether a data snapshot is available",
+            "title": "Initialised",
+            "type": "boolean"
+          },
+          "last_forecast": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastForecast"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_load_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LoadRunInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "licence": {
+            "title": "Licence",
+            "type": "string"
+          },
+          "licence_url": {
+            "title": "Licence Url",
+            "type": "string"
+          },
+          "price_note": {
+            "title": "Price Note",
+            "type": "string"
+          },
+          "schema_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Version"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesFreshness"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "snapshot_created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Created At"
+          }
+        },
+        "required": [
+          "initialised",
+          "generated_at",
+          "snapshot_created_at",
+          "schema_version",
+          "series",
+          "last_load_run",
+          "last_forecast",
+          "attribution",
+          "licence",
+          "licence_url",
+          "price_note"
+        ],
+        "title": "Status",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "grid-load-forecast API",
+    "version": "0.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/actuals": {
+      "get": {
+        "description": "Return measured values for the local days ``start`` to ``end`` inclusive.",
+        "operationId": "actuals_api_v1_actuals_get",
+        "parameters": [
+          {
+            "description": "Comma-separated series keys from /api/v1/series (at most 20)",
+            "in": "query",
+            "name": "series",
+            "required": true,
+            "schema": {
+              "description": "Comma-separated series keys from /api/v1/series (at most 20)",
+              "examples": [
+                "load,gen_solar"
+              ],
+              "maxLength": 1000,
+              "title": "Series",
+              "type": "string"
+            }
+          },
+          {
+            "description": "First local day (Europe/Berlin)",
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "description": "First local day (Europe/Berlin)",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Last local day (Europe/Berlin)",
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "description": "Last local day (Europe/Berlin)",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "title": "End",
+              "type": "string"
+            }
+          },
+          {
+            "description": "hour: at most 366 days; quarterhour: at most 31 days",
+            "in": "query",
+            "name": "resolution",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Resolution",
+              "default": "hour",
+              "description": "hour: at most 366 days; quarterhour: at most 31 days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Actuals"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No data snapshot is available"
+          }
+        },
+        "summary": "Actuals",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/api/v1/backtest/metrics": {
+      "get": {
+        "description": "Return the metrics of the latest backtest run.",
+        "operationId": "backtest_metrics_api_v1_backtest_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestMetrics"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No matching data in the snapshot"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No data snapshot is available"
+          }
+        },
+        "summary": "Backtest Metrics",
+        "tags": [
+          "forecasts"
+        ]
+      }
+    },
+    "/api/v1/forecasts": {
+      "get": {
+        "description": "Return hourly forecasts, the SMARD forecast and the actual load for one day.",
+        "operationId": "forecasts_api_v1_forecasts_get",
+        "parameters": [
+          {
+            "description": "Local delivery day (Europe/Berlin); default: the latest day with a lightgbm forecast",
+            "in": "query",
+            "name": "delivery_day",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Local delivery day (Europe/Berlin); default: the latest day with a lightgbm forecast",
+              "title": "Delivery Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastDay"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No matching data in the snapshot"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No data snapshot is available"
+          }
+        },
+        "summary": "Forecasts",
+        "tags": [
+          "forecasts"
+        ]
+      }
+    },
+    "/api/v1/forecasts/days": {
+      "get": {
+        "description": "List delivery days that have a forecast, newest first.",
+        "operationId": "forecast_days_api_v1_forecasts_days_get",
+        "parameters": [
+          {
+            "description": "Maximum number of days",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 400,
+              "description": "Maximum number of days",
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastDays"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No data snapshot is available"
+          }
+        },
+        "summary": "Forecast Days",
+        "tags": [
+          "forecasts"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "description": "Report that the process is alive.",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "status"
+        ]
+      }
+    },
+    "/api/v1/series": {
+      "get": {
+        "description": "List the series this deployment serves.",
+        "operationId": "series_api_v1_series_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeriesCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Series",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "description": "Report data freshness, licence and attribution; works without a snapshot.",
+        "operationId": "status_api_v1_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Status",
+        "tags": [
+          "status"
+        ]
+      }
+    }
+  }
+}
