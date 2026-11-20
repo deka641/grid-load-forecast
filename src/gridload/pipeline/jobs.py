@@ -12,7 +12,7 @@ from gridload.config import Settings
 from gridload.pipeline import heartbeat, snapshot
 from gridload.pipeline.db import connect
 from gridload.pipeline.ingest import Ingestor, RunResult
-from gridload.series import select
+from gridload.series import price_keys, select
 from gridload.sources.smard import SmardClient
 
 ClientFactory = Callable[[Settings], SmardClient]
@@ -29,9 +29,10 @@ class _Beat:
     def __init__(self, settings: Settings, interval: float = 60.0) -> None:
         self._path = settings.heartbeat_path
         self._interval = interval
-        self._last = 0.0
+        self._last = float("-inf")
         previous = heartbeat.read(self._path)
         self.last_success = previous.last_success if previous else None
+        self.newest_load = previous.newest_load if previous else None
 
     def __call__(self, _series: str = "", _chunk: int = 0) -> None:
         now = time.monotonic()
@@ -39,15 +40,21 @@ class _Beat:
             self._last = now
             heartbeat.write(
                 self._path,
-                heartbeat.Heartbeat("running", heartbeat.now_iso(), self.last_success),
+                heartbeat.Heartbeat(
+                    "running", heartbeat.now_iso(), self.last_success, None, self.newest_load
+                ),
             )
 
-    def finish(self, status: str) -> None:
-        if status == "ok":
+    def finish(self, status: str, newest_load: datetime | None = None) -> None:
+        if status in {"ok", "partial"}:
             self.last_success = heartbeat.now_iso()
+        if newest_load is not None:
+            self.newest_load = newest_load.astimezone(UTC).isoformat()
         heartbeat.write(
             self._path,
-            heartbeat.Heartbeat("idle", heartbeat.now_iso(), self.last_success, status),
+            heartbeat.Heartbeat(
+                "idle", heartbeat.now_iso(), self.last_success, status, self.newest_load
+            ),
         )
 
 
@@ -57,34 +64,55 @@ def load(
     mode: str,
     keys: list[str] | None = None,
     since: datetime | None = None,
+    refetch_weeks: int = 4,
     client_factory: ClientFactory = default_client,
     post_ingest: PostIngest | None = None,
 ) -> RunResult:
-    """Ingest, run follow-up steps, publish the snapshot and update the heartbeat."""
+    """Ingest, run follow-up steps, publish the snapshot and update the heartbeat.
+
+    If a step after ingestion fails, the load run is marked failed as well.
+    """
     series = select(keys, include_prices=settings.include_prices)
+    excluded = [] if settings.include_prices else price_keys()
     beat = _Beat(settings)
     beat()
     client = client_factory(settings)
     status = "failed"
+    newest: datetime | None = None
     try:
         with connect(settings.warehouse_path) as con:
-            result = Ingestor(con, client, progress=beat).run(series, mode=mode, since=since)
-            if post_ingest is not None:
-                post_ingest(con, settings)
-            con.execute("CHECKPOINT")
-            snapshot.publish(con, settings.serving_path)
+            ingestor = Ingestor(con, client, progress=beat)
+            result = ingestor.run(series, mode=mode, since=since, refetch_weeks=refetch_weeks)
+            try:
+                if post_ingest is not None:
+                    post_ingest(con, settings)
+                row = con.execute(
+                    "SELECT max(ts_utc) FROM observations WHERE series_key = 'load'"
+                ).fetchone()
+                newest = row[0] if row else None
+                con.execute("CHECKPOINT")
+                snapshot.publish(con, settings.serving_path, exclude_series=excluded)
+            except Exception:
+                ingestor.finish(result.run_id, "failed")
+                raise
         status = result.status
     finally:
         client.close()
-        beat.finish(status)
+        beat.finish(status, newest)
     return result
 
 
 def status(settings: Settings) -> dict[str, Any]:
-    """Summarise the warehouse: last runs, per-series coverage and recent errors."""
-    if not settings.warehouse_path.exists():
-        return {"warehouse": str(settings.warehouse_path), "initialised": False}
-    with connect(settings.warehouse_path) as con:
+    """Summarise the published snapshot: last runs, per-series coverage, recent errors.
+
+    Reads ``serving.duckdb`` read-only, so it works while the pipeline is writing.
+    """
+    path = settings.serving_path
+    if not path.exists():
+        return {"snapshot": str(path), "initialised": False}
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        con.execute("SET TimeZone = 'UTC'")
         runs = con.execute(
             "SELECT run_id, mode, started_at, finished_at, status FROM load_runs "
             "ORDER BY started_at DESC LIMIT 5"
@@ -97,8 +125,10 @@ def status(settings: Settings) -> dict[str, Any]:
             "SELECT series_key, chunk_ts, message FROM load_log WHERE status = 'error' "
             "AND run_id = (SELECT run_id FROM load_runs ORDER BY started_at DESC LIMIT 1)"
         ).fetchall()
+    finally:
+        con.close()
     return {
-        "warehouse": str(settings.warehouse_path),
+        "snapshot": str(path),
         "initialised": True,
         "runs": [
             {
@@ -131,4 +161,4 @@ def dumps(data: object) -> str:
 
 
 def post_ingest_steps(con: duckdb.DuckDBPyConnection, settings: Settings) -> None:
-    """Steps after ingestion in the scheduled job. The forecast is added here."""
+    """Steps after ingestion in the scheduled job (none yet; the forecast hooks in here)."""

@@ -54,7 +54,7 @@ def test_every_recorded_chunk_is_valid(series: Series) -> None:
     latest = latest_of(series)
     for ts in recorded_chunks(series):
         frame = parse_chunk(
-            series, ts, fixture_bytes(chunk_name(series, ts)), is_latest=ts == latest
+            series, ts, fixture_bytes(chunk_name(series, ts)), allow_trailing_nulls=ts == latest
         )
         assert frame.height > 0
         assert frame["ts_utc"].is_sorted()
@@ -63,7 +63,9 @@ def test_every_recorded_chunk_is_valid(series: Series) -> None:
 
 @pytest.mark.parametrize(("chunk", "points"), [(SPRING, 668), (AUTUMN, 676), (REGULAR, 672)])
 def test_clock_change_weeks_have_23_and_25_hour_sundays(chunk: int, points: int) -> None:
-    frame = parse_chunk(LOAD, chunk, fixture_bytes(chunk_name(LOAD, chunk)), is_latest=False)
+    frame = parse_chunk(
+        LOAD, chunk, fixture_bytes(chunk_name(LOAD, chunk)), allow_trailing_nulls=False
+    )
     assert frame.height == points
     local_days = frame["ts_utc"].dt.convert_time_zone("Europe/Berlin").dt.date().value_counts()
     sunday = local_days.sort("ts_utc")["count"].to_list()[-1]
@@ -74,13 +76,13 @@ def test_newest_chunk_drops_future_nulls() -> None:
     latest = latest_of(LOAD)
     payload = fixture_bytes(chunk_name(LOAD, latest))
     total = len(json.loads(payload)["series"])
-    frame = parse_chunk(LOAD, latest, payload, is_latest=True)
+    frame = parse_chunk(LOAD, latest, payload, allow_trailing_nulls=True)
     assert 0 < frame.height < total
 
 
 def test_negative_prices_are_valid() -> None:
     payload = fixture_bytes(chunk_name(PRICE, NEGATIVE))
-    frame = parse_chunk(PRICE, NEGATIVE, payload, is_latest=False)
+    frame = parse_chunk(PRICE, NEGATIVE, payload, allow_trailing_nulls=False)
     assert frame["value"].min() == pytest.approx(-250.32)
 
 
@@ -108,39 +110,42 @@ WEEK = monday_ms(date(2026, 11, 9))
 )
 def test_empty_or_broken_responses_are_errors(payload: bytes, message: str) -> None:
     with pytest.raises(ChunkValidationError, match=message):
-        parse_chunk(LOAD, WEEK, payload, is_latest=True)
+        parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=True)
 
 
 def test_truncated_chunk_is_an_error() -> None:
     values = full_week(WEEK)[:-4]
     with pytest.raises(ChunkValidationError, match="expected 672"):
-        parse_chunk(LOAD, WEEK, series_payload(WEEK, values), is_latest=False)
+        parse_chunk(LOAD, WEEK, series_payload(WEEK, values), allow_trailing_nulls=False)
 
 
 def test_gap_is_an_error() -> None:
     rows = [[WEEK + i * QUARTER_HOUR_MS, 1.0] for i in range(673) if i != 100]
     payload = json.dumps({"series": rows}).encode()
     with pytest.raises(ChunkValidationError, match="gap or wrong step at point 100"):
-        parse_chunk(LOAD, WEEK, payload, is_latest=False)
+        parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=False)
 
 
 def test_duplicate_timestamp_is_an_error() -> None:
     rows = [[WEEK + i * QUARTER_HOUR_MS, 1.0] for i in range(672)]
     rows[5][0] = rows[4][0]
     with pytest.raises(ChunkValidationError, match="point 5"):
-        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), is_latest=False)
+        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), allow_trailing_nulls=False)
 
 
 def test_hourly_resolution_is_rejected_as_wrong_step() -> None:
     rows = [[WEEK + i * 4 * QUARTER_HOUR_MS, 1.0] for i in range(672)]
     with pytest.raises(ChunkValidationError, match="point 1"):
-        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), is_latest=False)
+        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), allow_trailing_nulls=False)
 
 
 def test_chunk_must_start_at_its_timestamp() -> None:
     with pytest.raises(ChunkValidationError, match="point 0"):
         parse_chunk(
-            LOAD, WEEK, series_payload(WEEK + QUARTER_HOUR_MS, full_week(WEEK)), is_latest=False
+            LOAD,
+            WEEK,
+            series_payload(WEEK + QUARTER_HOUR_MS, full_week(WEEK)),
+            allow_trailing_nulls=False,
         )
 
 
@@ -148,21 +153,21 @@ def test_null_inside_series_is_an_error() -> None:
     values = full_week(WEEK)
     values[10] = None
     with pytest.raises(ChunkValidationError, match="null inside"):
-        parse_chunk(LOAD, WEEK, series_payload(WEEK, values), is_latest=True)
+        parse_chunk(LOAD, WEEK, series_payload(WEEK, values), allow_trailing_nulls=True)
 
 
 def test_trailing_nulls_only_allowed_in_newest_chunk() -> None:
     values = full_week(WEEK)
     values[-8:] = [None] * 8
     payload = series_payload(WEEK, values)
-    assert parse_chunk(LOAD, WEEK, payload, is_latest=True).height == 664
+    assert parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=True).height == 664
     with pytest.raises(ChunkValidationError, match="trailing nulls in a completed chunk"):
-        parse_chunk(LOAD, WEEK, payload, is_latest=False)
+        parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=False)
 
 
 def test_newest_chunk_without_any_value_yields_no_rows() -> None:
     payload = series_payload(WEEK, [None] * 672)
-    assert parse_chunk(LOAD, WEEK, payload, is_latest=True).height == 0
+    assert parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=True).height == 0
 
 
 @pytest.mark.parametrize(
@@ -179,7 +184,7 @@ def test_malformed_points_are_errors(row: object, message: str) -> None:
     rows: list[object] = [[WEEK + i * QUARTER_HOUR_MS, 1.0] for i in range(672)]
     rows[0] = row
     with pytest.raises(ChunkValidationError, match=message):
-        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), is_latest=False)
+        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), allow_trailing_nulls=False)
 
 
 @pytest.mark.parametrize("bad", ["12", True, [1]])
@@ -187,7 +192,7 @@ def test_non_numeric_values_are_errors(bad: object) -> None:
     rows: list[list[object]] = [[WEEK + i * QUARTER_HOUR_MS, 1.0] for i in range(672)]
     rows[3][1] = bad
     with pytest.raises(ChunkValidationError, match="bad value at 3"):
-        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), is_latest=False)
+        parse_chunk(LOAD, WEEK, json.dumps({"series": rows}).encode(), allow_trailing_nulls=False)
 
 
 @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
@@ -195,7 +200,7 @@ def test_non_finite_values_are_errors(literal: str) -> None:
     rows = [[WEEK + i * QUARTER_HOUR_MS, 1.0] for i in range(672)]
     text = json.dumps({"series": rows}).replace("1.0]", f"{literal}]", 1)
     with pytest.raises(ChunkValidationError, match="non-finite"):
-        parse_chunk(LOAD, WEEK, text.encode(), is_latest=False)
+        parse_chunk(LOAD, WEEK, text.encode(), allow_trailing_nulls=False)
 
 
 def test_negative_energy_is_an_error_but_negative_price_is_not() -> None:
@@ -203,13 +208,13 @@ def test_negative_energy_is_an_error_but_negative_price_is_not() -> None:
     values[0] = -5.0
     payload = series_payload(WEEK, values)
     with pytest.raises(ChunkValidationError, match="negative"):
-        parse_chunk(LOAD, WEEK, payload, is_latest=False)
-    assert parse_chunk(PRICE, WEEK, payload, is_latest=False)["value"][0] == -5.0
+        parse_chunk(LOAD, WEEK, payload, allow_trailing_nulls=False)
+    assert parse_chunk(PRICE, WEEK, payload, allow_trailing_nulls=False)["value"][0] == -5.0
 
 
 def test_integer_values_are_accepted_as_float() -> None:
     values: list[float | None] = [int(v) if v is not None else None for v in full_week(WEEK, 7)]
-    frame = parse_chunk(LOAD, WEEK, series_payload(WEEK, values), is_latest=False)
+    frame = parse_chunk(LOAD, WEEK, series_payload(WEEK, values), allow_trailing_nulls=False)
     assert frame["value"].dtype.is_float()
 
 
@@ -337,3 +342,29 @@ def test_raw_chunk_keeps_payload_and_hash() -> None:
     raw = fake.client().chunk(LOAD, REGULAR)
     assert raw.payload == (FIXTURES / chunk_name(LOAD, REGULAR)).read_bytes()
     assert len(raw.sha256) == 64
+
+
+def test_retry_after_header_is_honoured() -> None:
+    responses = iter(
+        [
+            httpx2.Response(429, headers={"Retry-After": "30"}),
+            httpx2.Response(503, headers={"Retry-After": "soon"}),
+            httpx2.Response(503, headers={"Retry-After": "999"}),
+        ]
+    )
+    final = FakeSmard()
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return next(responses, None) or final.handle(request)
+
+    clock = FakeClock()
+    http = httpx2.Client(transport=httpx2.MockTransport(handler))
+    client = SmardClient(http, min_interval=0.0, backoff=1.0, sleep=clock.sleep, clock=clock)
+    assert client.index(LOAD)
+    assert clock.sleeps == [30.0, 2.0, 60.0]
+
+
+def test_fetch_reads_any_file() -> None:
+    fake = FakeSmard()
+    payload = fake.client().fetch("/410/DE/410_DE_hour_1742770800000.json")
+    assert payload == fixture_bytes("410_DE_hour_1742770800000.json")

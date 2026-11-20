@@ -1,3 +1,3 @@
-# Hourly pipeline run (UTC). Loads new and recent data, issues the day-ahead
-# forecast once per delivery day and publishes the serving snapshot.
+# Hourly pipeline run (UTC): loads new, incomplete and recent data, runs the
+# follow-up steps and publishes the serving snapshot.
 5 * * * * gridload run
