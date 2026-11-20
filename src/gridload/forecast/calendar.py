@@ -6,25 +6,13 @@ All forecasting logic works on local delivery days in Europe/Berlin, which have
 
 from datetime import UTC, date, datetime, time, timedelta
 from functools import cache
-from zoneinfo import ZoneInfo
 
 import holidays
 
-BERLIN = ZoneInfo("Europe/Berlin")
+from gridload.timezones import BERLIN
+
 ORIGIN_LOCAL_TIME = time(12, 0)
 DATA_DELAY = timedelta(hours=2)
-
-
-def local_midnight(day: date) -> datetime:
-    return datetime.combine(day, time(0, 0), tzinfo=BERLIN).astimezone(UTC)
-
-
-def day_hours(day: date) -> list[datetime]:
-    """UTC start of every hour of the local day (23, 24 or 25 entries)."""
-    start = local_midnight(day)
-    end = local_midnight(day + timedelta(days=1))
-    count = int((end - start) / timedelta(hours=1))
-    return [start + timedelta(hours=i) for i in range(count)]
 
 
 def origin_for(delivery_day: date) -> datetime:

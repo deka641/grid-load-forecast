@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 import numpy as np
 import pytest
 
+from gridload import timezones as tz
 from gridload.forecast import calendar as cal
 from gridload.forecast.backtest import Metric, mae, mape, metrics_for, run_backtest, score
 from gridload.forecast.features import FEATURES, History, baseline_week, day_features
@@ -164,4 +165,4 @@ def test_feature_store_masks(load: History) -> None:
     empty = FeatureStore.build(load, [])
     assert empty.matrix.shape == (0, len(FEATURES))
     assert len(params_hash()) == 12
-    assert store.row_ts[0] == cal.day_hours(date(2025, 3, 1))[0]
+    assert store.row_ts[0] == tz.day_hours(date(2025, 3, 1))[0]

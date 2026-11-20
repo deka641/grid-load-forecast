@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from gridload import cli
+from gridload import timezones as tz
 from gridload.config import Settings
 from gridload.forecast import calendar as cal
 from gridload.forecast import features, report, service
@@ -95,7 +96,7 @@ def test_post_ingest_issues_forecast_and_backtest(tmp_path: Path) -> None:
     con = duckdb.connect(str(settings.warehouse_path))
     ticks: list[int] = []
     try:
-        now = datetime(2025, 4, 29, 12, 30, tzinfo=cal.BERLIN)
+        now = datetime(2025, 4, 29, 12, 30, tzinfo=tz.BERLIN)
         jobs.post_ingest_steps(con, settings, lambda: ticks.append(1), now=now)
         runs = con.execute(
             "SELECT model, delivery_day, details FROM forecast_runs ORDER BY model"
@@ -127,10 +128,10 @@ def test_forecast_waits_for_data_and_is_degraded_late(
             "INSERT INTO backtest_metrics VALUES ('b', 'lightgbm', 'overall', 'all', 1, 1, 1)"
         )
         # Data ends at 2025-05-01 00:00: the hour before the 10:00 cutoff is missing.
-        jobs.post_ingest_steps(con, settings, now=datetime(2025, 5, 1, 13, tzinfo=cal.BERLIN))
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 5, 1, 13, tzinfo=tz.BERLIN))
         assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)
         assert "waits for data" in caplog.text
-        jobs.post_ingest_steps(con, settings, now=datetime(2025, 5, 1, 20, tzinfo=cal.BERLIN))
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 5, 1, 20, tzinfo=tz.BERLIN))
         details = con.execute(
             "SELECT details FROM forecast_runs WHERE model = 'lightgbm'"
         ).fetchone()
@@ -154,7 +155,7 @@ def test_failing_steps_are_isolated(
     monkeypatch.setattr(service, "run_and_store_backtest", boom)
     with connect(settings.warehouse_path) as con:
         failed = jobs.post_ingest_steps(
-            con, settings, now=datetime(2025, 4, 29, 13, tzinfo=cal.BERLIN)
+            con, settings, now=datetime(2025, 4, 29, 13, tzinfo=tz.BERLIN)
         )
     assert failed == ["forecast", "backtest"]
     assert "forecast step failed" in caplog.text
@@ -164,7 +165,7 @@ def test_failing_steps_are_isolated(
 def test_short_history_skips_the_forecast(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     settings = _settings_with_warehouse(tmp_path, FIRST, date(2025, 1, 10))
     with connect(settings.warehouse_path) as con:
-        jobs.post_ingest_steps(con, settings, now=datetime(2025, 1, 10, 13, tzinfo=cal.BERLIN))
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 1, 10, 13, tzinfo=tz.BERLIN))
         assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)
     assert "not enough training history" in caplog.text
 
@@ -219,9 +220,7 @@ def test_backtest_without_metrics_is_stored(tmp_path: Path) -> None:
 def test_forecast_with_no_baseline_values(tmp_path: Path) -> None:
     con = synthetic.warehouse(FIRST, date(2025, 3, 20))
     # Data stops on 2025-03-01: the model still runs, the baseline has no values at all.
-    con.execute(
-        "DELETE FROM observations WHERE ts_utc >= ?", [cal.local_midnight(date(2025, 3, 1))]
-    )
+    con.execute("DELETE FROM observations WHERE ts_utc >= ?", [tz.local_midnight(date(2025, 3, 1))])
     assert service.issue_forecast(con, date(2025, 3, 9)) is not None
     counts = con.execute(
         "SELECT r.model, count(f.run_id) FROM forecast_runs r LEFT JOIN forecasts f USING (run_id) "
@@ -269,8 +268,8 @@ def test_zero_metric_backtest_counts_as_stale(tmp_path: Path) -> None:
 def test_post_ingest_with_too_little_history_for_backtest(tmp_path: Path) -> None:
     settings = _settings_with_warehouse(tmp_path, FIRST, FIRST)
     with connect(settings.warehouse_path) as con:
-        con.execute("DELETE FROM observations WHERE ts_utc = ?", [cal.local_midnight(FIRST)])
-        jobs.post_ingest_steps(con, settings, now=datetime(2025, 1, 1, 13, tzinfo=cal.BERLIN))
+        con.execute("DELETE FROM observations WHERE ts_utc = ?", [tz.local_midnight(FIRST)])
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 1, 1, 13, tzinfo=tz.BERLIN))
         assert con.execute("SELECT count(*) FROM backtest_runs").fetchone() == (0,)
         assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)
 
@@ -278,7 +277,7 @@ def test_post_ingest_with_too_little_history_for_backtest(tmp_path: Path) -> Non
 def test_no_forecast_before_noon(tmp_path: Path) -> None:
     settings = _settings_with_warehouse(tmp_path, FIRST, LAST)
     with connect(settings.warehouse_path) as con:
-        jobs.post_ingest_steps(con, settings, now=datetime(2025, 4, 29, 11, 59, tzinfo=cal.BERLIN))
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 4, 29, 11, 59, tzinfo=tz.BERLIN))
         assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)
 
 
@@ -299,7 +298,7 @@ def test_degraded_forecast_needs_recent_data(
 ) -> None:
     settings = _settings_with_warehouse(tmp_path, FIRST, LAST)
     with connect(settings.warehouse_path) as con:
-        jobs.post_ingest_steps(con, settings, now=datetime(2025, 6, 15, 20, 30, tzinfo=cal.BERLIN))
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 6, 15, 20, 30, tzinfo=tz.BERLIN))
         assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)
     assert "no load data in the 24 h before the cutoff" in caplog.text
 
@@ -308,7 +307,7 @@ def test_backtest_is_attempted_at_most_once_a_day(tmp_path: Path) -> None:
     settings = _settings_with_warehouse(tmp_path, FIRST, date(2025, 2, 5))
     with connect(settings.warehouse_path) as con:
         for hour in (13, 14, 15):
-            jobs.post_ingest_steps(con, settings, now=datetime(2025, 2, 6, hour, tzinfo=cal.BERLIN))
+            jobs.post_ingest_steps(con, settings, now=datetime(2025, 2, 6, hour, tzinfo=tz.BERLIN))
         assert con.execute("SELECT count(*) FROM backtest_runs").fetchone() == (0,)
     attempt = json.loads((tmp_path / "backtest_attempt.json").read_text())
     assert attempt["attempted_at"] == "2025-02-06T12:00:00+00:00"
@@ -341,11 +340,11 @@ def test_hollowed_week_marks_the_forecast_degraded(
         con.execute(
             "DELETE FROM observations WHERE series_key = 'load' AND ts_utc >= ? AND ts_utc < ?",
             [
-                datetime(2025, 4, 23, tzinfo=cal.BERLIN),
-                datetime(2025, 4, 24, 16, tzinfo=cal.BERLIN),
+                datetime(2025, 4, 23, tzinfo=tz.BERLIN),
+                datetime(2025, 4, 24, 16, tzinfo=tz.BERLIN),
             ],
         )
-        jobs.post_ingest_steps(con, settings, now=datetime(2025, 4, 29, 12, 30, tzinfo=cal.BERLIN))
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 4, 29, 12, 30, tzinfo=tz.BERLIN))
         details = con.execute(
             "SELECT details FROM forecast_runs WHERE model = 'lightgbm'"
         ).fetchone()
@@ -400,7 +399,7 @@ def test_recent_gap_of_sixteen_hours_marks_the_forecast_degraded() -> None:
     day = date(2025, 4, 30)
     origin_day = day - timedelta(days=1)
     # 16 hours missing on the day before the origin day (the lag_2d source day).
-    start = datetime(origin_day.year, origin_day.month, origin_day.day - 1, 4, tzinfo=cal.BERLIN)
+    start = datetime(origin_day.year, origin_day.month, origin_day.day - 1, 4, tzinfo=tz.BERLIN)
     drop = {int((start + timedelta(hours=h)).timestamp() * 1000) for h in range(16)}
     keep = np.array([int(t) not in drop for t in load.ts])
     gappy = features.History(load.ts[keep], load.values[keep])
@@ -411,7 +410,7 @@ def test_recent_gap_of_sixteen_hours_marks_the_forecast_degraded() -> None:
 def test_missing_lag_14d_is_reported() -> None:
     load = synthetic.history(FIRST, LAST)
     day = date(2025, 4, 30)
-    source = cal.shift_local(cal.day_hours(day)[12], 14)
+    source = cal.shift_local(tz.day_hours(day)[12], 14)
     keep = load.ts != int(source.timestamp() * 1000)
     assert features.feature_gaps(features.History(load.ts[keep], load.values[keep]), day) == [
         "lag_14d"

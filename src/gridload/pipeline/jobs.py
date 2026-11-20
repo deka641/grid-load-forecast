@@ -12,6 +12,7 @@ from typing import Any
 import duckdb
 import numpy as np
 
+from gridload import timezones as tz
 from gridload.config import Settings
 from gridload.forecast import calendar as fcal
 from gridload.forecast import service
@@ -250,7 +251,7 @@ def _forecast_step(con: duckdb.DuckDBPyConnection, current: datetime) -> None:
         return
     load = service.load_history(con, "load")
     complete = load.has_hour_before(fcal.cutoff_for(day))
-    late = current.astimezone(fcal.BERLIN).time() >= DEGRADED_AFTER
+    late = current.astimezone(tz.BERLIN).time() >= DEGRADED_AFTER
     if not complete and not late:
         log.info("forecast for %s waits for data up to %s", day, fcal.cutoff_for(day))
         return

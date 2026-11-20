@@ -5,6 +5,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from gridload import timezones as tz
 from gridload.forecast import calendar as cal
 from gridload.forecast.features import History
 
@@ -13,7 +14,7 @@ from gridload.forecast.features import History
     ("day", "hours"), [(date(2025, 3, 30), 23), (date(2025, 10, 26), 25), (date(2025, 6, 1), 24)]
 )
 def test_day_hours_follow_clock_changes(day: date, hours: int) -> None:
-    stamps = cal.day_hours(day)
+    stamps = tz.day_hours(day)
     assert len(stamps) == hours
     assert len(set(stamps)) == hours
     assert all(cal.local_day(ts) == day for ts in stamps)
@@ -21,25 +22,21 @@ def test_day_hours_follow_clock_changes(day: date, hours: int) -> None:
 
 def test_origin_and_cutoff_are_local_noon_and_ten() -> None:
     day = date(2025, 10, 27)
-    assert cal.origin_for(day).astimezone(cal.BERLIN) == datetime(
-        2025, 10, 26, 12, tzinfo=cal.BERLIN
-    )
-    assert cal.cutoff_for(day).astimezone(cal.BERLIN) == datetime(
-        2025, 10, 26, 10, tzinfo=cal.BERLIN
-    )
+    assert cal.origin_for(day).astimezone(tz.BERLIN) == datetime(2025, 10, 26, 12, tzinfo=tz.BERLIN)
+    assert cal.cutoff_for(day).astimezone(tz.BERLIN) == datetime(2025, 10, 26, 10, tzinfo=tz.BERLIN)
 
 
 def test_shift_into_missing_spring_hour_uses_previous_hour() -> None:
     target = datetime(2025, 4, 6, 0, tzinfo=UTC)  # 02:00 CEST
-    shifted = cal.shift_local(target, 7).astimezone(cal.BERLIN)
+    shifted = cal.shift_local(target, 7).astimezone(tz.BERLIN)
     assert shifted.replace(tzinfo=None) == datetime(2025, 3, 30, 1)
 
 
 @pytest.mark.parametrize(("utc_hour", "fold"), [(0, 0), (1, 1)])
 def test_shift_from_repeated_autumn_hour_keeps_wall_clock(utc_hour: int, fold: int) -> None:
     target = datetime(2025, 10, 26, utc_hour, tzinfo=UTC)
-    assert target.astimezone(cal.BERLIN).fold == fold
-    shifted = cal.shift_local(target, 7).astimezone(cal.BERLIN)
+    assert target.astimezone(tz.BERLIN).fold == fold
+    shifted = cal.shift_local(target, 7).astimezone(tz.BERLIN)
     assert shifted.replace(tzinfo=None) == datetime(2025, 10, 19, 2)
 
 
@@ -56,8 +53,8 @@ def test_shift_into_repeated_autumn_hour_uses_first_occurrence() -> None:
 def test_shift_preserves_local_hour_where_it_exists(naive: datetime, days: int) -> None:
     ts = naive.replace(minute=0, second=0, microsecond=0, tzinfo=UTC)
     shifted = cal.shift_local(ts, days)
-    source = ts.astimezone(cal.BERLIN)
-    result = shifted.astimezone(cal.BERLIN)
+    source = ts.astimezone(tz.BERLIN)
+    result = shifted.astimezone(tz.BERLIN)
     assert result.date() == source.date() - timedelta(days=days)
     assert result.hour in (source.hour, source.hour - 1)
 

@@ -18,15 +18,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import httpx2
 import polars as pl
 
 from gridload.config import DEFAULT_BASE_URL, USER_AGENT
 from gridload.series import Series
+from gridload.timezones import BERLIN
 
-BERLIN = ZoneInfo("Europe/Berlin")
 QUARTER_HOUR_MS = 15 * 60 * 1000
 RESOLUTION = "quarterhour"
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})

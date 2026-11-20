@@ -1,13 +1,11 @@
-"""Validation of query parameters and conversion of local days to UTC ranges."""
+"""Validation of query parameters."""
 
-from datetime import UTC, date, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date
 
 from fastapi.exceptions import RequestValidationError
 
 from gridload.series import Series
 
-BERLIN = ZoneInfo("Europe/Berlin")
 MIN_DAY = date(2000, 1, 1)
 MAX_DAY = date(2099, 12, 31)
 MAX_SERIES = 20
@@ -46,29 +44,3 @@ def parse_series(value: str, catalog: dict[str, Series]) -> list[Series]:
     if unknown:
         raise invalid("series", value, f"unknown series: {', '.join(unknown)}")
     return [catalog[k] for k in dict.fromkeys(keys)]
-
-
-def local_midnight_utc(day: date) -> datetime:
-    """Return the UTC instant of local midnight at the start of ``day``."""
-    return datetime.combine(day, time(0), tzinfo=BERLIN).astimezone(UTC)
-
-
-def day_range_utc(first: date, last: date) -> tuple[datetime, datetime]:
-    """Return the half-open UTC range covering the local days ``first`` to ``last``."""
-    return local_midnight_utc(first), local_midnight_utc(last + timedelta(days=1))
-
-
-def hours_of_day(day: date) -> list[datetime]:
-    """Return the UTC start of every local hour of ``day`` (23, 24 or 25 hours).
-
-    The grid is built in UTC because adding a timedelta to a zoneinfo datetime
-    is wall-clock arithmetic and would ignore the clock change.
-    """
-    start, end = day_range_utc(day, day)
-    count = int((end - start) / timedelta(hours=1))
-    return [start + timedelta(hours=i) for i in range(count)]
-
-
-def to_local(ts: datetime) -> datetime:
-    """Convert an aware timestamp to Europe/Berlin."""
-    return ts.astimezone(BERLIN)

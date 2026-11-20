@@ -17,6 +17,7 @@ from datetime import date, timedelta
 import lightgbm as lgb
 import numpy as np
 
+from gridload import timezones as tz
 from gridload.forecast import calendar as cal
 from gridload.forecast.features import History, baseline_week
 from gridload.forecast.model import (
@@ -140,7 +141,7 @@ def run_backtest(
         rows = store.day_mask(day)
         model_pred = predict(booster, store.matrix[rows])
         baseline = baseline_week(load, day)
-        targets = cal.day_hours(day)
+        targets = tz.day_hours(day)
         actual = store.labels[rows]
         tso_values = np.array([tso.value_at(ts, cal.never()) for ts in targets])
         if np.all(np.isnan(actual)):
@@ -151,9 +152,9 @@ def run_backtest(
                 {
                     "delivery_day": day,
                     "target_ts": ts,
-                    "hour_local": ts.astimezone(cal.BERLIN).hour,
+                    "hour_local": ts.astimezone(tz.BERLIN).hour,
                     # fold 1 marks the repeated 02:00 hour on the autumn clock-change day
-                    "fold": ts.astimezone(cal.BERLIN).fold,
+                    "fold": ts.astimezone(tz.BERLIN).fold,
                     "day_type": cal.day_type(day),
                     "actual": float(actual[k]),
                     MODEL_NAME: float(model_pred[k]),

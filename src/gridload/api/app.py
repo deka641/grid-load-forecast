@@ -35,10 +35,11 @@ from gridload.api.models import (
     SeriesInfo,
     Status,
 )
-from gridload.api.params import invalid, parse_day, parse_series, to_local
+from gridload.api.params import invalid, parse_day, parse_series
 from gridload.api.store import Snapshot, SnapshotStore, SnapshotUnavailableError
 from gridload.config import Settings
 from gridload.series import Series, select
+from gridload.timezones import to_local
 
 __all__ = ["Health", "app", "create_app"]
 
