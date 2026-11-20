@@ -17,7 +17,7 @@ const palette: Palette = {
   rule: '#d6dce4',
   surface: '#ffffff',
   model: '#1d5fbf',
-  baseline: '#8792a3',
+  baseline: '#77829a',
   tso: '#0f8476',
   actual: '#172131',
   price: '#172131',
@@ -79,7 +79,26 @@ describe('forecastOption', () => {
     expect(baseline?.lineStyle.type).toEqual([6, 4])
     expect(tso?.lineStyle.type).toEqual([8, 3, 2, 3])
     expect(model?.lineStyle.color).toBe(palette.model)
-    expect(option.tooltip.formatter([{ dataIndex: 0 }])).toContain('n/a')
+  })
+
+  it('leaves the actual out of the tooltip until it is published', () => {
+    const pending = built(forecastOption(forecast('2026-11-21', false).points, palette))
+    const html = pending.tooltip.formatter([{ dataIndex: 0 }])
+    expect(html).not.toContain('Actual')
+    expect(html).not.toContain('tt-actual')
+    expect(html).toContain('LightGBM')
+
+    const points = forecast('2026-11-20').points.map((p, i) => ({
+      ...p,
+      actual: i < 2 ? p.actual : null,
+      tso: null,
+    }))
+    const partial = built(forecastOption(points, palette))
+    const published = partial.tooltip.formatter([{ dataIndex: 0 }])
+    expect(published).toContain('tt-actual')
+    // Forecasts without a value still show n/a.
+    expect(published).toContain('n/a')
+    expect(partial.tooltip.formatter([{ dataIndex: 5 }])).not.toContain('tt-actual')
   })
 })
 
@@ -106,6 +125,10 @@ describe('mixOption and priceOption', () => {
     ]
     const option = built(mixOption(stamps, series, palette, (k) => palette.generation[k] ?? 'grey'))
     expect(option.series[0]?.areaStyle?.color).toBe('#e9c32d')
+    // Hairlines in the surface colour separate the bands.
+    for (const s of option.series) {
+      expect(s.lineStyle).toEqual({ width: 0.75, color: palette.surface })
+    }
     expect(option.xAxis.axisLabel.interval(1)).toBe(true)
     expect(option.xAxis.axisLabel.interval(0)).toBe(false)
     expect(option.xAxis.axisLabel.formatter('1')).toBe('Fri 20 Nov')

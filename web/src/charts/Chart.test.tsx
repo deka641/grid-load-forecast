@@ -78,12 +78,22 @@ describe('Chart', () => {
     expect(button).toHaveAttribute('aria-expanded', 'false')
     const caption = document.getElementById(button.getAttribute('aria-controls') ?? '')
     expect(caption).toHaveClass('visually-hidden')
+    // Closed: no tab stop and no landmark on the hidden copy.
+    expect(screen.queryByRole('region')).toBeNull()
+    expect(caption?.querySelector('[tabindex]')).toBeNull()
     fireEvent.click(button)
     expect(screen.getByRole('button', { name: 'Hide data' })).toHaveAttribute(
       'aria-expanded',
       'true',
     )
     expect(caption).toHaveClass('chart-data')
+    // Open: the scroll box is a named region that the keyboard can reach.
+    const region = screen.getByRole('region', { name: 'Data table: Toggle' })
+    expect(region).toHaveAttribute('tabindex', '0')
+    expect(region).toHaveClass('chart-data-scroll')
+    expect(caption).toContainElement(region)
+    fireEvent.click(screen.getByRole('button', { name: 'Hide data' }))
+    expect(screen.queryByRole('region')).toBeNull()
   })
 
   it('renders once when the fonts are already loaded', () => {

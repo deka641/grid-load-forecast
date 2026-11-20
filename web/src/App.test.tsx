@@ -50,6 +50,8 @@ describe('Dashboard with data', () => {
     )
     expect(screen.getByText('Data up to 20 Nov 2026, 13:30')).toBeInTheDocument()
     expect(screen.getByText(/No actual load published yet/)).toBeInTheDocument()
+    const lines = screen.getByRole('list', { name: 'Lines in the forecast chart' })
+    expect(within(lines).getByText('Actual (not yet published)')).toHaveClass('is-empty')
 
     const table = await screen.findByRole('table', { name: /Backtest errors/ })
     const rows = within(table).getAllByRole('row')
@@ -79,7 +81,9 @@ describe('Dashboard with data', () => {
     expect(actualsCall?.searchParams.get('end')).toBe('2026-11-20')
 
     expect(
-      screen.getByText('Last pipeline run: succeeded (incremental), finished 20 Nov 2026, 13:51'),
+      screen.getByText(
+        'Last pipeline run: succeeded, incremental run, finished 20 Nov 2026, 13:51',
+      ),
     ).toBeInTheDocument()
     expect(screen.getByText('Snapshot: 20 Nov 2026, 13:56')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Source code' })).toHaveAttribute(
@@ -104,6 +108,8 @@ describe('Dashboard with data', () => {
     const errors = screen.getByText('This day').parentElement
     expect(errors).toHaveTextContent('LightGBM2.0 %Baseline5.0 %SMARD forecast0.0 %')
     expect(errors).toHaveTextContent('over 24 of 24 hours')
+    const lines = screen.getByRole('list', { name: 'Lines in the forecast chart' })
+    expect(within(lines).getByText('Actual')).not.toHaveClass('is-empty')
 
     fireEvent.click(screen.getByRole('button', { name: 'Next day' }))
     expect(await screen.findByText(/Saturday 21 November/)).toBeInTheDocument()
@@ -455,7 +461,7 @@ describe('Dashboard states', () => {
     renderApp()
     expect(await screen.findByText(/more than 6 hours old/)).toBeInTheDocument()
     expect(
-      screen.getByText(/Last pipeline run: running \(incremental\), started/),
+      screen.getByText(/Last pipeline run: running, incremental run, started/),
     ).toBeInTheDocument()
   })
 

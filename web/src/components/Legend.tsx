@@ -13,13 +13,15 @@ export interface LegendItem {
   width?: number
   /** Area swatch instead of a line sample. */
   area?: boolean
+  /** The series has no values yet: shown muted, with a note after the label. */
+  empty?: boolean
 }
 
 export function Legend({ items, label }: { items: readonly LegendItem[]; label: string }) {
   return (
     <ul className="legend" aria-label={label}>
       {items.map((item) => (
-        <li key={item.key} className="legend-item">
+        <li key={item.key} className={item.empty ? 'legend-item is-empty' : 'legend-item'}>
           {item.area ? (
             <span className={`legend-area swatch-${item.key}`} aria-hidden="true" />
           ) : (
@@ -40,7 +42,7 @@ export function Legend({ items, label }: { items: readonly LegendItem[]; label: 
               />
             </svg>
           )}
-          {item.label}
+          {item.empty ? `${item.label} (not yet published)` : item.label}
         </li>
       ))}
     </ul>

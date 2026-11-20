@@ -312,7 +312,7 @@ export function status(ageSeconds = 1920) {
     last_load_run: {
       run_id: 'load-2026-11-20T0950',
       mode: 'incremental',
-      status: 'succeeded',
+      status: 'ok',
       started_at: isoLocal(NOW - 14 * 60_000),
       finished_at: isoLocal(NOW - 11 * 60_000),
     },

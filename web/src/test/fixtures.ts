@@ -69,7 +69,7 @@ export function status(overrides: Partial<Status> = {}): Status {
     last_load_run: {
       run_id: 'r1',
       mode: 'incremental',
-      status: 'succeeded',
+      status: 'ok',
       started_at: '2026-11-20T13:48:00+01:00',
       finished_at: '2026-11-20T13:51:00+01:00',
     },

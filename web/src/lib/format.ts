@@ -16,3 +16,21 @@ export function formatPrice(value: number): string {
 }
 
 export const NOT_AVAILABLE = 'n/a'
+
+const RUN_STATUS: Record<string, string> = {
+  ok: 'succeeded',
+  partial: 'partly succeeded',
+  failed: 'failed',
+  aborted: 'aborted',
+  running: 'running',
+}
+
+const RUN_MODE: Record<string, string> = {
+  incremental: 'incremental run',
+  backfill: 'backfill run',
+}
+
+/** Plain words for the pipeline run; an unknown value is shown as it is. */
+export function describeRun(status: string, mode: string): string {
+  return `${RUN_STATUS[status] ?? status}, ${RUN_MODE[mode] ?? mode}`
+}

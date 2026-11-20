@@ -77,7 +77,15 @@ export function Chart({ build, label, children, className }: ChartProps) {
             {showData ? 'Hide data' : 'Show data'}
           </button>
           <figcaption id={dataId} className={showData ? 'chart-data' : 'visually-hidden'}>
-            {children}
+            {/* Once open, the table scrolls in its own box, which keyboard users can focus. */}
+            <div
+              className="chart-data-scroll"
+              {...(showData
+                ? { tabIndex: 0, role: 'region', 'aria-label': `Data table: ${label}` }
+                : {})}
+            >
+              {children}
+            </div>
           </figcaption>
         </>
       ) : null}

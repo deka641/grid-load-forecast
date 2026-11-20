@@ -20,5 +20,20 @@ describe('Legend', () => {
     expect(lines[0]?.getAttribute('stroke-width')).toBe('2')
     expect(lines[1]?.getAttribute('stroke-dasharray')).toBe('6 4')
     expect(list.querySelector('.swatch-gen_solar')).not.toBeNull()
+    expect(list.querySelector('.is-empty')).toBeNull()
+  })
+
+  it('mutes a series that has no values yet', () => {
+    render(
+      <Legend
+        label="Items"
+        items={[
+          { key: 'actual', label: 'Actual', empty: true },
+          { key: 'lightgbm', label: 'Model' },
+        ]}
+      />,
+    )
+    expect(screen.getByText('Actual (not yet published)')).toHaveClass('legend-item', 'is-empty')
+    expect(screen.getByText('Model')).not.toHaveClass('is-empty')
   })
 })

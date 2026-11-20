@@ -174,6 +174,63 @@ for (const scheme of ['light', 'dark'] as const) {
   }
 }
 
+for (const scheme of ['light', 'dark'] as const) {
+  test(`keeps the opened data tables accessible in ${scheme}`, async ({ browser }) => {
+    const context = await browser.newContext({
+      colorScheme: scheme,
+      viewport: { width: 1440, height: 900 },
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    const problems = watchProblems(page)
+    await mockApi(page)
+    await open(page)
+
+    // The newest day has no actual load yet: the legend says so and the tooltip leaves it out.
+    const lines = page.getByRole('list', { name: 'Lines in the forecast chart' })
+    await expect(lines.locator('.is-empty')).toHaveText('Actual (not yet published)')
+    const forecastCanvas = page.locator('.chart-forecast .chart-canvas')
+    const box = await forecastCanvas.boundingBox()
+    if (box) {
+      await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5)
+      const tooltip = forecastCanvas.locator('.chart-tooltip')
+      await expect(tooltip).toBeVisible()
+      await expect(tooltip).not.toContainText('Actual')
+      await page.mouse.move(0, 0)
+    }
+
+    // Each click renames its button to "Hide data", so open the next "Show data" each time.
+    const toggles = page.getByRole('button', { name: 'Show data' })
+    await expect(toggles).toHaveCount(4)
+    for (let remaining = 4; remaining > 0; remaining -= 1) {
+      await toggles.first().click()
+      await expect(toggles).toHaveCount(remaining - 1)
+    }
+    const regions = page.locator('.chart-data-scroll[role="region"]')
+    await expect(regions).toHaveCount(4)
+    const names = await regions.evaluateAll((list) =>
+      list.map((el) => el.getAttribute('aria-label')),
+    )
+    expect(new Set(names).size).toBe(4)
+
+    // The hourly forecast table scrolls with the keyboard once its box has focus.
+    const first = regions.first()
+    await first.focus()
+    await expect(first).toBeFocused()
+    await page.keyboard.press('PageDown')
+    await expect.poll(() => first.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
+    await page.screenshot({
+      path: join(SHOTS, `data-tables-${scheme}-1440.png`),
+      fullPage: true,
+    })
+
+    const axe = await new AxeBuilder({ page }).analyze()
+    expect(axe.violations.map((v) => `${v.id} (${v.impact ?? 'unknown'})`)).toEqual([])
+    expect(problems).toEqual([])
+    await context.close()
+  })
+}
+
 test('uses Berlin time regardless of the browser time zone', async ({ browser }) => {
   const context = await browser.newContext({ timezoneId: 'America/New_York' })
   const page = await context.newPage()
