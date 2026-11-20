@@ -136,8 +136,8 @@ def test_forecast_waits_for_data_and_is_degraded_late(
         ).fetchone()
         assert details is not None
         assert json.loads(details[0])["degraded"] is True
-        assert json.loads(details[0])["degraded_checks"] == ["cutoff_hour_missing"]
-        assert "(degraded: cutoff_hour_missing)" in caplog.text
+        assert json.loads(details[0])["degraded_checks"] == ["cutoff_hour_missing", "lag_1d"]
+        assert "(degraded: cutoff_hour_missing, lag_1d)" in caplog.text
     finally:
         con.close()
 
@@ -369,12 +369,15 @@ def test_feature_gaps_name_each_failing_check() -> None:
         keep = np.array([int(t) not in drop for t in load.ts])
         return features.History(load.ts[keep], load.values[keep])
 
-    # The 13 hours before the cutoff: under half of the last 24 hours remain.
-    assert features.feature_gaps(without(range(1, 14)), day) == ["mean_24h"]
-    # 20 hours earlier in the week: only the coverage check fails.
-    assert features.feature_gaps(without(range(30, 50)), day) == ["coverage_168h"]
-    # Most of the week is gone: both window checks fail, lag_7d too.
+    # The 13 hours before the cutoff: under half of the last 24 hours remain, and
+    # the lags from the origin day and the day before it have holes.
+    assert features.feature_gaps(without(range(1, 14)), day) == ["lag_1d", "lag_2d", "mean_24h"]
+    # 20 hours earlier in the week: the coverage check fails and lag_2d has holes.
+    assert features.feature_gaps(without(range(30, 50)), day) == ["lag_2d", "coverage_168h"]
+    # Most of the week is gone: every check except lag_14d fails.
     assert features.feature_gaps(without(range(1, 160)), day) == [
+        "lag_1d",
+        "lag_2d",
         "lag_7d",
         "mean_24h",
         "mean_168h",
@@ -389,3 +392,27 @@ def test_feature_gaps_name_each_failing_check() -> None:
 def test_complete_history_is_not_degraded_around_clock_changes(day: date) -> None:
     load = synthetic.history(date(2025, 2, 1), date(2025, 11, 30))
     assert service.degraded_checks(load, day, cutoff_hour_missing=False) == []
+
+
+def test_recent_gap_of_sixteen_hours_marks_the_forecast_degraded() -> None:
+    """A gap the window checks tolerate still removes lags the model uses."""
+    load = synthetic.history(FIRST, LAST)
+    day = date(2025, 4, 30)
+    origin_day = day - timedelta(days=1)
+    # 16 hours missing on the day before the origin day (the lag_2d source day).
+    start = datetime(origin_day.year, origin_day.month, origin_day.day - 1, 4, tzinfo=cal.BERLIN)
+    drop = {int((start + timedelta(hours=h)).timestamp() * 1000) for h in range(16)}
+    keep = np.array([int(t) not in drop for t in load.ts])
+    gappy = features.History(load.ts[keep], load.values[keep])
+    assert "lag_2d" in features.feature_gaps(gappy, day)
+    assert "coverage_168h" not in features.feature_gaps(gappy, day)
+
+
+def test_missing_lag_14d_is_reported() -> None:
+    load = synthetic.history(FIRST, LAST)
+    day = date(2025, 4, 30)
+    source = cal.shift_local(cal.day_hours(day)[12], 14)
+    keep = load.ts != int(source.timestamp() * 1000)
+    assert features.feature_gaps(features.History(load.ts[keep], load.values[keep]), day) == [
+        "lag_14d"
+    ]

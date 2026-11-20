@@ -81,8 +81,9 @@ def load(
     """Ingest, run follow-up steps, publish the snapshot and update the heartbeat.
 
     The load run gets its final status and ``finished_at`` once the follow-up steps
-    are done, just before the snapshot that contains it is published. If a step
-    after ingestion fails, the load run is marked failed as well.
+    are done, just before the snapshot that contains it is published. A failed
+    follow-up step (forecast, backtest) marks the run partial; a failed checkpoint
+    or publish marks it failed.
     """
     series = select(keys, include_prices=settings.include_prices)
     excluded = [] if settings.include_prices else price_keys()

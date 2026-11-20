@@ -104,7 +104,7 @@ class BacktestMetrics(BaseModel):
     last_day: date
     config: dict[str, Any]
     metrics: dict[str, dict[str, list[BacktestMetric]]] = Field(
-        description="Metrics by model, then by scope (overall, hour, day_type)"
+        description="Metrics by model, then by scope (overall, hour, day_type, overall_tso_hours)"
     )
 
 

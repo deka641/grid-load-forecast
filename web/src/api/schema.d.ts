@@ -209,7 +209,7 @@ export interface components {
             last_day: string;
             /**
              * Metrics
-             * @description Metrics by model, then by scope (overall, hour, day_type)
+             * @description Metrics by model, then by scope (overall, hour, day_type, overall_tso_hours)
              */
             metrics: {
                 [key: string]: {
