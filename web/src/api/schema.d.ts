@@ -429,6 +429,11 @@ export interface components {
             series: components["schemas"]["SeriesFreshness"][];
             /** Snapshot Created At */
             snapshot_created_at: string | null;
+            /**
+             * Snapshot Error
+             * @description Why the newest snapshot file cannot be opened or read; null if it can
+             */
+            snapshot_error?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -488,7 +493,7 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description No data snapshot is available */
+            /** @description No readable data snapshot is available, or the server is busy */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -526,7 +531,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No data snapshot is available */
+            /** @description No readable data snapshot is available, or the server is busy */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -576,7 +581,7 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description No data snapshot is available */
+            /** @description No readable data snapshot is available, or the server is busy */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -617,7 +622,7 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description No data snapshot is available */
+            /** @description No readable data snapshot is available, or the server is busy */
             503: {
                 headers: {
                     [name: string]: unknown;

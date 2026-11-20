@@ -47,10 +47,13 @@ openapi: ## Regenerate openapi.json and the TypeScript API types
 
 openapi-check: ## Fail if openapi.json or the TypeScript API types are out of date
 	tmp=$$(mktemp -d); trap 'rm -rf -- "$$tmp"' EXIT; \
-	$(T) 60 $(UV) python scripts/export_openapi.py "$$tmp/openapi.json" > /dev/null; \
-	(cd web && $(T) 120 npx --no-install openapi-typescript "$$tmp/openapi.json" -o "$$tmp/schema.d.ts" > /dev/null); \
-	diff -u openapi.json "$$tmp/openapi.json" && diff -u web/src/api/schema.d.ts "$$tmp/schema.d.ts" \
-		|| { echo "openapi-check: generated API files are out of date, run make openapi"; exit 1; }
+	$(T) 60 $(UV) python scripts/export_openapi.py "$$tmp/openapi.json" > /dev/null \
+		|| { echo "openapi-check: exporting the OpenAPI document failed"; exit 1; }; \
+	(cd web && $(T) 120 npx --no-install openapi-typescript "$$tmp/openapi.json" -o "$$tmp/schema.d.ts" > /dev/null) \
+		|| { echo "openapi-check: generating the TypeScript types failed"; exit 1; }; \
+	if ! diff -u openapi.json "$$tmp/openapi.json" || ! diff -u web/src/api/schema.d.ts "$$tmp/schema.d.ts"; then \
+		echo "openapi-check: generated API files are out of date, run make openapi"; exit 1; \
+	fi
 
 build: ## Frontend production build with size budget
 	$(T) 300 $(NPM) run --silent build

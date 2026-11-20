@@ -136,6 +136,10 @@ class Status(BaseModel):
     initialised: bool = Field(description="Whether a data snapshot is available")
     generated_at: datetime
     snapshot_created_at: datetime | None
+    snapshot_error: str | None = Field(
+        default=None,
+        description="Why the newest snapshot file cannot be opened or read; null if it can",
+    )
     schema_version: int | None
     series: list[SeriesFreshness]
     last_load_run: LoadRunInfo | None

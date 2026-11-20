@@ -606,6 +606,18 @@
               }
             ],
             "title": "Snapshot Created At"
+          },
+          "snapshot_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the newest snapshot file cannot be opened or read; null if it can",
+            "title": "Snapshot Error"
           }
         },
         "required": [
@@ -757,7 +769,7 @@
                 }
               }
             },
-            "description": "No data snapshot is available"
+            "description": "No readable data snapshot is available, or the server is busy"
           }
         },
         "summary": "Actuals",
@@ -799,7 +811,7 @@
                 }
               }
             },
-            "description": "No data snapshot is available"
+            "description": "No readable data snapshot is available, or the server is busy"
           }
         },
         "summary": "Backtest Metrics",
@@ -872,7 +884,7 @@
                 }
               }
             },
-            "description": "No data snapshot is available"
+            "description": "No readable data snapshot is available, or the server is busy"
           }
         },
         "summary": "Forecasts",
@@ -930,7 +942,7 @@
                 }
               }
             },
-            "description": "No data snapshot is available"
+            "description": "No readable data snapshot is available, or the server is busy"
           }
         },
         "summary": "Forecast Days",
