@@ -672,3 +672,36 @@ def test_warehouse_connection_has_resource_limits(tmp_path: Path) -> None:
         assert settings[:2] == (4, 1)
         assert settings[2] == "953.6 MiB"
         assert settings[3] == str(tmp_path / "duckdb-tmp")
+
+
+def test_withdrawals_can_be_accepted_explicitly(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    run(con, fake.client(), [LOAD])
+    before = count(con, "SELECT count(*) FROM observations")
+    name = chunk_name(LOAD, AUTUMN)
+    data = json.loads(fixture_bytes(name))
+    for point in data["series"][200:296]:
+        point[1] = None
+    fake.override(name, json.dumps(data).encode())
+    result = Ingestor(con, fake.client(), accept_withdrawals=True).run(
+        [LOAD], mode="incremental", refetch_weeks=4
+    )
+    assert result.rows_removed == 96
+    assert count(con, "SELECT count(*) FROM observations") == before - 96
+
+
+def test_recent_gap_is_logged_as_warning(fake: FakeSmard) -> None:
+    week_end = datetime.fromtimestamp(chunk_end_ms(REGULAR) / 1000, UTC)
+    name = chunk_name(LOAD, REGULAR)
+    fake.use_index(LOAD, [REGULAR, recorded_chunks(LOAD)[-1]])
+    fake.override(name, _with_trailing_nulls(name, 668))
+    connection = duckdb.connect()
+    connection.execute("SET TimeZone = 'UTC'")
+    migrate(connection)
+    Ingestor(connection, fake.client(), clock=_clock_at(week_end + timedelta(days=1))).run(
+        [LOAD], mode="backfill"
+    )
+    rows = connection.execute("SELECT status FROM load_log WHERE status = 'warning'").fetchall()
+    assert rows == [("warning",)]
+    connection.close()

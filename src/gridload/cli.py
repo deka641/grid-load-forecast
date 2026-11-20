@@ -36,6 +36,11 @@ def _parser() -> argparse.ArgumentParser:
         default=4,
         help="also reload the newest N weekly chunks to pick up corrections (default 4)",
     )
+    ingest.add_argument(
+        "--accept-withdrawals",
+        action="store_true",
+        help="accept values that SMARD removed from completed weeks (deletes them locally)",
+    )
 
     sub.add_parser("run", help="scheduled job: ingest, forecast, publish snapshot")
 
@@ -70,7 +75,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = jobs.load(settings, mode="backfill", keys=args.series, since=args.since)
     elif args.command == "ingest":
         result = jobs.load(
-            settings, mode="incremental", keys=args.series, refetch_weeks=args.refetch_weeks
+            settings,
+            mode="incremental",
+            keys=args.series,
+            refetch_weeks=args.refetch_weeks,
+            accept_withdrawals=args.accept_withdrawals,
         )
     else:
         result = jobs.load(settings, mode="incremental", post_ingest=jobs.post_ingest_steps)

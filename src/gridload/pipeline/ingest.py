@@ -12,9 +12,11 @@ Each run fetches the chunk index per series and then loads:
 A chunk is processed in one transaction: raw payload, observations and the log
 entry are written together. Unchanged payloads (same SHA-256) are skipped.
 Changed values overwrite the stored value and increase its revision counter, so
-there are never duplicate timestamps. Values that the source no longer
-publishes for a chunk are removed, so the cleaned data always matches the
-stored raw payload. Quarter hours that SMARD leaves out of a completed chunk
+there are never duplicate timestamps. In an open chunk, values that the source
+no longer publishes are removed. In a completed chunk, stored values that turn
+null point to a degraded response: the stored values are kept and the chunk
+is reported as an error, unless withdrawals are accepted explicitly
+(``gridload ingest --accept-withdrawals``). Quarter hours that SMARD leaves out of a completed chunk
 (permanent gaps in the source) are not stored as values; the load log records
 how many are missing and where the gap starts. Any source or validation error
 is written to ``load_log`` and nothing is stored for that chunk.
@@ -84,7 +86,9 @@ class Ingestor:
         *,
         clock: Callable[[], datetime] = _now,
         progress: Progress | None = None,
+        accept_withdrawals: bool = False,
     ) -> None:
+        self._accept_withdrawals = accept_withdrawals
         self._con = con
         self._client = client
         self._clock = clock
@@ -181,6 +185,7 @@ class Ingestor:
                 if not is_open and end > recent_ms:
                     # A gap in a week that just ended is worth a look: run becomes partial.
                     result.errors.append(f"{series.key}: {note}")
+                    self._log(result.run_id, series, ts, status="warning", rows=0, message=note)
             self._store(result, series, raw, frame, note=note, is_open=is_open)
 
     def _count_source_error(self, exc: Exception) -> None:
@@ -273,7 +278,7 @@ class Ingestor:
                 params,
             ).fetchone()
             removed = int(removed_row[0]) if removed_row else 0
-            if removed and not is_open:
+            if removed and not is_open and not self._accept_withdrawals:
                 # A completed week whose stored values turn null points to a degraded
                 # response, not a correction: keep the stored values and report it.
                 raise ChunkValidationError(
