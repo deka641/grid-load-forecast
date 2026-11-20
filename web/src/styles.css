@@ -1,0 +1,752 @@
+/* Design tokens. Light is the default; dark applies by system preference or data-theme. */
+:root {
+  color-scheme: light;
+  --color-bg: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-ink: #172131;
+  --color-muted: #5a6577;
+  --color-rule: #d6dce4;
+  --color-model: #1d5fbf;
+  --color-baseline: #8792a3;
+  --color-tso: #0f8476;
+  --color-actual: var(--color-ink);
+  --color-price: var(--color-ink);
+  --color-focus: #1d5fbf;
+  --color-warn: #8a4b00;
+  --color-warn-bg: #fcefd9;
+  --color-error: #a3261b;
+
+  --gen-lignite: #8a6a4a;
+  --gen-hard-coal: #4b4f58;
+  --gen-gas: #d99a1e;
+  --gen-nuclear: #8c6bc8;
+  --gen-wind-onshore: #3d97d3;
+  --gen-wind-offshore: #1f5e99;
+  --gen-solar: #e9c32d;
+  --gen-biomass: #5e9b3e;
+  --gen-hydro: #27a8a6;
+  --gen-pumped-storage: #79b4d2;
+  --gen-other-conventional: #a3a9b2;
+  --gen-other-renewable: #a7c66b;
+
+  --font-body: 'Barlow', system-ui, sans-serif;
+  --font-display: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif;
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+  --text-xxl: 40px;
+  --gutter: 48px;
+  --radius: 4px;
+  --control: 40px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --color-bg: #0e1520;
+    --color-surface: #152030;
+    --color-ink: #e4e9f0;
+    --color-muted: #95a1b3;
+    --color-rule: #2a3647;
+    --color-model: #6ea4f2;
+    --color-baseline: #7c879a;
+    --color-tso: #3fc2b0;
+    --color-focus: #6ea4f2;
+    --color-warn: #f2b45c;
+    --color-warn-bg: #3a2a12;
+    --color-error: #ff9b8f;
+    --gen-hard-coal: #9aa0aa;
+    --gen-wind-offshore: #4e86c4;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg: #0e1520;
+  --color-surface: #152030;
+  --color-ink: #e4e9f0;
+  --color-muted: #95a1b3;
+  --color-rule: #2a3647;
+  --color-model: #6ea4f2;
+  --color-baseline: #7c879a;
+  --color-tso: #3fc2b0;
+  --color-focus: #6ea4f2;
+  --color-warn: #f2b45c;
+  --color-warn-bg: #3a2a12;
+  --color-error: #ff9b8f;
+  --gen-hard-coal: #9aa0aa;
+  --gen-wind-offshore: #4e86c4;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3,
+p,
+dl,
+dd,
+figure,
+ul {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--color-muted);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  text-decoration-color: currentColor;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+/* Page frame: left aligned, content at most 1200 px wide. */
+.page {
+  max-width: calc(1200px + 2 * var(--gutter));
+  padding: 0 var(--gutter);
+}
+
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 48px;
+  padding: 32px 0 20px;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.site-header h1 {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0.005em;
+}
+
+.lede {
+  margin-top: 6px;
+  max-width: 68ch;
+  color: var(--color-muted);
+}
+
+.site-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+
+.freshness {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.freshness-stale {
+  padding: 2px 8px;
+  border-left: 3px solid var(--color-warn);
+  background: var(--color-warn-bg);
+  color: var(--color-ink);
+}
+
+.stale-note {
+  font-weight: 600;
+  color: var(--color-warn);
+}
+
+/* Segmented theme control built from native radio inputs. */
+.theme-toggle {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.theme-option {
+  position: relative;
+}
+
+.theme-option input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.theme-option span {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control);
+  padding: 0 12px;
+  border: 1px solid var(--color-rule);
+  margin-left: -1px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-muted);
+  background: var(--color-surface);
+}
+
+.theme-option:first-of-type span {
+  margin-left: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.theme-option:last-of-type span {
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.theme-option input:checked + span {
+  position: relative;
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-bg);
+}
+
+.theme-option input:focus-visible + span {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Sections are separated by a heavy rule, like panels on a control board. */
+.section {
+  margin-top: 40px;
+  padding-top: 14px;
+  border-top: 2px solid var(--color-ink);
+}
+
+.section-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.subsection-title {
+  margin-top: 24px;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.prose {
+  margin-top: 8px;
+  max-width: 76ch;
+}
+
+.note {
+  margin-top: 12px;
+  max-width: 76ch;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.headline {
+  margin-top: 12px;
+  font-family: var(--font-display);
+  font-size: var(--text-xxl);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.005em;
+}
+
+.forecast-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  margin-top: 20px;
+}
+
+.clock-change {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.day-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.button,
+.day-select select {
+  min-height: var(--control);
+  padding: 0 14px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled),
+.day-select select:hover {
+  border-color: var(--color-muted);
+}
+
+.button:disabled {
+  color: var(--color-muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.day-select select {
+  padding-right: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Legends: line samples carry the dash pattern, so colour is never the only cue. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin-top: 16px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-line line {
+  stroke-linecap: butt;
+}
+
+.legend-area,
+.tt-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.stroke-actual line {
+  stroke: var(--color-actual);
+}
+.stroke-lightgbm line {
+  stroke: var(--color-model);
+}
+.stroke-baseline_week line {
+  stroke: var(--color-baseline);
+}
+.stroke-tso line {
+  stroke: var(--color-tso);
+}
+
+.swatch-gen_lignite,
+.tt-gen_lignite {
+  background: var(--gen-lignite);
+}
+.swatch-gen_hard_coal,
+.tt-gen_hard_coal {
+  background: var(--gen-hard-coal);
+}
+.swatch-gen_gas,
+.tt-gen_gas {
+  background: var(--gen-gas);
+}
+.swatch-gen_nuclear,
+.tt-gen_nuclear {
+  background: var(--gen-nuclear);
+}
+.swatch-gen_wind_onshore,
+.tt-gen_wind_onshore {
+  background: var(--gen-wind-onshore);
+}
+.swatch-gen_wind_offshore,
+.tt-gen_wind_offshore {
+  background: var(--gen-wind-offshore);
+}
+.swatch-gen_solar,
+.tt-gen_solar {
+  background: var(--gen-solar);
+}
+.swatch-gen_biomass,
+.tt-gen_biomass {
+  background: var(--gen-biomass);
+}
+.swatch-gen_hydro,
+.tt-gen_hydro {
+  background: var(--gen-hydro);
+}
+.swatch-gen_pumped_storage,
+.tt-gen_pumped_storage {
+  background: var(--gen-pumped-storage);
+}
+.swatch-gen_other_conventional,
+.tt-gen_other_conventional {
+  background: var(--gen-other-conventional);
+}
+.swatch-gen_other_renewable,
+.tt-gen_other_renewable {
+  background: var(--gen-other-renewable);
+}
+
+.tt-actual {
+  background: var(--color-actual);
+}
+.tt-lightgbm {
+  background: var(--color-model);
+}
+.tt-baseline_week {
+  background: var(--color-baseline);
+}
+.tt-tso {
+  background: var(--color-tso);
+}
+.tt-price {
+  background: var(--color-price);
+}
+.tt-none {
+  background: transparent;
+}
+
+/* Charts sit on the surface colour inside a hairline frame. */
+.chart {
+  position: relative;
+  margin-top: 10px;
+  border: 1px solid var(--color-rule);
+  background: var(--color-surface);
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 380px;
+}
+
+.chart-small .chart-canvas {
+  height: 260px;
+}
+
+.chart-mix .chart-canvas {
+  height: 320px;
+}
+
+.chart-price .chart-canvas {
+  height: 200px;
+}
+
+.chart-tooltip {
+  font-variant-numeric: tabular-nums;
+}
+
+.tt-title {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.tt-table {
+  border-collapse: collapse;
+}
+
+.tt-table th {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 16px 1px 0;
+  font-weight: 400;
+  text-align: left;
+}
+
+.tt-table td {
+  padding: 1px 0;
+  text-align: right;
+}
+
+.chart-stats {
+  margin-top: 8px;
+  font-size: var(--text-sm);
+}
+
+.day-errors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 24px;
+  margin-top: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-rule);
+  font-size: var(--text-sm);
+}
+
+.day-errors-label {
+  font-weight: 600;
+}
+
+.day-errors-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+}
+
+.day-errors-list div {
+  display: flex;
+  gap: 8px;
+}
+
+.day-errors-list dt {
+  color: var(--color-muted);
+}
+
+.day-errors-list dd {
+  font-weight: 600;
+}
+
+/* Backtest: table and hourly chart side by side on wide screens. */
+.backtest-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 32px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.backtest-hours .subsection-title {
+  margin-top: 0;
+}
+
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.table-hint {
+  display: none;
+  margin-top: 8px;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.metrics {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.metrics th,
+.metrics td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-rule);
+  text-align: left;
+  vertical-align: bottom;
+}
+
+.metrics thead th {
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.metrics thead tr:last-child th,
+.metrics thead tr:last-child td {
+  border-bottom: 1px solid var(--color-ink);
+}
+
+.metrics thead tr:first-child td {
+  border-bottom: 0;
+}
+
+.metrics .group {
+  text-align: center;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.metrics thead tr:first-child th[rowspan] {
+  border-bottom: 1px solid var(--color-ink);
+}
+
+.metrics tbody th {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.metrics .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.metrics tbody td {
+  font-size: var(--text-md);
+}
+
+.metrics tbody tr:first-child td {
+  font-weight: 600;
+}
+
+.row-key {
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  margin-right: 8px;
+  vertical-align: -2px;
+}
+
+.row-key.stroke-lightgbm {
+  background: var(--color-model);
+}
+.row-key.stroke-baseline_week {
+  background: var(--color-baseline);
+}
+.row-key.stroke-tso {
+  background: var(--color-tso);
+}
+
+.notice {
+  margin-top: 16px;
+  padding: 12px 16px;
+  max-width: 76ch;
+  border-left: 3px solid var(--color-muted);
+  background: var(--color-surface);
+}
+
+.notice-loading {
+  color: var(--color-muted);
+}
+
+.notice-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  border-left-color: var(--color-error);
+}
+
+.site-footer {
+  margin-top: 56px;
+  padding: 20px 0 40px;
+  border-top: 1px solid var(--color-rule);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.footer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin-top: 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.site-footer a {
+  color: var(--color-ink);
+}
+
+@media (max-width: 960px) {
+  .backtest-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --gutter: 16px;
+    --control: 44px;
+  }
+
+  .site-header {
+    padding-top: 20px;
+  }
+
+  .site-header h1 {
+    font-size: 24px;
+  }
+
+  .headline {
+    font-size: var(--text-xl);
+  }
+
+  .chart-canvas {
+    height: 300px;
+  }
+
+  .chart-mix .chart-canvas {
+    height: 280px;
+  }
+
+  .day-selector {
+    width: 100%;
+  }
+
+  .day-select {
+    flex: 1;
+  }
+
+  .day-select select {
+    width: 100%;
+  }
+
+  .site-footer a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .table-hint {
+    display: block;
+  }
+
+  .metrics th,
+  .metrics td {
+    padding: 8px 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}

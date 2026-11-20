@@ -1,0 +1,78 @@
+import { QueryClient, keepPreviousData, useQuery } from '@tanstack/react-query'
+
+import { apiGet, isApiError } from './client'
+
+/** 404 and 503 describe the data, not a transient failure, so they are not retried. */
+export function shouldRetry(failureCount: number, error: unknown): boolean {
+  if (isApiError(error) && error.status < 500) {
+    return false
+  }
+  if (isApiError(error, 503)) {
+    return false
+  }
+  return failureCount < 2
+}
+
+export function createQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: shouldRetry,
+        staleTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
+      },
+    },
+  })
+}
+
+export function useStatus() {
+  return useQuery({
+    queryKey: ['status'],
+    queryFn: ({ signal }) => apiGet('/api/v1/status', undefined, signal),
+  })
+}
+
+export function useSeries(enabled: boolean) {
+  return useQuery({
+    queryKey: ['series'],
+    queryFn: ({ signal }) => apiGet('/api/v1/series', undefined, signal),
+    enabled,
+  })
+}
+
+export function useForecastDays(enabled: boolean) {
+  return useQuery({
+    queryKey: ['forecast-days'],
+    queryFn: ({ signal }) => apiGet('/api/v1/forecasts/days', undefined, signal),
+    enabled,
+  })
+}
+
+/** `day` undefined asks the API for the latest delivery day with a forecast. */
+export function useForecast(day: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['forecast', day ?? 'latest'],
+    queryFn: ({ signal }) =>
+      apiGet('/api/v1/forecasts', day === undefined ? {} : { delivery_day: day }, signal),
+    enabled,
+    // Keep the previous day on screen while the next one loads.
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useBacktest(enabled: boolean) {
+  return useQuery({
+    queryKey: ['backtest'],
+    queryFn: ({ signal }) => apiGet('/api/v1/backtest/metrics', undefined, signal),
+    enabled,
+  })
+}
+
+export function useActuals(keys: string[], start: string, end: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['actuals', keys.join(','), start, end],
+    queryFn: ({ signal }) =>
+      apiGet('/api/v1/actuals', { series: keys.join(','), start, end, resolution: 'hour' }, signal),
+    enabled: enabled && keys.length > 0,
+  })
+}

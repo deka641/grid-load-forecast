@@ -1,0 +1,89 @@
+import { act, render, screen } from '@testing-library/react'
+
+import { ThemeContext } from '../theme/context'
+import type { ThemeState } from '../theme/context'
+import { Chart } from './Chart'
+
+const instance = { setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn() }
+const init = vi.fn(() => instance)
+
+vi.mock('./echarts', () => ({ echarts: { init: (...args: unknown[]) => init(...(args as [])) } }))
+
+let resizeCallback: (() => void) | undefined
+const disconnect = vi.fn()
+
+class ObserverMock {
+  constructor(callback: () => void) {
+    resizeCallback = callback
+  }
+  observe() {
+    return undefined
+  }
+  disconnect() {
+    disconnect()
+  }
+}
+
+function theme(resolved: 'light' | 'dark'): ThemeState {
+  return { preference: resolved, resolved, setPreference: () => undefined }
+}
+
+describe('Chart', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubGlobal('ResizeObserver', ObserverMock)
+  })
+
+  it('initialises, renders, resizes, re-renders on theme change and disposes', async () => {
+    const build = vi.fn(() => ({ series: [] }))
+    const view = render(
+      <ThemeContext value={theme('light')}>
+        <Chart build={build} label="Test chart" className="extra">
+          <table />
+        </Chart>
+      </ThemeContext>,
+    )
+    expect(screen.getByRole('img', { name: 'Test chart' })).toBeInTheDocument()
+    expect(document.querySelector('figure.chart.extra figcaption')).not.toBeNull()
+    expect(init).toHaveBeenCalledWith(expect.any(HTMLDivElement), null, { renderer: 'canvas' })
+    expect(instance.setOption).toHaveBeenCalledWith({ series: [] }, { notMerge: true })
+
+    act(() => {
+      resizeCallback?.()
+    })
+    expect(instance.resize).toHaveBeenCalled()
+
+    const calls = build.mock.calls.length
+    view.rerender(
+      <ThemeContext value={theme('dark')}>
+        <Chart build={build} label="Test chart" className="extra" />
+      </ThemeContext>,
+    )
+    expect(build.mock.calls.length).toBeGreaterThan(calls)
+    expect(document.querySelector('figcaption')).toBeNull()
+
+    view.unmount()
+    expect(disconnect).toHaveBeenCalled()
+    expect(instance.dispose).toHaveBeenCalled()
+    await Promise.resolve()
+  })
+
+  it('renders again once the web fonts are ready', async () => {
+    let ready: () => void = () => undefined
+    const fonts = { ready: new Promise<void>((resolve) => (ready = resolve)) }
+    Object.defineProperty(document, 'fonts', { value: fonts, configurable: true })
+    const build = vi.fn(() => ({}))
+    const view = render(<Chart build={build} label="Fonts" />)
+    expect(document.querySelector('figure')?.className).toBe('chart')
+    const before = instance.setOption.mock.calls.length
+    await act(async () => {
+      ready()
+      await fonts.ready
+    })
+    expect(instance.setOption.mock.calls.length).toBe(before + 1)
+
+    view.unmount()
+    // A late font promise after unmount does not touch the disposed chart.
+    Reflect.deleteProperty(document, 'fonts')
+  })
+})
