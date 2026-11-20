@@ -8,7 +8,7 @@ UV  := uv run --locked
 NPM := npm --prefix web
 T   := timeout -k 10
 
-.PHONY: help install verify audit lint typecheck test openapi openapi-check build docs smoke clean
+.PHONY: help install deps verify prod-check loadtest prod-down audit lint typecheck test openapi openapi-check build docs smoke clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -16,8 +16,14 @@ help: ## List targets
 install: ## Install Python and frontend dependencies from the lockfiles
 	uv sync --locked
 	$(NPM) ci --no-fund
+	sha256sum web/package-lock.json > web/node_modules/.lock.sha256
 
-verify: audit lint typecheck test openapi-check build docs ## Full local gate
+deps: ## Fail early if the locked environments are missing or out of date
+	@test -d web/node_modules || { echo "web/node_modules missing: run make install"; exit 1; }
+	@sha256sum --status -c web/node_modules/.lock.sha256 2>/dev/null || { echo "web/node_modules was not installed from the current package-lock.json: run make install"; exit 1; }
+	@$(T) 120 uv sync --quiet --locked --check || { echo "Python environment differs from uv.lock: run make install"; exit 1; }
+
+verify: deps audit lint typecheck test openapi-check build docs ## Full local gate
 	@echo "verify: all steps passed"
 
 audit: ## Dependency vulnerability audit (needs network to the package indexes)
@@ -64,6 +70,15 @@ docs: ## MkDocs strict build
 
 smoke: ## Live request against SMARD (not part of verify)
 	$(T) 120 $(UV) python scripts/smoke.py
+
+prod-check: ## Production-like build on port 8461 with a copy of the local data
+	$(T) 900 ./scripts/prod_check.sh
+
+loadtest: ## Parallel dashboard requests against the prod-check stack
+	$(T) 300 $(UV) python scripts/loadtest.py --base http://127.0.0.1:8461 --project grid-load-forecast-check
+
+prod-down: ## Stop and remove the prod-check stack
+	docker compose -p grid-load-forecast-check -f docker-compose.yml -f docker-compose.check.yml down -v
 
 clean: ## Remove build artefacts
 	rm -rf site web/dist web/coverage .coverage coverage.json .pytest_cache .mypy_cache .ruff_cache
