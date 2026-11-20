@@ -10,6 +10,7 @@ import duckdb
 import numpy as np
 import polars as pl
 
+from gridload import timezones as tz
 from gridload.forecast import calendar as cal
 from gridload.forecast.backtest import BacktestResult, run_backtest
 from gridload.forecast.features import History, baseline_week, feature_gaps
@@ -46,7 +47,7 @@ def last_complete_day(history: History) -> date | None:
     day = cal.local_day(datetime.fromtimestamp(int(history.ts[-1]) / 1000, UTC))
     first = cal.local_day(datetime.fromtimestamp(int(history.ts[0]) / 1000, UTC))
     while day >= first:
-        hours = cal.day_hours(day)
+        hours = tz.day_hours(day)
         if all(not np.isnan(history.value_at(ts, cal.never())) for ts in hours):
             return day
         day -= timedelta(days=1)
@@ -55,7 +56,7 @@ def last_complete_day(history: History) -> date | None:
 
 def due_delivery_day(con: duckdb.DuckDBPyConnection, now: datetime) -> date | None:
     """Delivery day to forecast now, or None if not yet due or already issued."""
-    local_now = now.astimezone(cal.BERLIN)
+    local_now = now.astimezone(tz.BERLIN)
     if local_now.time() < cal.ORIGIN_LOCAL_TIME:
         return None
     delivery_day = local_now.date() + timedelta(days=1)
@@ -98,7 +99,7 @@ def issue_forecast(
     checks = degraded_checks(load, delivery_day, cutoff_hour_missing=degraded)
     booster = train(store.matrix[mask], store.labels[mask])
     rows = store.day_mask(delivery_day)
-    targets = cal.day_hours(delivery_day)
+    targets = tz.day_hours(delivery_day)
     forecasts = {
         MODEL_NAME: predict(booster, store.matrix[rows]),
         BASELINE_NAME: baseline_week(load, delivery_day),

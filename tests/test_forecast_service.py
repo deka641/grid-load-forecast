@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 import duckdb
 import pytest
 
+from gridload import timezones as tz
 from gridload.forecast import calendar as cal
 from gridload.forecast import service
 from gridload.pipeline.db import migrate
@@ -20,20 +21,20 @@ def con() -> duckdb.DuckDBPyConnection:
 
 def test_history_comes_from_complete_hours(con: duckdb.DuckDBPyConnection) -> None:
     load = service.load_history(con, "load")
-    assert len(load) == sum(len(cal.day_hours(d)) for d in cal.days_between(FIRST, LAST))
+    assert len(load) == sum(len(tz.day_hours(d)) for d in cal.days_between(FIRST, LAST))
     assert service.last_complete_day(load) == LAST
 
 
 def test_last_complete_day_ignores_partial_days(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(
         "INSERT INTO observations VALUES ('load', 'quarterhour', ?, 1.0, ?, 0)",
-        [cal.local_midnight(date(2025, 5, 1)), datetime(2026, 1, 1, tzinfo=UTC)],
+        [tz.local_midnight(date(2025, 5, 1)), datetime(2026, 1, 1, tzinfo=UTC)],
     )
     try:
         assert service.last_complete_day(service.load_history(con, "load")) == LAST
     finally:
         con.execute(
-            "DELETE FROM observations WHERE ts_utc = ?", [cal.local_midnight(date(2025, 5, 1))]
+            "DELETE FROM observations WHERE ts_utc = ?", [tz.local_midnight(date(2025, 5, 1))]
         )
 
 
@@ -46,13 +47,13 @@ def test_empty_history() -> None:
 
 def test_history_without_any_complete_day() -> None:
     con = synthetic.warehouse(FIRST, FIRST)
-    con.execute("DELETE FROM observations WHERE ts_utc = ?", [cal.local_midnight(FIRST)])
+    con.execute("DELETE FROM observations WHERE ts_utc = ?", [tz.local_midnight(FIRST)])
     assert service.last_complete_day(service.load_history(con, "load")) is None
 
 
 def test_forecast_is_due_after_noon_once(con: duckdb.DuckDBPyConnection) -> None:
-    morning = datetime(2025, 4, 30, 11, 59, tzinfo=cal.BERLIN)
-    noon = datetime(2025, 4, 30, 12, 0, tzinfo=cal.BERLIN)
+    morning = datetime(2025, 4, 30, 11, 59, tzinfo=tz.BERLIN)
+    noon = datetime(2025, 4, 30, 12, 0, tzinfo=tz.BERLIN)
     assert service.due_delivery_day(con, morning) is None
     assert service.due_delivery_day(con, noon) == date(2025, 5, 1)
 
@@ -75,7 +76,7 @@ def test_issue_forecast_stores_model_and_baseline(con: duckdb.DuckDBPyConnection
         [day],
     ).fetchone()
     assert points == (24,)
-    assert service.due_delivery_day(con, datetime(2025, 4, 29, 13, tzinfo=cal.BERLIN)) is None
+    assert service.due_delivery_day(con, datetime(2025, 4, 29, 13, tzinfo=tz.BERLIN)) is None
 
 
 def test_forecast_for_a_25_hour_day() -> None:

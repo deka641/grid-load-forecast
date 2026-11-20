@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta
 import numpy as np
 import polars as pl
 
+from gridload import timezones as tz
 from gridload.forecast import calendar as cal
 
 HOUR_MS = 3_600_000
@@ -113,7 +114,7 @@ class DayRows:
 
 def day_features(history: History, delivery_day: date) -> DayRows:
     cutoff = cal.cutoff_for(delivery_day)
-    targets = cal.day_hours(delivery_day)
+    targets = tz.day_hours(delivery_day)
     hours_in_day = len(targets)
     dtype = DAY_TYPE_CODE[cal.day_type(delivery_day)]
     common = (
@@ -130,7 +131,7 @@ def day_features(history: History, delivery_day: date) -> DayRows:
     last = history.last_value(cutoff)
     rows = []
     for ts in targets:
-        hour_local = ts.astimezone(cal.BERLIN).hour
+        hour_local = ts.astimezone(tz.BERLIN).hour
         rows.append(
             [
                 hour_local,
@@ -162,7 +163,7 @@ def feature_gaps(history: History, delivery_day: date) -> list[str]:
     ``MIN_WEEK_COVERAGE`` of the 168 hours before the cutoff exist.
     """
     cutoff = cal.cutoff_for(delivery_day)
-    targets = cal.day_hours(delivery_day)
+    targets = tz.day_hours(delivery_day)
     gaps = []
     for days in (1, 2, 7, 14):
         missing = False
@@ -187,7 +188,7 @@ def baseline_week(history: History, delivery_day: date) -> np.ndarray:
     """Same local hour seven days earlier (naive seasonal baseline)."""
     cutoff = cal.cutoff_for(delivery_day)
     return np.array(
-        [history.value_at(cal.shift_local(ts, 7), cutoff) for ts in cal.day_hours(delivery_day)]
+        [history.value_at(cal.shift_local(ts, 7), cutoff) for ts in tz.day_hours(delivery_day)]
     )
 
 

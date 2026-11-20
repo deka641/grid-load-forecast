@@ -18,7 +18,8 @@ from datetime import datetime
 from pathlib import Path
 
 from gridload.series import BY_KEY, Category, Series
-from gridload.sources.smard import BERLIN, SmardClient, parse_index
+from gridload.sources.smard import SmardClient, parse_index
+from gridload.timezones import BERLIN
 
 OUT = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "smard"
 

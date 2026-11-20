@@ -7,7 +7,7 @@ import duckdb
 import numpy as np
 import polars as pl
 
-from gridload.forecast import calendar as cal
+from gridload import timezones as tz
 from gridload.forecast.features import History
 from gridload.pipeline.db import migrate
 
@@ -15,13 +15,13 @@ from gridload.pipeline.db import migrate
 def hourly_load(first: date, last: date, *, seed: int = 7) -> tuple[np.ndarray, np.ndarray]:
     """UTC hour starts (ms) and values with daily and weekly shape plus noise."""
     rng = np.random.default_rng(seed)
-    start = cal.local_midnight(first)
-    end = cal.local_midnight(last + timedelta(days=1))
+    start = tz.local_midnight(first)
+    end = tz.local_midnight(last + timedelta(days=1))
     hours = int((end - start) / timedelta(hours=1))
     ts = [start + timedelta(hours=i) for i in range(hours)]
     values = []
     for t in ts:
-        local = t.astimezone(cal.BERLIN)
+        local = t.astimezone(tz.BERLIN)
         daily = math.sin((local.hour - 6) / 24 * 2 * math.pi)
         weekly = -6000.0 if local.weekday() >= 5 else 0.0
         values.append(55000.0 + 9000.0 * daily + weekly + rng.normal(0, 800))

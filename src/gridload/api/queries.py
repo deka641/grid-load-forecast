@@ -22,8 +22,8 @@ from gridload.api.models import (
     Resolution,
     SeriesFreshness,
 )
-from gridload.api.params import BERLIN, day_range_utc, hours_of_day, to_local
 from gridload.series import Series
+from gridload.timezones import BERLIN, day_hours, day_range, to_local
 
 FORECAST_MODELS = ("lightgbm", "baseline_week")
 PRIMARY_MODEL = "lightgbm"
@@ -69,7 +69,7 @@ def actuals_json(
     The layout is the one pydantic would produce for ``Actuals``; a test
     compares both. Non-finite values are left out, since ``value`` is not nullable.
     """
-    start, end = day_range_utc(first, last)
+    start, end = day_range(first, last)
     parts = [
         f'{{"resolution":{_text(resolution.value)},"start":"{first.isoformat()}",'
         f'"end":"{last.isoformat()}","series":['
@@ -125,7 +125,7 @@ def forecast_day(cur: duckdb.DuckDBPyConnection, day: date) -> ForecastDay | Non
     if not runs:
         return None
     model_of_run = {run_id: model for model, run_id, _, _ in runs}
-    start, end = day_range_utc(day, day)
+    start, end = day_range(day, day)
     values: dict[tuple[str, datetime], float] = {}
     for run_id, ts, value in cur.execute(
         "SELECT run_id, target_ts_utc, value FROM forecasts "
@@ -147,7 +147,7 @@ def forecast_day(cur: duckdb.DuckDBPyConnection, day: date) -> ForecastDay | Non
             tso=_finite(values.get((TSO_KEY, ts))),
             actual=_finite(values.get((LOAD_KEY, ts))),
         )
-        for ts in hours_of_day(day)
+        for ts in day_hours(day)
     ]
     return ForecastDay(
         delivery_day=day,
