@@ -54,7 +54,7 @@ SMALL_BODY_BYTES = 64 * 1024
 # is then answered from memory without a gate or a query slot; sending it still
 # counts against BYTE_BUDGET. 1 MiB is about 20,000 points, well below the
 # heavy threshold; one year of all series hourly needs about 6.6 MB of it.
-CACHE_BYTES = 64 * 2**20
+CACHE_BYTES = 32 * 2**20
 CACHE_MIN_BYTES = 2**20
 # All limits are per process; compose runs a single uvicorn worker. uvicorn's own
 # --limit-concurrency (256 in compose.yaml) is only a backstop far above them.

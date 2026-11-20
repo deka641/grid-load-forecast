@@ -31,7 +31,7 @@ SNAP = (1, 1)
 
 
 def test_documented_sizes() -> None:
-    assert CACHE_BYTES == 64 * 2**20
+    assert CACHE_BYTES == 32 * 2**20
     assert CACHE_MIN_BYTES == 2**20
 
 
