@@ -1,6 +1,7 @@
 """Enforce per-directory line and branch coverage from ``coverage.json``.
 
-The core packages (data source, pipeline, forecast, API) must be fully covered;
+The core packages (data source, pipeline, forecast, API) and the shared time zone
+helpers must be fully covered;
 the overall threshold is configured in ``pyproject.toml``.
 """
 
@@ -14,6 +15,7 @@ REQUIRED = {
     "src/gridload/pipeline/": 100.0,
     "src/gridload/forecast/": 100.0,
     "src/gridload/api/": 100.0,
+    "src/gridload/timezones.py": 100.0,
 }
 
 
