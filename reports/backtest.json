@@ -1,0 +1,717 @@
+{
+  "config": {
+    "days": 365,
+    "feature_cutoff_hours_before_origin": 2,
+    "num_boost_round": 600,
+    "origin": "12:00 Europe/Berlin on the day before delivery",
+    "params": {
+      "deterministic": true,
+      "feature_fraction": 0.9,
+      "force_col_wise": true,
+      "learning_rate": 0.05,
+      "min_data_in_leaf": 50,
+      "num_leaves": 63,
+      "num_threads": 2,
+      "objective": "l1",
+      "seed": 42,
+      "verbose": -1
+    },
+    "params_hash": "2f7077afc4c9",
+    "retrain_every": 7,
+    "seed": 42,
+    "training_start": "2015-01-16"
+  },
+  "first_day": "2025-11-20",
+  "last_day": "2026-11-19",
+  "metrics": [
+    {
+      "mae_mwh": 1611.5,
+      "mape_percent": 3.041,
+      "model": "lightgbm",
+      "n": 8760,
+      "scope": "overall",
+      "scope_value": "all"
+    },
+    {
+      "mae_mwh": 1289.8,
+      "mape_percent": 2.797,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "0"
+    },
+    {
+      "mae_mwh": 1292.8,
+      "mape_percent": 2.908,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "1"
+    },
+    {
+      "mae_mwh": 1253.6,
+      "mape_percent": 2.86,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "2"
+    },
+    {
+      "mae_mwh": 1208.2,
+      "mape_percent": 2.757,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "3"
+    },
+    {
+      "mae_mwh": 1195.2,
+      "mape_percent": 2.685,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "4"
+    },
+    {
+      "mae_mwh": 1296.4,
+      "mape_percent": 2.767,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "5"
+    },
+    {
+      "mae_mwh": 1338.3,
+      "mape_percent": 2.637,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "6"
+    },
+    {
+      "mae_mwh": 1322.3,
+      "mape_percent": 2.431,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "7"
+    },
+    {
+      "mae_mwh": 1346.7,
+      "mape_percent": 2.345,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "8"
+    },
+    {
+      "mae_mwh": 1462.6,
+      "mape_percent": 2.498,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "9"
+    },
+    {
+      "mae_mwh": 1667.1,
+      "mape_percent": 2.847,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "10"
+    },
+    {
+      "mae_mwh": 1935.4,
+      "mape_percent": 3.318,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "11"
+    },
+    {
+      "mae_mwh": 2101.1,
+      "mape_percent": 3.65,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "12"
+    },
+    {
+      "mae_mwh": 2201.0,
+      "mape_percent": 3.932,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "13"
+    },
+    {
+      "mae_mwh": 2258.1,
+      "mape_percent": 4.144,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "14"
+    },
+    {
+      "mae_mwh": 2195.6,
+      "mape_percent": 4.075,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "15"
+    },
+    {
+      "mae_mwh": 2061.7,
+      "mape_percent": 3.756,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "16"
+    },
+    {
+      "mae_mwh": 1804.1,
+      "mape_percent": 3.169,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "17"
+    },
+    {
+      "mae_mwh": 1589.7,
+      "mape_percent": 2.734,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "18"
+    },
+    {
+      "mae_mwh": 1567.8,
+      "mape_percent": 2.684,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "19"
+    },
+    {
+      "mae_mwh": 1574.4,
+      "mape_percent": 2.787,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "20"
+    },
+    {
+      "mae_mwh": 1567.3,
+      "mape_percent": 2.903,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "21"
+    },
+    {
+      "mae_mwh": 1567.7,
+      "mape_percent": 3.049,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "22"
+    },
+    {
+      "mae_mwh": 1578.4,
+      "mape_percent": 3.256,
+      "model": "lightgbm",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "23"
+    },
+    {
+      "mae_mwh": 1532.9,
+      "mape_percent": 3.157,
+      "model": "lightgbm",
+      "n": 1224,
+      "scope": "day_type",
+      "scope_value": "saturday"
+    },
+    {
+      "mae_mwh": 1606.9,
+      "mape_percent": 3.5,
+      "model": "lightgbm",
+      "n": 1464,
+      "scope": "day_type",
+      "scope_value": "sunday_holiday"
+    },
+    {
+      "mae_mwh": 1628.4,
+      "mape_percent": 2.907,
+      "model": "lightgbm",
+      "n": 6072,
+      "scope": "day_type",
+      "scope_value": "workday"
+    },
+    {
+      "mae_mwh": 2814.0,
+      "mape_percent": 5.304,
+      "model": "baseline_week",
+      "n": 8760,
+      "scope": "overall",
+      "scope_value": "all"
+    },
+    {
+      "mae_mwh": 2276.7,
+      "mape_percent": 4.922,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "0"
+    },
+    {
+      "mae_mwh": 2256.3,
+      "mape_percent": 5.042,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "1"
+    },
+    {
+      "mae_mwh": 2249.7,
+      "mape_percent": 5.116,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "2"
+    },
+    {
+      "mae_mwh": 2215.7,
+      "mape_percent": 5.033,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "3"
+    },
+    {
+      "mae_mwh": 2220.6,
+      "mape_percent": 4.964,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "4"
+    },
+    {
+      "mae_mwh": 2319.9,
+      "mape_percent": 4.97,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "5"
+    },
+    {
+      "mae_mwh": 2643.0,
+      "mape_percent": 5.255,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "6"
+    },
+    {
+      "mae_mwh": 2865.6,
+      "mape_percent": 5.337,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "7"
+    },
+    {
+      "mae_mwh": 2919.6,
+      "mape_percent": 5.146,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "8"
+    },
+    {
+      "mae_mwh": 2930.7,
+      "mape_percent": 5.033,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "9"
+    },
+    {
+      "mae_mwh": 3129.8,
+      "mape_percent": 5.342,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "10"
+    },
+    {
+      "mae_mwh": 3363.4,
+      "mape_percent": 5.743,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "11"
+    },
+    {
+      "mae_mwh": 3518.9,
+      "mape_percent": 6.095,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "12"
+    },
+    {
+      "mae_mwh": 3618.4,
+      "mape_percent": 6.413,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "13"
+    },
+    {
+      "mae_mwh": 3612.2,
+      "mape_percent": 6.568,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "14"
+    },
+    {
+      "mae_mwh": 3564.3,
+      "mape_percent": 6.564,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "15"
+    },
+    {
+      "mae_mwh": 3367.1,
+      "mape_percent": 6.128,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "16"
+    },
+    {
+      "mae_mwh": 3082.3,
+      "mape_percent": 5.417,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "17"
+    },
+    {
+      "mae_mwh": 2854.2,
+      "mape_percent": 4.914,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "18"
+    },
+    {
+      "mae_mwh": 2755.2,
+      "mape_percent": 4.743,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "19"
+    },
+    {
+      "mae_mwh": 2608.0,
+      "mape_percent": 4.62,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "20"
+    },
+    {
+      "mae_mwh": 2483.3,
+      "mape_percent": 4.585,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "21"
+    },
+    {
+      "mae_mwh": 2393.4,
+      "mape_percent": 4.629,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "22"
+    },
+    {
+      "mae_mwh": 2287.8,
+      "mape_percent": 4.707,
+      "model": "baseline_week",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "23"
+    },
+    {
+      "mae_mwh": 2341.6,
+      "mape_percent": 4.83,
+      "model": "baseline_week",
+      "n": 1224,
+      "scope": "day_type",
+      "scope_value": "saturday"
+    },
+    {
+      "mae_mwh": 3401.0,
+      "mape_percent": 7.454,
+      "model": "baseline_week",
+      "n": 1464,
+      "scope": "day_type",
+      "scope_value": "sunday_holiday"
+    },
+    {
+      "mae_mwh": 2767.7,
+      "mape_percent": 4.881,
+      "model": "baseline_week",
+      "n": 6072,
+      "scope": "day_type",
+      "scope_value": "workday"
+    },
+    {
+      "mae_mwh": 2075.3,
+      "mape_percent": 3.92,
+      "model": "tso",
+      "n": 8760,
+      "scope": "overall",
+      "scope_value": "all"
+    },
+    {
+      "mae_mwh": 1491.0,
+      "mape_percent": 3.179,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "0"
+    },
+    {
+      "mae_mwh": 1509.1,
+      "mape_percent": 3.34,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "1"
+    },
+    {
+      "mae_mwh": 1489.5,
+      "mape_percent": 3.374,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "2"
+    },
+    {
+      "mae_mwh": 1517.2,
+      "mape_percent": 3.439,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "3"
+    },
+    {
+      "mae_mwh": 1581.5,
+      "mape_percent": 3.527,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "4"
+    },
+    {
+      "mae_mwh": 1564.3,
+      "mape_percent": 3.359,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "5"
+    },
+    {
+      "mae_mwh": 1877.3,
+      "mape_percent": 3.69,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "6"
+    },
+    {
+      "mae_mwh": 1993.3,
+      "mape_percent": 3.764,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "7"
+    },
+    {
+      "mae_mwh": 2002.3,
+      "mape_percent": 3.613,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "8"
+    },
+    {
+      "mae_mwh": 2179.4,
+      "mape_percent": 3.837,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "9"
+    },
+    {
+      "mae_mwh": 2536.3,
+      "mape_percent": 4.463,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "10"
+    },
+    {
+      "mae_mwh": 2744.6,
+      "mape_percent": 4.826,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "11"
+    },
+    {
+      "mae_mwh": 2855.1,
+      "mape_percent": 5.09,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "12"
+    },
+    {
+      "mae_mwh": 2883.8,
+      "mape_percent": 5.254,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "13"
+    },
+    {
+      "mae_mwh": 2909.2,
+      "mape_percent": 5.451,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "14"
+    },
+    {
+      "mae_mwh": 2761.6,
+      "mape_percent": 5.187,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "15"
+    },
+    {
+      "mae_mwh": 2554.8,
+      "mape_percent": 4.691,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "16"
+    },
+    {
+      "mae_mwh": 2360.6,
+      "mape_percent": 4.123,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "17"
+    },
+    {
+      "mae_mwh": 2043.9,
+      "mape_percent": 3.484,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "18"
+    },
+    {
+      "mae_mwh": 1954.9,
+      "mape_percent": 3.332,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "19"
+    },
+    {
+      "mae_mwh": 1859.7,
+      "mape_percent": 3.266,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "20"
+    },
+    {
+      "mae_mwh": 1740.2,
+      "mape_percent": 3.155,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "21"
+    },
+    {
+      "mae_mwh": 1705.6,
+      "mape_percent": 3.23,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "22"
+    },
+    {
+      "mae_mwh": 1693.1,
+      "mape_percent": 3.415,
+      "model": "tso",
+      "n": 365,
+      "scope": "hour",
+      "scope_value": "23"
+    },
+    {
+      "mae_mwh": 1758.7,
+      "mape_percent": 3.643,
+      "model": "tso",
+      "n": 1224,
+      "scope": "day_type",
+      "scope_value": "saturday"
+    },
+    {
+      "mae_mwh": 2328.3,
+      "mape_percent": 5.194,
+      "model": "tso",
+      "n": 1464,
+      "scope": "day_type",
+      "scope_value": "sunday_holiday"
+    },
+    {
+      "mae_mwh": 2078.2,
+      "mape_percent": 3.669,
+      "model": "tso",
+      "n": 6072,
+      "scope": "day_type",
+      "scope_value": "workday"
+    },
+    {
+      "mae_mwh": 1611.5,
+      "mape_percent": 3.041,
+      "model": "lightgbm",
+      "n": 8760,
+      "scope": "overall_tso_hours",
+      "scope_value": "all"
+    },
+    {
+      "mae_mwh": 2814.0,
+      "mape_percent": 5.304,
+      "model": "baseline_week",
+      "n": 8760,
+      "scope": "overall_tso_hours",
+      "scope_value": "all"
+    }
+  ],
+  "skipped_days": []
+}

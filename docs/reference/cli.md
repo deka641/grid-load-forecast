@@ -5,7 +5,7 @@ The `gridload` command is installed with the package (`uv run gridload ...` loca
 | Command | What it does |
 |---|---|
 | `gridload run` | The scheduled job: load data, issue the forecast when due, refresh a stale backtest, publish the snapshot |
-| `gridload ingest [--series KEY ...] [--refetch-weeks N]` | Load missing and incomplete chunks and the newest N weeks again (default 4) |
+| `gridload ingest [--series KEY ...] [--refetch-weeks N] [--accept-withdrawals]` | Load missing chunks, chunks stored while still open, and the newest N weeks again (default 4); optionally accept values SMARD removed from completed weeks |
 | `gridload backfill [--since YYYY-MM-DD] [--series KEY ...]` | Load the history, optionally from a start day |
 | `gridload backtest [--days N]` | Run and store the backtest over the last N days (default 365) and republish the snapshot |
 | `gridload status` | Print the state of the published snapshot as JSON: recent runs, coverage per series, errors of the last run |

@@ -7,10 +7,10 @@ The warehouse (`warehouse.duckdb`) is created by versioned SQL migrations in `sr
 | Table | Content | Key |
 |---|---|---|
 | `series` | Catalog of ingested series: filter id, region, label, unit, category, aggregation (`sum` or `mean`) | `series_key` |
-| `raw_chunks` | Latest verbatim response per weekly chunk (zlib-compressed JSON), fetch time and SHA-256 | `series_key, resolution, chunk_ts` |
+| `raw_chunks` | Latest verbatim response per weekly chunk (zlib-compressed JSON), time of the last fetch (also for unchanged responses) and SHA-256 | `series_key, resolution, chunk_ts` |
 | `observations` | Cleaned quarter-hour values with `updated_at` and a `revision` counter that increases on every correction | `series_key, resolution, ts_utc` |
 | `load_runs` | One row per pipeline run: mode, start, end, status (`running`, `ok`, `partial`, `failed`, `aborted`) | `run_id` |
-| `load_log` | One row per chunk and run: status (`loaded`, `unchanged`, `error`), values written, message | none |
+| `load_log` | One row per chunk and run: status (`loaded`, `unchanged`, `error`, plus `warning` for a gap in a week that ended within seven days), values written, message (source gaps, removed values, error text) | none |
 | `forecast_runs` | One row per issued forecast and model: origin (`issued_at`), local delivery day, details as JSON (cutoff, training rows, parameter hash, `degraded`) | `run_id` |
 | `forecasts` | Hourly forecast values in MWh per hour | `run_id, target_ts_utc` |
 | `backtest_runs` | One row per stored backtest: evaluation period and configuration as JSON | `run_id` |

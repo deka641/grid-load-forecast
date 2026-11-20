@@ -19,14 +19,16 @@ A chunk is stored only if all of these hold:
 - the response is valid JSON with a non-empty series;
 - the series starts at the chunk timestamp and advances in exact 15-minute steps;
 - it covers the whole local week;
-- `null` appears only as a trailing run, and only in the newest chunk or in a chunk that ended less than six hours ago;
-- values are finite numbers, and energies are not negative (negative and extreme prices are valid).
+- values are finite numbers, and energies are not negative (negative and extreme prices are valid);
+- a completed week contains at least one value.
 
-A response that breaks a rule, an empty or truncated response, and any HTTP error are written to the load log, and nothing is stored for that chunk. The next run tries again. Missing data is never stored as "no data".
+A response that breaks a rule, an empty or truncated response, and any HTTP error are written to the load log, and nothing is stored for that chunk. The next run tries again.
+
+`null` marks a quarter hour that SMARD does not publish. At the end of the newest chunk (or of a week that ended less than six hours ago) these values are simply not published yet. In older weeks they are permanent gaps in the source: the full backfill found 19 such weeks, for example the first three days of the history (values start on 1 January 2015) and single missing days in 2016, 2018 and 2020. The pipeline stores the values around a gap, never stores a missing quarter hour as a value, and records the number of missing quarter hours and the first of them in the load log. Hourly values are only derived from complete hours, so a gap never produces a partial hourly value. A gap in a week that ended within the last seven days makes the run `partial`, so it shows up in the status.
 
 ## Corrections and late values
 
-Every run reloads the four newest weekly chunks and every stored chunk that is still incomplete. A changed value overwrites the stored one and increases its revision counter; there are never two rows for the same timestamp. A value that SMARD no longer publishes is removed. Corrections to older weeks are only picked up on request (`gridload ingest --refetch-weeks N`).
+Every run reloads the four newest weekly chunks and every chunk that was stored while its week was still open, however old it is, so late values are filled in even after a long downtime. A chunk fetched after its week ended is final. A changed value overwrites the stored one and increases its revision counter; there are never two rows for the same timestamp. In an open week, values that SMARD stops publishing are removed. In a completed week, stored values that turn missing are more likely a degraded response than a correction: they are kept and the chunk is reported as an error, unless the withdrawal is accepted explicitly (`gridload ingest --accept-withdrawals`). Corrections to older weeks are only picked up on request (`gridload ingest --refetch-weeks N`).
 
 Requests are throttled to two per second, retried with exponential backoff on timeouts and overload responses (honouring `Retry-After`), and a run stops after five consecutive transient failures. The client identifies itself as `grid-load-forecast/0.1` and sends no personal data.
 

@@ -8,7 +8,7 @@ docker compose exec pipeline gridload status   # runs, coverage per series, erro
 curl -s http://127.0.0.1:8460/api/v1/status    # what the dashboard sees
 ```
 
-A run with status `partial` loaded fresh data, but an older chunk or a follow-up step (forecast, backtest) failed; the details are in `gridload status` and in the pipeline log. `failed` means recent data could not be loaded.
+A run with status `partial` loaded fresh data, but an older chunk or a follow-up step (forecast, backtest) failed, or a week that just ended has a gap; the details are in `gridload status` (errors and warnings of the last run) and in the pipeline log. `failed` means recent data could not be loaded.
 
 ## Pick up corrections to older data
 
@@ -19,6 +19,14 @@ docker compose exec pipeline gridload ingest --refetch-weeks 52
 ```
 
 Unchanged chunks are recognised by their hash and skipped, changed values overwrite the stored ones and increase their revision.
+
+## Accept values that SMARD removed
+
+If the status reports "stored values are now missing in a completed chunk" for a week and you have checked on SMARD.de that the values were removed on purpose, accept the withdrawal once:
+
+```bash
+docker compose exec pipeline gridload ingest --refetch-weeks 52 --accept-withdrawals
+```
 
 ## Switch wholesale prices off
 
