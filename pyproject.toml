@@ -1,6 +1,6 @@
 [project]
 name = "grid-load-forecast"
-version = "0.0.0"
+version = "0.1.0"
 description = "Day-ahead forecast of German grid load from public SMARD data"
 readme = "README.md"
 license = "MIT"
