@@ -1,16 +1,23 @@
 """Resource limits and failure handling of the API."""
 
+import asyncio
 import json
 import logging
 import math
+import threading
+import time
 import tracemalloc
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
+import httpx2 as httpx
 import pytest
+from fastapi.testclient import TestClient
 
+from gridload.api import queries
+from gridload.api.app import create_app
 from gridload.api.models import Actuals, ForecastDay
 from gridload.api.store import NEWEST_UNOPENABLE
 from gridload.config import Settings
@@ -98,28 +105,212 @@ def test_actuals_json_matches_the_response_model(
     assert model.series[1].unit == "EUR/MWh"
 
 
-def test_heavy_endpoints_answer_503_while_all_slots_are_taken(
+BUSY = {"detail": "the server is busy; try again shortly"}
+# 15 series x 139 days x 24 hours = 50,040 points: just above the heavy threshold.
+HEAVY = {"series": ALL_KEYS, "start": "2025-01-01", "end": "2025-05-19"}
+LIGHT = {"series": ALL_KEYS, "start": "2025-01-01", "end": "2025-05-18"}
+
+
+@pytest.fixture
+def forecast_client(empty_wh: duckdb.DuckDBPyConnection, settings: Settings) -> TestClient:
+    add_run(empty_wh, "r1", "lightgbm", DAY, ISSUED, 1.0)
+    publish(empty_wh, settings)
+    return make_client(settings, heavy_wait=0.01, query_wait=0.01)
+
+
+def hold(slots: threading.BoundedSemaphore, count: int) -> None:
+    for _ in range(count):
+        assert slots.acquire(blocking=False)
+
+
+def free(slots: threading.BoundedSemaphore, count: int) -> None:
+    for _ in range(count):
+        slots.release()
+
+
+def test_only_large_actuals_requests_need_a_heavy_slot(forecast_client: TestClient) -> None:
+    assert len(CATALOG) == 15
+    slots = forecast_client.app.state.heavy_slots  # type: ignore[attr-defined]
+    hold(slots, 2)
+    try:
+        response = forecast_client.get("/api/v1/actuals", params=HEAVY)
+        assert response.status_code == 503
+        assert response.headers["content-type"] == "application/json"
+        assert response.json() == BUSY
+        assert "etag" not in response.headers
+        # Smaller requests and forecasts do not queue behind the large ones.
+        assert forecast_client.get("/api/v1/actuals", params=LIGHT).status_code == 200
+        assert get(forecast_client, "/api/v1/forecasts")["delivery_day"] == "2026-11-12"
+        assert get(forecast_client, "/api/v1/forecasts/days")["days"] == ["2026-11-12"]
+        assert get(forecast_client, "/api/v1/status")["initialised"] is True
+        assert get(forecast_client, "/api/v1/health")["status"] == "ok"
+    finally:
+        free(slots, 2)
+    assert forecast_client.get("/api/v1/actuals", params=HEAVY).status_code == 200
+
+
+def test_data_queries_answer_503_while_all_query_slots_are_taken(
+    forecast_client: TestClient,
+) -> None:
+    slots = forecast_client.app.state.query_slots  # type: ignore[attr-defined]
+    hold(slots, 8)
+    try:
+        for url in ("/api/v1/forecasts", "/api/v1/forecasts/days", "/api/v1/backtest/metrics"):
+            response = forecast_client.get(url)
+            assert response.status_code == 503
+            assert response.json() == BUSY
+        assert get(forecast_client, "/api/v1/status")["initialised"] is True
+        assert get(forecast_client, "/api/v1/health")["status"] == "ok"
+    finally:
+        free(slots, 8)
+    assert forecast_client.get("/api/v1/forecasts").status_code == 200
+
+
+def test_health_and_status_answer_while_heavy_requests_wait(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings
+) -> None:
+    publish(empty_wh, settings)
+    app = create_app(settings, heavy_wait=2.0)
+    slots = app.state.heavy_slots
+
+    async def scenario() -> tuple[list[int], list[tuple[int, float]], float]:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://api") as client:
+            # More waiting heavy requests than the worker thread pool has threads.
+            waiting = [
+                asyncio.create_task(client.get("/api/v1/actuals", params=HEAVY)) for _ in range(60)
+            ]
+            await asyncio.sleep(0.2)
+            probes = []
+            for url in ("/api/v1/health", "/api/v1/status", "/api/v1/forecasts/days"):
+                started = time.monotonic()
+                response = await client.get(url)
+                probes.append((response.status_code, time.monotonic() - started))
+            pending = sum(not task.done() for task in waiting)
+            codes = [r.status_code for r in await asyncio.gather(*waiting)]
+            return codes, probes, pending
+
+    hold(slots, 2)
+    try:
+        codes, probes, pending = asyncio.run(scenario())
+    finally:
+        free(slots, 2)
+    assert pending == 60
+    assert [code for code, _ in probes] == [200, 200, 200]
+    assert max(seconds for _, seconds in probes) < 1.0
+    assert codes == [503] * 60
+
+
+# Revalidation --------------------------------------------------------------------------
+
+
+def test_data_responses_carry_an_etag_and_answer_304(forecast_client: TestClient) -> None:
+    for url, params in (
+        ("/api/v1/actuals", {"series": "load", "start": "2026-11-10", "end": "2026-11-10"}),
+        ("/api/v1/forecasts", {}),
+        ("/api/v1/forecasts/days", {"limit": 3}),
+    ):
+        first = forecast_client.get(url, params=params)
+        assert first.status_code == 200
+        assert first.headers["cache-control"] == "no-cache"
+        tag = first.headers["etag"]
+        assert tag.startswith('"')
+        assert tag.endswith('"')
+        for header in (tag, f"W/{tag}", f'"other", {tag}'):
+            again = forecast_client.get(url, params=params, headers={"If-None-Match": header})
+            assert again.status_code == 304
+            assert again.content == b""
+            assert again.headers["etag"] == tag
+            assert again.headers["cache-control"] == "no-cache"
+        for header in ('"other"', "*", ""):
+            full = forecast_client.get(url, params=params, headers={"If-None-Match": header})
+            assert full.status_code == 200
+            assert full.content == first.content
+
+
+def test_etag_depends_on_the_request_and_the_snapshot(
     empty_wh: duckdb.DuckDBPyConnection, settings: Settings
 ) -> None:
     add_run(empty_wh, "r1", "lightgbm", DAY, ISSUED, 1.0)
     publish(empty_wh, settings)
-    client = make_client(settings, heavy_wait=0.01)
-    slots = client.app.state.heavy_slots  # type: ignore[attr-defined]
-    params = {"series": "load", "start": "2026-11-10", "end": "2026-11-10"}
-    for _ in range(2):
-        assert slots.acquire(blocking=False)
+    client = make_client(settings)
+    tag = client.get("/api/v1/forecasts/days").headers["etag"]
+    assert client.get("/api/v1/forecasts/days").headers["etag"] == tag
+    assert client.get("/api/v1/forecasts/days", params={"limit": 1}).headers["etag"] != tag
+
+    add_run(empty_wh, "r2", "lightgbm", date(2026, 11, 13), ISSUED, 1.0)
+    publish(empty_wh, settings)
+    response = client.get("/api/v1/forecasts/days", headers={"If-None-Match": tag})
+    assert response.status_code == 200
+    assert response.json()["days"] == ["2026-11-13", "2026-11-12"]
+    assert response.headers["etag"] != tag
+
+
+def test_revalidation_needs_no_slot_and_errors_have_no_etag(
+    forecast_client: TestClient,
+) -> None:
+    tag = forecast_client.get("/api/v1/actuals", params=HEAVY).headers["etag"]
+    heavy = forecast_client.app.state.heavy_slots  # type: ignore[attr-defined]
+    query = forecast_client.app.state.query_slots  # type: ignore[attr-defined]
+    hold(heavy, 2)
+    hold(query, 8)
     try:
-        for url, query in (("/api/v1/actuals", params), ("/api/v1/forecasts", {})):
-            response = client.get(url, params=query)
-            assert response.status_code == 503
-            assert response.json() == {"detail": "the server is busy; try again shortly"}
-        # Light endpoints are not limited.
-        assert get(client, "/api/v1/forecasts/days")["days"] == ["2026-11-12"]
+        response = forecast_client.get(
+            "/api/v1/actuals", params=HEAVY, headers={"If-None-Match": tag}
+        )
+        assert response.status_code == 304
     finally:
-        slots.release()
-        slots.release()
-    assert client.get("/api/v1/actuals", params=params).status_code == 200
-    assert client.get("/api/v1/forecasts").status_code == 200
+        free(heavy, 2)
+        free(query, 8)
+    for url, params in (
+        ("/api/v1/forecasts", {"delivery_day": "2026-01-01"}),
+        ("/api/v1/backtest/metrics", {}),
+        ("/api/v1/actuals", {"series": "nope", "start": "2026-11-10", "end": "2026-11-10"}),
+    ):
+        assert "etag" not in forecast_client.get(url, params=params).headers
+        response = forecast_client.get(url, params=params, headers={"If-None-Match": "*"})
+        assert response.status_code in (404, 422)
+        assert "etag" not in response.headers
+
+
+# Status --------------------------------------------------------------------------------
+
+
+def test_status_queries_the_snapshot_once_per_snapshot(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    empty_wh.execute(
+        "INSERT INTO observations VALUES ('load', 'quarterhour', ?, 1.0, now(), 0)",
+        [datetime(2026, 11, 12, 10, tzinfo=UTC)],
+    )
+    publish(empty_wh, settings)
+    calls = []
+    original = queries.last_timestamps
+
+    def counting(cur: duckdb.DuckDBPyConnection) -> dict[str, datetime]:
+        calls.append(1)
+        return original(cur)
+
+    monkeypatch.setattr(queries, "last_timestamps", counting)
+    now = [datetime(2026, 11, 12, 11, tzinfo=UTC)]
+    client = TestClient(create_app(settings, clock=lambda: now[0]))
+
+    def load_age() -> float:
+        body = get(client, "/api/v1/status")
+        return float(next(s for s in body["series"] if s["key"] == "load")["age_seconds"])
+
+    assert load_age() == 2700.0
+    now[0] += timedelta(minutes=10)
+    assert load_age() == 3300.0
+    assert len(calls) == 1
+
+    empty_wh.execute(
+        "INSERT INTO observations VALUES ('load', 'quarterhour', ?, 1.0, now(), 0)",
+        [datetime(2026, 11, 12, 10, 45, tzinfo=UTC)],
+    )
+    publish(empty_wh, settings)
+    assert load_age() == 600.0
+    assert len(calls) == 2
 
 
 # Broken snapshots ----------------------------------------------------------------------
