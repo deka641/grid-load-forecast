@@ -45,6 +45,8 @@ describe('Chart', () => {
     )
     expect(screen.getByRole('img', { name: 'Test chart' })).toBeInTheDocument()
     expect(document.querySelector('figure.chart.extra figcaption')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Show data' }))
+    expect(screen.getByRole('region', { name: 'Chart data' })).toBeInTheDocument()
     expect(init).toHaveBeenCalledWith(expect.any(HTMLDivElement), null, { renderer: 'canvas' })
     expect(instance.setOption).toHaveBeenCalledWith({ series: [] }, { notMerge: true })
 
@@ -70,7 +72,7 @@ describe('Chart', () => {
 
   it('toggles the data table visually', () => {
     render(
-      <Chart build={() => ({})} label="Toggle">
+      <Chart build={() => ({})} label="Toggle" dataLabel="Values table">
         <table aria-label="values" />
       </Chart>,
     )
@@ -88,7 +90,7 @@ describe('Chart', () => {
     )
     expect(caption).toHaveClass('chart-data')
     // Open: the scroll box is a named region that the keyboard can reach.
-    const region = screen.getByRole('region', { name: 'Data table: Toggle' })
+    const region = screen.getByRole('region', { name: 'Values table' })
     expect(region).toHaveAttribute('tabindex', '0')
     expect(region).toHaveClass('chart-data-scroll')
     expect(caption).toContainElement(region)

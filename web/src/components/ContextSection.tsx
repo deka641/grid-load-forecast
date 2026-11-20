@@ -146,6 +146,7 @@ function ContextCharts({
         build={buildMix}
         label={`Stacked area chart of hourly electricity generation in Germany by source in GW, ${range}`}
         className="chart-mix"
+        dataLabel="Generation table"
       >
         <MixSummary series={series} />
       </Chart>
@@ -156,6 +157,7 @@ function ContextCharts({
             build={buildPrice}
             label={`Line chart of the hourly day-ahead electricity price for Germany and Luxembourg in EUR/MWh, ${range}`}
             className="chart-price"
+            dataLabel="Price table"
           >
             <PriceTable stamps={aligned.stamps} values={prices} />
           </Chart>

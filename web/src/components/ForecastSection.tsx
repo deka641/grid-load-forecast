@@ -165,6 +165,7 @@ function ForecastView({ forecast }: { forecast: ForecastDay }) {
         build={build}
         label={`Line chart of the grid load on ${dayShort(forecast.delivery_day)} in GW by local hour: actual, LightGBM model, baseline and SMARD forecast`}
         className="chart-forecast"
+        dataLabel="Hourly forecast table"
       >
         <ForecastTable forecast={forecast} />
       </Chart>

@@ -119,7 +119,7 @@ async function hoverCharts(page: Page) {
 }
 
 for (const scheme of ['light', 'dark'] as const) {
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 1024, 768, 390]) {
     test(`renders cleanly in ${scheme} at ${String(width)} px`, async ({ browser }) => {
       const context = await browser.newContext({
         colorScheme: scheme,
@@ -150,10 +150,6 @@ for (const scheme of ['light', 'dark'] as const) {
           await page.screenshot({ path: join(SHOTS, `tooltip-mix-${scheme}-390.png`) })
           await page.mouse.move(0, 0)
         }
-        // The backtest table fits without sideways scrolling.
-        const table = page.locator('.table-scroll')
-        const fits = await table.evaluate((el) => el.scrollWidth <= el.clientWidth)
-        expect(fits).toBe(true)
         // Touch targets: every control is at least 44 px high.
         const controls = page.locator('button, select, .theme-option span, .site-footer a')
         for (const control of await controls.all()) {
@@ -164,6 +160,10 @@ for (const scheme of ['light', 'dark'] as const) {
 
       const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
       expect(scrollWidth).toBeLessThanOrEqual(width)
+      // The backtest table fits without sideways scrolling.
+      const table = page.locator('.table-scroll')
+      const fits = await table.evaluate((el) => el.scrollWidth <= el.clientWidth)
+      expect(fits).toBe(true)
 
       await expectNoSeriousAxe(page)
 
@@ -190,14 +190,28 @@ for (const scheme of ['light', 'dark'] as const) {
     const lines = page.getByRole('list', { name: 'Lines in the forecast chart' })
     await expect(lines.locator('.is-empty')).toHaveText('Actual (not yet published)')
     const forecastCanvas = page.locator('.chart-forecast .chart-canvas')
-    const box = await forecastCanvas.boundingBox()
-    if (box) {
-      await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5)
-      const tooltip = forecastCanvas.locator('.chart-tooltip')
+    const tooltip = forecastCanvas.locator('.chart-tooltip')
+    const hoverAt = async (share: number) => {
+      const box = await forecastCanvas.boundingBox()
+      expect(box).not.toBeNull()
+      if (box) {
+        await page.mouse.move(box.x + box.width * share, box.y + box.height * 0.5)
+      }
       await expect(tooltip).toBeVisible()
-      await expect(tooltip).not.toContainText('Actual')
-      await page.mouse.move(0, 0)
     }
+    await hoverAt(0.5)
+    await expect(tooltip).not.toContainText('Actual')
+    await page.mouse.move(0, 0)
+
+    // 20 November is published up to the early afternoon: the row is there only for those hours.
+    await page.getByLabel('Delivery day').selectOption('2026-11-20')
+    await expect(page.locator('.headline')).toContainText('Friday 20 November')
+    await expect(lines.locator('.is-empty')).toHaveCount(0)
+    await hoverAt(0.3)
+    await expect(tooltip).toContainText('Actual')
+    await hoverAt(0.7)
+    await expect(tooltip).not.toContainText('Actual')
+    await page.mouse.move(0, 0)
 
     // Each click renames its button to "Hide data", so open the next "Show data" each time.
     const toggles = page.getByRole('button', { name: 'Show data' })
@@ -226,6 +240,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
     const axe = await new AxeBuilder({ page }).analyze()
     expect(axe.violations.map((v) => `${v.id} (${v.impact ?? 'unknown'})`)).toEqual([])
+    expect(await cspViolations(page)).toEqual([])
     expect(problems).toEqual([])
     await context.close()
   })

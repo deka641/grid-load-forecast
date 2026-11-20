@@ -56,7 +56,7 @@
     --color-warn: #f2b45c;
     --color-warn-bg: #3a2a12;
     --color-error: #ff9b8f;
-    --gen-wind-offshore: #2b5a96;
+    --gen-wind-offshore: #3b6fae;
   }
 }
 
@@ -74,7 +74,7 @@
   --color-warn: #f2b45c;
   --color-warn-bg: #3a2a12;
   --color-error: #ff9b8f;
-  --gen-wind-offshore: #2b5a96;
+  --gen-wind-offshore: #3b6fae;
 }
 
 *,
@@ -389,6 +389,11 @@ a:hover {
   flex: none;
 }
 
+/* An inner edge keeps pale swatches visible on the page background. */
+.legend-area {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 50%, transparent);
+}
+
 .stroke-actual line {
   stroke: var(--color-actual);
 }
@@ -579,6 +584,11 @@ a:hover {
   overflow-x: auto;
 }
 
+.table-scroll:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
 tr.narrow-only {
   display: none;
 }
@@ -651,10 +661,6 @@ tr.narrow-only {
   min-width: 5em;
 }
 
-.metrics thead .num:last-child {
-  min-width: 7.25em;
-}
-
 .label-short {
   display: none;
 }
@@ -664,7 +670,7 @@ tr.narrow-only {
 }
 
 /* The scored hours are the same for every model, so they are not a result to stress. */
-.metrics tbody:first-of-type tr:first-child td:nth-child(3) {
+.metrics tbody:first-of-type tr:first-child td.metric-hours {
   font-weight: 400;
 }
 
@@ -727,7 +733,7 @@ tr.narrow-only {
   color: var(--color-ink);
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1240px) {
   .backtest-grid {
     grid-template-columns: minmax(0, 1fr);
   }
