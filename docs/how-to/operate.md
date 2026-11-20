@@ -8,7 +8,7 @@ docker compose exec pipeline gridload status   # runs, coverage per series, erro
 curl -s http://127.0.0.1:8460/api/v1/status    # what the dashboard sees
 ```
 
-A run with status `partial` loaded fresh data, but an older chunk or a follow-up step (forecast, backtest) failed, a week that just ended has a gap, or SMARD withdrew stored values from a recent week of a series other than the grid load (errors on chunks that ended more than seven days ago also count as `partial`); the details are in `gridload status` (errors and warnings of the last run) and in the pipeline log. `failed` means recent data could not be loaded, or recent grid load values were withdrawn, which the forecast depends on. The pipeline container stays healthy after `partial` runs, so a withdrawal that persists in a generation or price series shows up in the status, not as an unhealthy container.
+A run with status `partial` loaded fresh data, but an older chunk or a follow-up step (forecast, backtest) failed, a week that just ended has a gap, or SMARD withdrew stored values from a recent week of a series other than the grid load (errors on chunks that ended more than seven days ago also count as `partial`); the details are in `gridload status` (errors and warnings of the last run) and in the pipeline log. `failed` means recent data could not be loaded, or recent grid load values were withdrawn, which the forecast depends on. A `partial` run counts as a success for the pipeline healthcheck (which also needs a load value younger than 12 hours), so a withdrawal that persists in a series other than the grid load shows up in the status, not as an unhealthy container.
 
 ## Pick up corrections to older data
 

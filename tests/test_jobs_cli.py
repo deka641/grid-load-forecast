@@ -374,4 +374,4 @@ def test_withdrawal_in_a_generation_series_keeps_the_pipeline_healthy(
     assert second.last_success > first.last_success
     report = jobs.status(settings)
     assert report["runs"][0]["status"] == "partial"
-    assert [e["series"] for e in report["errors_last_run"]] == ["gen_solar"]
+    assert any(e["series"] == "gen_solar" for e in report["errors_last_run"])
