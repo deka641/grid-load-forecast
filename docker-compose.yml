@@ -11,6 +11,8 @@ x-hardening: &hardening
 x-python: &python
   <<: *hardening
   image: grid-load-forecast-python:local
+  environment:
+    GRIDLOAD_INCLUDE_PRICES: ${GRIDLOAD_INCLUDE_PRICES:-true}
   tmpfs:
     - /tmp:size=64m,noexec,nosuid
 
@@ -22,8 +24,6 @@ services:
       dockerfile: docker/python.Dockerfile
     # First run at start-up (a full backfill on an empty volume), then hourly.
     command: ["sh", "-c", "gridload run; exec supercronic /app/crontab"]
-    environment:
-      GRIDLOAD_INCLUDE_PRICES: ${GRIDLOAD_INCLUDE_PRICES:-true}
     volumes:
       - gridload-data:/data
     mem_limit: 2g
@@ -39,7 +39,7 @@ services:
   api:
     <<: *python
     pull_policy: never  # image is built by the pipeline service
-    command: ["uvicorn", "gridload.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+    command: ["uvicorn", "gridload.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header", "--limit-concurrency", "32"]
     depends_on:
       pipeline:
         condition: service_started

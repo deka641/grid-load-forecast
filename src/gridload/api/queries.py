@@ -5,13 +5,13 @@ series keys are validated against the catalog before they get here.
 """
 
 import json
+import math
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 import duckdb
 
 from gridload.api.models import (
-    Actuals,
     BacktestMetric,
     BacktestMetrics,
     ForecastDay,
@@ -19,12 +19,10 @@ from gridload.api.models import (
     ForecastRunInfo,
     LastForecast,
     LoadRunInfo,
-    Point,
     Resolution,
     SeriesFreshness,
-    SeriesValues,
 )
-from gridload.api.params import day_range_utc, hours_of_day, to_local
+from gridload.api.params import BERLIN, day_range_utc, hours_of_day, to_local
 from gridload.series import Series
 
 FORECAST_MODELS = ("lightgbm", "baseline_week")
@@ -33,41 +31,68 @@ LOAD_KEY = "load"
 TSO_KEY = "load_forecast_tso"
 QUARTER_HOUR = timedelta(minutes=15)
 
+# Points are read in batches and written straight to JSON text: a maximal request
+# (15 series, 366 days, hourly) has about 130,000 points, and one pydantic model
+# per point would multiply the memory of the response.
 _ACTUALS_SQL = {
     Resolution.HOUR: (
-        "SELECT series_key, ts_utc, value FROM hourly "
-        "WHERE list_contains(?, series_key) AND ts_utc >= ? AND ts_utc < ? "
-        "ORDER BY series_key, ts_utc"
+        "SELECT epoch_ms(ts_utc), value FROM hourly "
+        "WHERE series_key = ? AND ts_utc >= ? AND ts_utc < ? AND isfinite(value) "
+        "ORDER BY ts_utc"
     ),
     Resolution.QUARTERHOUR: (
-        "SELECT series_key, ts_utc, value FROM observations "
-        "WHERE list_contains(?, series_key) AND ts_utc >= ? AND ts_utc < ? "
-        "ORDER BY series_key, ts_utc"
+        "SELECT epoch_ms(ts_utc), value FROM observations "
+        "WHERE series_key = ? AND ts_utc >= ? AND ts_utc < ? AND isfinite(value) "
+        "ORDER BY ts_utc"
     ),
 }
+BATCH = 8192
 
 
-def actuals(
+def _text(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _local_iso(epoch_ms: int) -> str:
+    return datetime.fromtimestamp(epoch_ms / 1000, tz=BERLIN).isoformat()
+
+
+def actuals_json(
     cur: duckdb.DuckDBPyConnection,
     series: list[Series],
     first: date,
     last: date,
     resolution: Resolution,
-) -> Actuals:
+) -> bytes:
+    """Return the ``Actuals`` document as compact JSON bytes.
+
+    The layout is the one pydantic would produce for ``Actuals``; a test
+    compares both. Non-finite values are left out, since ``value`` is not nullable.
+    """
     start, end = day_range_utc(first, last)
-    rows = cur.execute(_ACTUALS_SQL[resolution], [[s.key for s in series], start, end]).fetchall()
-    points: dict[str, list[Point]] = defaultdict(list)
-    for key, ts, value in rows:
-        points[key].append(Point(ts=to_local(ts), value=value))
-    return Actuals(
-        resolution=resolution,
-        start=first,
-        end=last,
-        series=[
-            SeriesValues(key=s.key, label=s.label, unit=s.unit, points=points.get(s.key, []))
-            for s in series
-        ],
-    )
+    parts = [
+        f'{{"resolution":{_text(resolution.value)},"start":"{first.isoformat()}",'
+        f'"end":"{last.isoformat()}","series":['
+    ]
+    for i, s in enumerate(series):
+        parts.append(
+            f'{"," if i else ""}{{"key":{_text(s.key)},"label":{_text(s.label)},'
+            f'"unit":{_text(s.unit)},"points":['
+        )
+        result = cur.execute(_ACTUALS_SQL[resolution], [s.key, start, end])
+        separator = ""
+        while rows := result.fetchmany(BATCH):
+            parts.append(
+                separator + ",".join(f'{{"ts":"{_local_iso(t)}","value":{v!r}}}' for t, v in rows)
+            )
+            separator = ","
+        parts.append("]}")
+    parts.append("]}")
+    return "".join(parts).encode()
+
+
+def _finite(value: float | None) -> float | None:
+    return value if value is not None and math.isfinite(value) else None
 
 
 def latest_forecast_day(cur: duckdb.DuckDBPyConnection) -> date | None:
@@ -117,10 +142,10 @@ def forecast_day(cur: duckdb.DuckDBPyConnection, day: date) -> ForecastDay | Non
     points = [
         ForecastPoint(
             ts=to_local(ts),
-            lightgbm=values.get(("lightgbm", ts)),
-            baseline_week=values.get(("baseline_week", ts)),
-            tso=values.get((TSO_KEY, ts)),
-            actual=values.get((LOAD_KEY, ts)),
+            lightgbm=_finite(values.get(("lightgbm", ts))),
+            baseline_week=_finite(values.get(("baseline_week", ts))),
+            tso=_finite(values.get((TSO_KEY, ts))),
+            actual=_finite(values.get((LOAD_KEY, ts))),
         )
         for ts in hours_of_day(day)
     ]
@@ -153,7 +178,7 @@ def backtest(cur: duckdb.DuckDBPyConnection) -> BacktestMetrics | None:
     grouped: dict[str, dict[str, list[BacktestMetric]]] = defaultdict(lambda: defaultdict(list))
     rows = cur.execute(
         "SELECT model, scope, scope_value, mae, mape, n FROM backtest_metrics "
-        "WHERE run_id = ? ORDER BY model, scope",
+        "WHERE run_id = ? AND isfinite(mae) AND isfinite(mape) ORDER BY model, scope",
         [run_id],
     ).fetchall()
     for model, scope, scope_value, mae, mape, n in rows:

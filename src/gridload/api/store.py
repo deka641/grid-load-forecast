@@ -5,11 +5,14 @@ old one. A replacement shows up as a new ``(st_ino, st_mtime_ns)`` pair, and the
 next request opens the new file. The previous connection stays in use until the
 new one opened successfully, and it is never closed explicitly: requests still
 running on it hold cursors, and the connection is freed once the last of them
-is gone.
+is gone. A file that cannot be opened is tried once per ``(st_ino,
+st_mtime_ns)`` pair, not on every request.
 
 DuckDB caches database instances per path, so a second ``connect(path)`` while
 the old file is still open would return the old data. Each snapshot is
-therefore attached to a fresh in-memory instance.
+therefore attached to a fresh in-memory instance. Every instance gets a small
+thread pool and memory limit: DuckDB's defaults scale with the number of cores
+and would exceed the container's process and memory limits.
 """
 
 import logging
@@ -25,6 +28,20 @@ import duckdb
 
 log = logging.getLogger(__name__)
 
+INSTANCE_CONFIG: dict[str, str | bool | int | float | list[str]] = {
+    "threads": 2,
+    "async_threads": 1,
+    "memory_limit": "128MB",
+    "temp_directory": "/tmp/duckdb-api",  # noqa: S108 (tmpfs in the container)
+    "max_temp_directory_size": "32MB",
+    "autoload_known_extensions": False,
+    "autoinstall_known_extensions": False,
+    "allow_community_extensions": False,
+}
+MISSING = "no data snapshot is available yet; the pipeline has not published one"
+UNOPENABLE = "the data snapshot cannot be opened"
+NEWEST_UNOPENABLE = "the newest data snapshot file cannot be opened"
+
 
 class SnapshotUnavailableError(RuntimeError):
     """The serving snapshot does not exist or cannot be opened."""
@@ -32,23 +49,25 @@ class SnapshotUnavailableError(RuntimeError):
 
 @dataclass(frozen=True)
 class Snapshot:
-    """An open snapshot and the modification time of its file."""
+    """An open snapshot, the modification time of its file and its series keys."""
 
     connection: duckdb.DuckDBPyConnection
     created_at: datetime
+    series_keys: frozenset[str]
 
 
-def _open(path: Path) -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect(":memory:")
+def _open(path: Path) -> tuple[duckdb.DuckDBPyConnection, frozenset[str]]:
+    con = duckdb.connect(":memory:", config=INSTANCE_CONFIG)
     try:
         con.execute("ATTACH ? AS snap (READ_ONLY)", [str(path)])
         con.execute("SET GLOBAL TimeZone = 'UTC'")
         con.execute("SET enable_external_access = false")
         con.execute("SET lock_configuration = true")
+        keys = frozenset(r[0] for r in con.execute("SELECT series_key FROM snap.series").fetchall())
     except duckdb.Error:
         con.close()
         raise
-    return con
+    return con, keys
 
 
 class SnapshotStore:
@@ -59,10 +78,17 @@ class SnapshotStore:
         self._lock = threading.Lock()
         self._snapshot: Snapshot | None = None
         self._key: tuple[int, int] | None = None
+        self._failed_key: tuple[int, int] | None = None
+        self._error: str | None = None
 
     @property
     def path(self) -> Path:
         return self._path
+
+    @property
+    def error(self) -> str | None:
+        """Why the newest snapshot file could not be opened, or None."""
+        return self._error
 
     def _stat(self) -> os.stat_result | None:
         try:
@@ -70,39 +96,48 @@ class SnapshotStore:
         except FileNotFoundError:
             return None
 
-    def _acquire(self) -> tuple[duckdb.DuckDBPyConnection, datetime]:
-        """Open a cursor on the snapshot, reopening it first if the file was replaced."""
+    def _refresh(self) -> Snapshot:
+        """Return the open snapshot, reopening it if the file changed. Needs the lock."""
+        stat = self._stat()
+        if stat is None:
+            self._snapshot = None
+            self._key = self._failed_key = None
+            self._error = None
+            raise SnapshotUnavailableError(MISSING)
+        key = (stat.st_ino, stat.st_mtime_ns)
+        if key not in (self._key, self._failed_key):
+            try:
+                con, series_keys = _open(self._path)
+            except duckdb.Error as exc:
+                log.warning("cannot open snapshot %s: %s", self._path, exc)
+                self._failed_key = key
+                self._error = NEWEST_UNOPENABLE
+            else:
+                created = datetime.fromtimestamp(stat.st_mtime_ns / 1e9, tz=UTC)
+                self._snapshot = Snapshot(con, created, series_keys)
+                self._key = key
+                self._failed_key = None
+                self._error = None
+        if self._snapshot is None:
+            raise SnapshotUnavailableError(UNOPENABLE)
+        return self._snapshot
+
+    def series_keys(self) -> frozenset[str] | None:
+        """Series keys present in the snapshot, or None without a usable snapshot."""
         with self._lock:
-            stat = self._stat()
-            if stat is None:
-                self._snapshot = None
-                self._key = None
-                raise SnapshotUnavailableError(
-                    "no data snapshot is available yet; the pipeline has not published one"
-                )
-            key = (stat.st_ino, stat.st_mtime_ns)
-            if key != self._key:
-                try:
-                    con = _open(self._path)
-                except duckdb.Error as exc:
-                    log.warning("cannot open snapshot %s: %s", self._path, exc)
-                    if self._snapshot is None:
-                        raise SnapshotUnavailableError(
-                            "the data snapshot cannot be opened"
-                        ) from exc
-                else:
-                    created = datetime.fromtimestamp(stat.st_mtime_ns / 1e9, tz=UTC)
-                    self._snapshot = Snapshot(con, created)
-                    self._key = key
-            assert self._snapshot is not None  # noqa: S101 (both branches above set or raise)
-            return self._snapshot.connection.cursor(), self._snapshot.created_at
+            try:
+                return self._refresh().series_keys
+            except SnapshotUnavailableError:
+                return None
 
     @contextmanager
     def cursor(self) -> Iterator[tuple[duckdb.DuckDBPyConnection, datetime]]:
         """Yield a private cursor on the snapshot and the snapshot's creation time."""
-        cur, created_at = self._acquire()
+        with self._lock:
+            snapshot = self._refresh()
+            cur = snapshot.connection.cursor()
         try:
             cur.execute("USE snap")
-            yield cur, created_at
+            yield cur, snapshot.created_at
         finally:
             cur.close()

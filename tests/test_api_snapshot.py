@@ -190,23 +190,71 @@ def test_concurrent_requests_during_replacements(
     publish(empty_wh, settings)
     client = make_client(settings)
     stop = threading.Event()
+    run_days = [date(2026, 11, 1 + i) for i in range(10)]
+    # State k has the first k runs; the API lists their days newest first.
+    states = {tuple(d.isoformat() for d in reversed(run_days[:k])) for k in range(11)}
 
-    def reader() -> list[int]:
-        codes = []
+    def reader() -> list[tuple[int, tuple[str, ...]]]:
+        seen = []
         while not stop.is_set():
-            codes.append(client.get("/api/v1/forecasts/days").status_code)
-        return codes
+            response = client.get("/api/v1/forecasts/days")
+            seen.append((response.status_code, tuple(response.json()["days"])))
+        return seen
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = [pool.submit(reader) for _ in range(4)]
-        for i in range(10):
-            add_run(empty_wh, f"r{i}", "lightgbm", date(2026, 11, 1 + i), ISSUED, 1.0)
+        for i, day in enumerate(run_days):
+            add_run(empty_wh, f"r{i}", "lightgbm", day, ISSUED, 1.0)
             publish(empty_wh, settings)
         stop.set()
-        codes = [code for f in futures for code in f.result()]
-    assert codes
-    assert set(codes) == {200}
+        seen = [item for f in futures for item in f.result()]
+    assert seen
+    assert {code for code, _ in seen} == {200}
+    assert {body for _, body in seen} <= states
     assert len(days(settings)) == 10
+
+
+def _task_count() -> int:
+    return len(os.listdir("/proc/self/task"))
+
+
+def _fd_count() -> int:
+    return len(os.listdir("/proc/self/fd"))
+
+
+def test_open_snapshots_use_few_threads(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings
+) -> None:
+    publish(empty_wh, settings)
+    before = _task_count()
+    first, second = SnapshotStore(settings.serving_path), SnapshotStore(settings.serving_path)
+    with first.cursor() as (a, _), second.cursor() as (b, _):
+        a.execute("SELECT count(*) FROM hourly").fetchall()
+        b.execute("SELECT count(*) FROM hourly").fetchall()
+        # Two instances with threads=2 and async_threads=1. DuckDB's defaults
+        # (threads = cores, async_threads = 4 x cores) gave 119 threads per
+        # instance on a 24-core host.
+        assert _task_count() - before <= 8
+
+
+def test_repeated_swaps_do_not_leak_threads_or_files(
+    empty_wh: duckdb.DuckDBPyConnection, settings: Settings
+) -> None:
+    publish(empty_wh, settings)
+    store = SnapshotStore(settings.serving_path)
+
+    def swap_and_read() -> None:
+        publish(empty_wh, settings)
+        with store.cursor() as (cur, _):
+            cur.execute("SELECT count(*) FROM series").fetchall()
+
+    for _ in range(5):
+        swap_and_read()
+    tasks, fds = _task_count(), _fd_count()
+    for _ in range(200):
+        swap_and_read()
+    assert _task_count() <= tasks + 2
+    assert _fd_count() <= fds + 2
 
 
 def test_status_uses_the_wall_clock_by_default(settings: Settings) -> None:
