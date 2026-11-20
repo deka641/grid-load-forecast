@@ -341,7 +341,7 @@ def test_a_client_that_does_not_read_is_dropped(
     assert client.status == 200
     assert client.body == b""
     assert app.state.budget.used == 0
-    assert "dropped a client that read" in caplog.text
+    assert "dropped a client that was too slow to read" in caplog.text
 
 
 class TricklingClient(RawClient):
@@ -378,7 +378,7 @@ def test_a_client_that_reads_too_slowly_overall_is_dropped(
     assert chunks[-1]["more_body"] is True
     assert elapsed < 1.5
     assert app.state.budget.used == 0
-    assert "dropped a client that read" in caplog.text
+    assert "dropped a client that was too slow to read" in caplog.text
 
 
 def test_a_body_larger_than_its_estimate_must_fit_the_budget(
