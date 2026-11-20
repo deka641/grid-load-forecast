@@ -12,7 +12,7 @@ from gridload.pipeline import heartbeat, jobs
 from gridload.pipeline.db import connect
 from gridload.pipeline.ingest import RunResult
 from gridload.series import CATALOG
-from tests.fake_smard import FakeSmard, chunk_name, recorded_chunks
+from tests.fake_smard import FakeSmard, chunk_name, fixture_bytes, recorded_chunks
 
 
 @pytest.fixture
@@ -346,3 +346,32 @@ def test_run_finishes_after_the_follow_up_steps(settings: Settings, fake: FakeSm
     assert row is not None
     assert row[0] == "ok"
     assert row[1] >= seen[0][2]
+
+
+def test_withdrawal_in_a_generation_series_keeps_the_pipeline_healthy(
+    settings: Settings, fake: FakeSmard
+) -> None:
+    solar = next(s for s in CATALOG if s.key == "gen_solar")
+    keys = ["load", "gen_solar"]
+    jobs.load(settings, mode="backfill", keys=keys, client_factory=lambda _s: fake.client())
+    first = heartbeat.read(settings.heartbeat_path)
+    assert first is not None
+    assert first.last_success is not None
+    latest = recorded_chunks(solar)[-1]
+    data = json.loads(fixture_bytes(chunk_name(solar, latest)))
+    for point in data["series"][10:20]:
+        point[1] = None
+    fake.override(chunk_name(solar, latest), json.dumps(data).encode())
+    result = jobs.load(
+        settings, mode="incremental", keys=keys, client_factory=lambda _s: fake.client()
+    )
+    assert result.status == "partial"
+    assert any(e.startswith("gen_solar: ") for e in result.errors)
+    second = heartbeat.read(settings.heartbeat_path)
+    assert second is not None
+    assert second.last_status == "partial"
+    assert second.last_success is not None
+    assert second.last_success > first.last_success
+    report = jobs.status(settings)
+    assert report["runs"][0]["status"] == "partial"
+    assert [e["series"] for e in report["errors_last_run"]] == ["gen_solar"]

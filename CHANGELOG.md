@@ -6,6 +6,10 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ## [Unreleased]
 
+### Fixed
+
+- Values that SMARD withdraws from a recent week of a generation or price series no longer fail the run and, after 26 hours, mark the pipeline container unhealthy while load data and forecasts are fine. The run is now `partial` and the error is still shown in `gridload status`; withdrawals in the grid load still fail the run.
+
 ## [0.1.0] - 2026-11-20
 
 ### Added

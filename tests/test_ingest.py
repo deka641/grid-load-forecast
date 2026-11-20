@@ -896,3 +896,82 @@ def test_last_chunk_of_an_ended_series_is_neither_open_nor_recent(
     assert result.recent_errors == 0
     if failure == "withdrawal":
         assert any("missing in a completed chunk" in e for e in result.errors)
+
+
+SOLAR = BY_KEY["gen_solar"]
+# The newest recorded chunks are open at this moment (their last value is 09:45 UTC).
+OPEN_NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+
+
+def _with_interior_nulls(series: Series, ts: int, points: range) -> bytes:
+    data = json.loads(fixture_bytes(chunk_name(series, ts)))
+    for i in points:
+        data["series"][i][1] = None
+    return json.dumps(data).encode()
+
+
+def _stored(con: duckdb.DuckDBPyConnection, series: Series) -> int:
+    return count(con, "SELECT count(*) FROM observations WHERE series_key = ?", [series.key])
+
+
+@pytest.mark.parametrize(
+    ("withdrawn", "status", "recent_errors"),
+    [((SOLAR,), "partial", 0), ((LOAD,), "failed", 1), ((LOAD, SOLAR), "failed", 1)],
+)
+def test_withdrawal_in_the_open_chunk_fails_the_run_only_for_the_load(
+    con: duckdb.DuckDBPyConnection,
+    fake: FakeSmard,
+    withdrawn: tuple[Series, ...],
+    status: str,
+    recent_errors: int,
+) -> None:
+    clock = _clock_at(OPEN_NOW)
+    assert run(con, fake.client(), [LOAD, SOLAR], clock=clock).status == "ok"
+    before = {s.key: _stored(con, s) for s in (LOAD, SOLAR)}
+    for series in withdrawn:
+        latest = recorded_chunks(series)[-1]
+        fake.override(
+            chunk_name(series, latest), _with_interior_nulls(series, latest, range(10, 20))
+        )
+    result = run(con, fake.client(), [LOAD, SOLAR], mode="incremental", clock=clock)
+    assert result.status == status
+    assert result.recent_errors == recent_errors
+    assert result.rows_removed == 0
+    assert {s.key: _stored(con, s) for s in (LOAD, SOLAR)} == before
+    logged = con.execute(
+        "SELECT series_key FROM load_log WHERE run_id = ? AND status = 'error' ORDER BY 1",
+        [result.run_id],
+    ).fetchall()
+    assert logged == sorted((s.key,) for s in withdrawn)
+    assert all("missing in an open chunk" in e for e in result.errors)
+
+
+@pytest.mark.parametrize(("series", "status"), [(SOLAR, "partial"), (LOAD, "failed")])
+def test_withdrawal_in_a_recently_completed_chunk_fails_the_run_only_for_the_load(
+    fake: FakeSmard, series: Series, status: str
+) -> None:
+    fake.use_index(series, [REGULAR])
+    at = _clock_at(_day_after(REGULAR))
+    connection = duckdb.connect()
+    connection.execute("SET TimeZone = 'UTC'")
+    migrate(connection)
+    assert (
+        Ingestor(connection, fake.client(), clock=at).run([series], mode="backfill").status == "ok"
+    )
+    before = _stored(connection, series)
+    fake.override(chunk_name(series, REGULAR), _with_interior_nulls(series, REGULAR, range(10, 20)))
+    result = Ingestor(connection, fake.client(), clock=at).run([series], mode="incremental")
+    assert result.status == status
+    assert any("now missing in a completed chunk" in e for e in result.errors)
+    assert _stored(connection, series) == before
+    connection.close()
+
+
+def test_fetch_error_in_the_open_chunk_still_fails_the_run_for_any_series(
+    con: duckdb.DuckDBPyConnection, fake: FakeSmard
+) -> None:
+    clock = _clock_at(OPEN_NOW)
+    run(con, fake.client(), [SOLAR], clock=clock)
+    fake.override(chunk_name(SOLAR, recorded_chunks(SOLAR)[-1]), b"")
+    result = run(con, fake.client(retries=0), [SOLAR], mode="incremental", clock=clock)
+    assert result.status == "failed"
