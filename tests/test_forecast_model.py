@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import numpy as np
 import pytest
@@ -18,16 +18,22 @@ def load() -> History:
     return synthetic.history(FIRST, LAST)
 
 
-def corrupted_after(history: History, cutoff: datetime) -> History:
+def corrupted_from(history: History, start: datetime) -> History:
+    """Copy with every hour starting at or after ``start`` replaced by nonsense."""
     values = history.values.copy()
-    late = history.ts > int(cutoff.timestamp() * 1000)
+    late = history.ts >= int(start.timestamp() * 1000)
     values[late] = values[late] * 10 + 12345.0
     return History(history.ts.copy(), values)
 
 
+def unknown_at_origin(history: History, day: date) -> History:
+    """Corrupt all hours that had not ended by the cutoff of ``day``."""
+    return corrupted_from(history, cal.cutoff_for(day))
+
+
 def test_features_ignore_everything_after_the_cutoff(load: History) -> None:
     day = date(2025, 3, 30)  # 23 hour day
-    leaked = corrupted_after(load, cal.cutoff_for(day))
+    leaked = unknown_at_origin(load, day)
     original = day_features(load, day)
     assert original.matrix.shape == (23, len(FEATURES))
     np.testing.assert_array_equal(original.matrix, day_features(leaked, day).matrix)
@@ -39,8 +45,17 @@ def test_lag_1d_is_only_set_for_hours_before_the_cutoff(load: History) -> None:
     rows = day_features(load, day)
     lag_1d = rows.matrix[:, FEATURES.index("lag_1d")]
     hour = rows.matrix[:, FEATURES.index("hour_local")]
-    assert not np.isnan(lag_1d[hour < 10]).any()
-    assert np.isnan(lag_1d[hour >= 11]).all()
+    # The hour h on the previous day ends at h + 1, so only hours up to 09:00 are known.
+    assert not np.isnan(lag_1d[hour <= 9]).any()
+    assert np.isnan(lag_1d[hour >= 10]).all()
+
+
+def test_the_last_admissible_hour_is_used(load: History) -> None:
+    """Counter-check: corrupting the hour 09:00 to 10:00 must change the features."""
+    day = date(2025, 3, 12)
+    last_known = cal.cutoff_for(day) - timedelta(hours=1)
+    changed = day_features(corrupted_from(load, last_known), day).matrix
+    assert not np.array_equal(np.nan_to_num(changed), np.nan_to_num(day_features(load, day).matrix))
 
 
 def test_baseline_uses_neighbour_hour_after_spring_change(load: History) -> None:
@@ -52,19 +67,22 @@ def test_baseline_uses_neighbour_hour_after_spring_change(load: History) -> None
 
 
 def test_backtest_predictions_do_not_change_when_future_data_is_corrupted(load: History) -> None:
-    day = date(2025, 4, 10)
+    last = date(2025, 4, 12)
+    first = date(2025, 4, 5)
     tso = synthetic.history(FIRST, LAST, seed=11)
-    clean = run_backtest(load, tso, day, days=1, training_start=date(2025, 1, 15))
-    leaked = run_backtest(
-        corrupted_after(load, cal.cutoff_for(day)),
-        tso,
-        day,
-        days=1,
-        training_start=date(2025, 1, 15),
-    )
-    assert [r["lightgbm"] for r in clean.rows] == [r["lightgbm"] for r in leaked.rows]
-    assert [r["baseline_week"] for r in clean.rows] == [r["baseline_week"] for r in leaked.rows]
-    assert [r["actual"] for r in clean.rows] != [r["actual"] for r in leaked.rows]
+    kwargs = {"days": 8, "retrain_every": 7, "training_start": date(2025, 1, 15)}
+    clean = run_backtest(load, tso, last, **kwargs)  # type: ignore[arg-type]
+    # Corrupt everything unknown at the first origin: every prediction in the
+    # window must stay the same, because each origin only sees older hours.
+    leaked_all = run_backtest(unknown_at_origin(load, first), tso, last, **kwargs)  # type: ignore[arg-type]
+    first_day_rows = [r for r in clean.rows if r["delivery_day"] == first]
+    leaked_rows = [r for r in leaked_all.rows if r["delivery_day"] == first]
+    assert [r["lightgbm"] for r in first_day_rows] == [r["lightgbm"] for r in leaked_rows]
+    assert [r["baseline_week"] for r in first_day_rows] == [r["baseline_week"] for r in leaked_rows]
+    assert [r["actual"] for r in first_day_rows] != [r["actual"] for r in leaked_rows]
+    # Per origin: corrupting what is unknown at the last origin keeps the last day identical.
+    leaked_last = run_backtest(unknown_at_origin(load, last), tso, last, **kwargs)  # type: ignore[arg-type]
+    assert [r["lightgbm"] for r in clean.rows] == [r["lightgbm"] for r in leaked_last.rows]
 
 
 def test_backtest_is_deterministic_and_scores_all_models(load: History) -> None:
@@ -111,14 +129,20 @@ def test_score_groups_and_metrics_for_filters_missing() -> None:
     )
     assert Metric("m", "day_type", "saturday", 20.0, pytest.approx(10.0), 1) in metrics  # type: ignore[arg-type]
     row = {
-        "actual": 1.0,
-        "lightgbm": 1.0,
-        "baseline_week": 1.0,
+        "actual": 100.0,
+        "lightgbm": 90.0,
+        "baseline_week": 80.0,
         "tso": float("nan"),
         "hour_local": 0,
         "day_type": "workday",
     }
-    assert metrics_for([row]) == []
+    # Without a SMARD value the other two forecasts are still scored.
+    scored = {(m.model, m.scope) for m in metrics_for([row])}
+    assert ("lightgbm", "overall") in scored
+    assert not any(model == "tso" for model, _ in scored)
+    assert not any(scope == "overall_tso_hours" for _, scope in scored)
+    assert metrics_for([{**row, "actual": 0.0}]) == []
+    assert metrics_for([{**row, "lightgbm": float("nan")}]) == []
     with pytest.raises(TypeError, match="expected a number"):
         metrics_for([{**row, "tso": "x"}])
 

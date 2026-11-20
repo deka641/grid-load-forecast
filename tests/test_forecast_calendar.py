@@ -85,20 +85,26 @@ def test_days_between_and_never() -> None:
 
 
 def test_history_lookups_respect_cutoff() -> None:
+    """Hourly values are stamped at the start of their hour and known once it ended."""
     base = int(datetime(2025, 1, 1, tzinfo=UTC).timestamp() * 1000)
     ts = np.array([base + 2 * 3_600_000, base, base + 3_600_000])
     history = History(ts, np.array([3.0, 1.0, 2.0]))
     t0 = datetime(2025, 1, 1, tzinfo=UTC)
-    assert history.value_at(t0 + timedelta(hours=2), t0 + timedelta(hours=1)) != history.value_at(
-        t0 + timedelta(hours=2), t0 + timedelta(hours=2)
-    )
-    assert np.isnan(history.value_at(t0 + timedelta(hours=2), t0 + timedelta(hours=1)))
-    assert np.isnan(history.value_at(t0 + timedelta(hours=9), cal.never()))
-    assert history.window_mean(t0 + timedelta(hours=2), 2) == 2.5
-    assert np.isnan(history.window_mean(t0 + timedelta(hours=2), 24))
-    assert history.last_value(t0 + timedelta(hours=3)) == 3.0
-    assert np.isnan(history.last_value(t0 + timedelta(hours=10)))
+    hour = timedelta(hours=1)
+    # The hour 02:00 to 03:00 is unknown at 02:59 and known from 03:00.
+    assert np.isnan(history.value_at(t0 + 2 * hour, t0 + 3 * hour - timedelta(minutes=1)))
+    assert history.value_at(t0 + 2 * hour, t0 + 3 * hour) == 3.0
+    assert np.isnan(history.value_at(t0 + 9 * hour, cal.never()))
+    assert history.window_mean(t0 + 3 * hour, 2) == 2.5
+    assert history.window_mean(t0 + 2 * hour, 2) == 1.5
+    assert np.isnan(history.window_mean(t0 + 3 * hour, 24))
+    assert history.last_value(t0 + 4 * hour) == 3.0
+    assert history.last_value(t0 + 3 * hour) == 3.0
+    assert history.last_value(t0 + 2 * hour) == 2.0
+    assert np.isnan(history.last_value(t0 + 10 * hour))
     assert np.isnan(History(np.array([], dtype=np.int64), np.array([])).last_value(t0))
+    assert history.has_hour_before(t0 + 3 * hour)
+    assert not history.has_hour_before(t0 + 4 * hour)
     assert len(history) == 3
 
 

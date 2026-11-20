@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -34,7 +35,7 @@ def test_load_publishes_snapshot_and_heartbeat(settings: Settings, fake: FakeSma
         mode="backfill",
         keys=["load"],
         client_factory=lambda _s: fake.client(),
-        post_ingest=lambda con, _s: calls.append("post"),
+        post_ingest=lambda _con, _s, _tick: calls.append("post"),
     )
     assert result.status == "ok"
     assert calls == ["post"]
@@ -226,7 +227,9 @@ def test_prices_loaded_earlier_disappear_when_switched_off(tmp_path: Path, fake:
 
 
 def test_failure_after_ingest_marks_run_failed(settings: Settings, fake: FakeSmard) -> None:
-    def broken(_con: duckdb.DuckDBPyConnection, _settings: Settings) -> None:
+    def broken(
+        _con: duckdb.DuckDBPyConnection, _settings: Settings, _tick: Callable[[], None]
+    ) -> None:
         raise RuntimeError("forecast failed")
 
     with pytest.raises(RuntimeError, match="forecast failed"):

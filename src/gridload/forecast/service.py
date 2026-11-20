@@ -23,6 +23,7 @@ from gridload.forecast.model import (
 )
 
 BACKTEST_MAX_AGE = timedelta(days=7)
+MIN_TRAINING_ROWS = 28 * 24
 
 
 def load_history(con: duckdb.DuckDBPyConnection, series_key: str) -> History:
@@ -66,14 +67,27 @@ def due_delivery_day(con: duckdb.DuckDBPyConnection, now: datetime) -> date | No
 
 
 def issue_forecast(
-    con: duckdb.DuckDBPyConnection, delivery_day: date, *, now: datetime | None = None
-) -> str:
-    """Train on all days that ended before the origin day and store model and baseline runs."""
+    con: duckdb.DuckDBPyConnection,
+    delivery_day: date,
+    *,
+    now: datetime | None = None,
+    degraded: bool = False,
+) -> str | None:
+    """Train on all days that ended before the origin day and store model and baseline runs.
+
+    Returns None (and stores nothing) if there are fewer than ``MIN_TRAINING_ROWS``
+    training hours. ``degraded`` marks a forecast issued without the newest
+    admissible hour (recorded in the run details).
+    """
     created = now or datetime.now(UTC)
     load = load_history(con, "load")
+    if len(load) == 0:
+        return None
     last_training_day = delivery_day - timedelta(days=2)
     store = FeatureStore.build(load, cal.days_between(training_start(load), delivery_day))
     mask = store.training_mask(last_training_day)
+    if int(mask.sum()) < MIN_TRAINING_ROWS:
+        return None
     booster = train(store.matrix[mask], store.labels[mask])
     rows = store.day_mask(delivery_day)
     targets = cal.day_hours(delivery_day)
@@ -86,6 +100,7 @@ def issue_forecast(
         "training_rows": int(mask.sum()),
         "last_training_day": last_training_day.isoformat(),
         "params_hash": params_hash(),
+        "degraded": degraded,
     }
     run_id = ""
     con.execute("BEGIN")
@@ -124,7 +139,11 @@ def training_start(load: History) -> date:
 
 
 def backtest_is_stale(con: duckdb.DuckDBPyConnection, now: datetime) -> bool:
-    row = con.execute("SELECT max(created_at) FROM backtest_runs").fetchone()
+    """True if there is no backtest with metrics younger than ``BACKTEST_MAX_AGE``."""
+    row = con.execute(
+        "SELECT max(created_at) FROM backtest_runs r "
+        "WHERE EXISTS (SELECT 1 FROM backtest_metrics m WHERE m.run_id = r.run_id)"
+    ).fetchone()
     return row is None or row[0] is None or now - row[0] > BACKTEST_MAX_AGE
 
 

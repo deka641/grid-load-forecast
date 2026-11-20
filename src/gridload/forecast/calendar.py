@@ -35,7 +35,12 @@ def origin_for(delivery_day: date) -> datetime:
 
 
 def cutoff_for(delivery_day: date) -> datetime:
-    """Latest timestamp a feature may use: origin minus the measured data delay plus buffer."""
+    """End of the newest hour a feature may use: origin minus ``DATA_DELAY``.
+
+    Hourly values are stamped with the start of their hour, so with an origin of
+    12:00 the newest admissible value is the hour 09:00 to 10:00 local time. The
+    two hours cover the measured publication lag of one to two hours.
+    """
     return origin_for(delivery_day) - DATA_DELAY
 
 

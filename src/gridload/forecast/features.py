@@ -1,11 +1,13 @@
 """Leakage-safe features for the day-ahead load forecast.
 
-Every feature row belongs to one target hour of a local delivery day. All
-history-based features read only values with timestamps at or before the
-cutoff of that delivery day (origin 12:00 local on the previous day, minus two
-hours). Rows for a delivery day therefore depend only on that day's cutoff,
-which lets the backtest compute the feature matrix once and still train each
-model on strictly past data.
+Every feature row belongs to one target hour of a local delivery day. Hourly
+values are stamped with the start of their hour, and a value counts as known
+only once its hour has ended. All history-based features read only hours that
+ended at or before the cutoff of that delivery day (origin 12:00 local on the
+previous day, minus two hours, so the newest usable hour is 09:00 to 10:00).
+Rows for a delivery day therefore depend only on that day's cutoff, which lets
+the backtest compute the feature matrix once and still train each model on
+strictly past data.
 """
 
 import math
@@ -65,25 +67,32 @@ class History:
         return int(self.ts.size)
 
     def value_at(self, ts: datetime, cutoff: datetime) -> float:
-        if ts > cutoff:
+        """Value of the hour starting at ``ts`` if that hour ended by ``cutoff``."""
+        if to_ms(ts) + HOUR_MS > to_ms(cutoff):
             return math.nan
         i = self._index.get(to_ms(ts))
         return math.nan if i is None else float(self.values[i])
 
     def window_mean(self, cutoff: datetime, hours: int) -> float:
-        """Mean of the values in ``(cutoff - hours, cutoff]``; NaN if under half is present."""
+        """Mean of the ``hours`` hours that ended last by ``cutoff``; NaN if under half exist."""
         end_ms = to_ms(cutoff)
-        lo = int(np.searchsorted(self.ts, end_ms - hours * HOUR_MS, side="right"))
-        hi = int(np.searchsorted(self.ts, end_ms, side="right"))
+        lo = int(np.searchsorted(self.ts, end_ms - hours * HOUR_MS, side="left"))
+        hi = int(np.searchsorted(self.ts, end_ms - HOUR_MS, side="right"))
         if (hi - lo) * 2 < hours:
             return math.nan
         return float((self._cumsum[hi] - self._cumsum[lo]) / (hi - lo))
 
     def last_value(self, cutoff: datetime, max_age_hours: int = 6) -> float:
-        hi = int(np.searchsorted(self.ts, to_ms(cutoff), side="right"))
-        if hi == 0 or to_ms(cutoff) - int(self.ts[hi - 1]) > max_age_hours * HOUR_MS:
+        """Newest hour that ended by ``cutoff``, if it ended at most ``max_age_hours`` before."""
+        end_ms = to_ms(cutoff)
+        hi = int(np.searchsorted(self.ts, end_ms - HOUR_MS, side="right"))
+        if hi == 0 or end_ms - (int(self.ts[hi - 1]) + HOUR_MS) > max_age_hours * HOUR_MS:
             return math.nan
         return float(self.values[hi - 1])
+
+    def has_hour_before(self, cutoff: datetime) -> bool:
+        """True if the hour that ends exactly at ``cutoff`` is present."""
+        return to_ms(cutoff) - HOUR_MS in self._index
 
 
 @dataclass(frozen=True)

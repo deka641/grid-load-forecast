@@ -4,12 +4,14 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
+from datetime import time as clock_time
 from typing import Any
 
 import duckdb
 
 from gridload.config import Settings
+from gridload.forecast import calendar as fcal
 from gridload.forecast import service
 from gridload.pipeline import heartbeat, snapshot
 from gridload.pipeline.db import connect
@@ -20,7 +22,7 @@ from gridload.sources.smard import SmardClient
 log = logging.getLogger(__name__)
 
 ClientFactory = Callable[[Settings], SmardClient]
-PostIngest = Callable[[duckdb.DuckDBPyConnection, Settings], None]
+PostIngest = Callable[[duckdb.DuckDBPyConnection, Settings, Callable[[], None]], None]
 
 
 def default_client(settings: Settings) -> SmardClient:
@@ -89,7 +91,7 @@ def load(
             result = ingestor.run(series, mode=mode, since=since, refetch_weeks=refetch_weeks)
             try:
                 if post_ingest is not None:
-                    post_ingest(con, settings)
+                    post_ingest(con, settings, beat)
                 row = con.execute(
                     "SELECT max(ts_utc) FROM observations WHERE series_key = 'load'"
                 ).fetchone()
@@ -165,22 +167,52 @@ def dumps(data: object) -> str:
 
 
 def post_ingest_steps(
-    con: duckdb.DuckDBPyConnection, settings: Settings, now: datetime | None = None
+    con: duckdb.DuckDBPyConnection,
+    settings: Settings,
+    progress: Callable[[], None] | None = None,
+    now: datetime | None = None,
 ) -> None:
-    """Issue the day-ahead forecast when due and refresh a stale backtest."""
+    """Issue the day-ahead forecast when due and refresh a stale backtest.
+
+    The forecast waits until the hour that ends at the cutoff (09:00 to 10:00
+    local) is loaded and retries every hourly run; from ``DEGRADED_AFTER`` local
+    time it is issued anyway and marked as degraded. Each step is isolated: a
+    failure is logged and does not stop the snapshot from being published.
+    """
     current = now or datetime.now(UTC)
+    tick = progress or (lambda: None)
+    try:
+        _forecast_step(con, current)
+    except Exception:
+        log.exception("forecast step failed")
+    tick()
+    try:
+        if service.backtest_is_stale(con, current):
+            result = service.run_and_store_backtest(con, now=current, progress=lambda _day: tick())
+            if result is not None:
+                log.info("backtest stored for %s to %s", result.first_day, result.last_day)
+    except Exception:
+        log.exception("backtest step failed")
+
+
+DEGRADED_AFTER = clock_time(20, 0)
+
+
+def _forecast_step(con: duckdb.DuckDBPyConnection, current: datetime) -> None:
     day = service.due_delivery_day(con, current)
-    if day is not None:
-        last = service.last_complete_day(service.load_history(con, "load"))
-        if last is None or last < day - timedelta(days=2):
-            log.warning("forecast for %s skipped: last complete day is %s", day, last)
-        else:
-            service.issue_forecast(con, day, now=current)
-            log.info("forecast issued for delivery day %s", day)
-    if service.backtest_is_stale(con, current):
-        result = service.run_and_store_backtest(con, now=current)
-        if result is not None:
-            log.info("backtest stored for %s to %s", result.first_day, result.last_day)
+    if day is None:
+        return
+    load = service.load_history(con, "load")
+    complete = load.has_hour_before(fcal.cutoff_for(day))
+    late = current.astimezone(fcal.BERLIN).time() >= DEGRADED_AFTER
+    if not complete and not late:
+        log.info("forecast for %s waits for data up to %s", day, fcal.cutoff_for(day))
+        return
+    run_id = service.issue_forecast(con, day, now=current, degraded=not complete)
+    if run_id is None:
+        log.warning("forecast for %s skipped: not enough training history", day)
+    else:
+        log.info("forecast issued for delivery day %s%s", day, "" if complete else " (degraded)")
 
 
 def backtest(settings: Settings, *, days: int) -> str:

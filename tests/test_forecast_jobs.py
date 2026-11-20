@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -41,6 +42,9 @@ def test_report_markdown_lists_all_sections(result: BacktestResult) -> None:
     for heading in ("## Overall", "## By day type (MAPE)", "## By local hour (MAPE)", "## Notes"):
         assert heading in text
     assert "| LightGBM model |" in text
+    assert "| Hours |" in text
+    assert "hours that also have a SMARD forecast" in text
+    assert "both 02:00 hours" in text
     assert "| 23:00 |" in text
     assert "not scored: 1" in text
     assert chr(0x2013) not in text
@@ -70,7 +74,8 @@ def test_rows_csv(tmp_path: Path, result: BacktestResult) -> None:
     lines = path.read_text().splitlines()
     assert lines[0].startswith("delivery_day,target_ts")
     assert len(lines) == 1 + len(result.rows)
-    assert lines[1].startswith("2025-04-24,2025-04-23T22:00:00+00:00,0,workday")
+    assert lines[0].split(",")[3] == "fold"
+    assert lines[1].startswith("2025-04-24,2025-04-23T22:00:00+00:00,0,0,workday")
 
 
 def _settings_with_warehouse(tmp_path: Path, first: date, last: date) -> Settings:
@@ -87,33 +92,75 @@ def _settings_with_warehouse(tmp_path: Path, first: date, last: date) -> Setting
 def test_post_ingest_issues_forecast_and_backtest(tmp_path: Path) -> None:
     settings = _settings_with_warehouse(tmp_path, FIRST, LAST)
     con = duckdb.connect(str(settings.warehouse_path))
+    ticks: list[int] = []
     try:
-        now = datetime(2025, 5, 1, 12, 30, tzinfo=cal.BERLIN)
-        jobs.post_ingest_steps(con, settings, now=now)
+        now = datetime(2025, 4, 29, 12, 30, tzinfo=cal.BERLIN)
+        jobs.post_ingest_steps(con, settings, lambda: ticks.append(1), now=now)
         runs = con.execute(
-            "SELECT model, delivery_day FROM forecast_runs ORDER BY model"
+            "SELECT model, delivery_day, details FROM forecast_runs ORDER BY model"
         ).fetchall()
-        assert runs == [("baseline_week", date(2025, 5, 2)), ("lightgbm", date(2025, 5, 2))]
+        assert [r[:2] for r in runs] == [
+            ("baseline_week", date(2025, 4, 30)),
+            ("lightgbm", date(2025, 4, 30)),
+        ]
+        assert json.loads(runs[1][2])["degraded"] is False
         assert con.execute("SELECT count(*) FROM backtest_runs").fetchone() == (1,)
+        assert len(ticks) > 1
     finally:
         con.close()
 
 
-def test_post_ingest_skips_forecast_on_stale_data(
+def test_forecast_waits_for_data_and_is_degraded_late(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
+    caplog.set_level(logging.INFO)
     settings = _settings_with_warehouse(tmp_path, FIRST, LAST)
     con = duckdb.connect(str(settings.warehouse_path))
     try:
         con.execute(
             "INSERT INTO backtest_runs VALUES ('b', ?, ?, ?, '{}')",
-            [datetime(2025, 5, 9, tzinfo=UTC), FIRST, LAST],
+            [datetime(2025, 5, 1, tzinfo=UTC), FIRST, LAST],
         )
-        jobs.post_ingest_steps(con, settings, now=datetime(2025, 5, 10, 13, tzinfo=cal.BERLIN))
+        con.execute(
+            "INSERT INTO backtest_metrics VALUES ('b', 'lightgbm', 'overall', 'all', 1, 1, 1)"
+        )
+        # Data ends at 2025-05-01 00:00: the hour before the 10:00 cutoff is missing.
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 5, 1, 13, tzinfo=cal.BERLIN))
         assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)
-        assert "skipped" in caplog.text
+        assert "waits for data" in caplog.text
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 5, 1, 20, tzinfo=cal.BERLIN))
+        details = con.execute(
+            "SELECT details FROM forecast_runs WHERE model = 'lightgbm'"
+        ).fetchone()
+        assert details is not None
+        assert json.loads(details[0])["degraded"] is True
+        assert "(degraded)" in caplog.text
     finally:
         con.close()
+
+
+def test_failing_steps_are_isolated(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _settings_with_warehouse(tmp_path, FIRST, LAST)
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("model crashed")
+
+    monkeypatch.setattr(service, "issue_forecast", boom)
+    monkeypatch.setattr(service, "run_and_store_backtest", boom)
+    with connect(settings.warehouse_path) as con:
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 4, 29, 13, tzinfo=cal.BERLIN))
+    assert "forecast step failed" in caplog.text
+    assert "backtest step failed" in caplog.text
+
+
+def test_short_history_skips_the_forecast(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    settings = _settings_with_warehouse(tmp_path, FIRST, date(2025, 1, 10))
+    with connect(settings.warehouse_path) as con:
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 1, 10, 13, tzinfo=cal.BERLIN))
+        assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)
+    assert "not enough training history" in caplog.text
 
 
 def test_post_ingest_with_empty_warehouse(tmp_path: Path) -> None:
@@ -166,12 +213,12 @@ def test_backtest_without_metrics_is_stored(tmp_path: Path) -> None:
 
 
 def test_forecast_with_no_baseline_values(tmp_path: Path) -> None:
-    con = synthetic.warehouse(FIRST, date(2025, 2, 10))
-    # Delivery day far ahead: the model runs on empty lags, the baseline has no values at all.
+    con = synthetic.warehouse(FIRST, date(2025, 3, 20))
+    # Data stops on 2025-03-01: the model still runs, the baseline has no values at all.
     con.execute(
-        "DELETE FROM observations WHERE ts_utc >= ?", [cal.local_midnight(date(2025, 2, 1))]
+        "DELETE FROM observations WHERE ts_utc >= ?", [cal.local_midnight(date(2025, 3, 1))]
     )
-    service.issue_forecast(con, date(2025, 2, 9))
+    assert service.issue_forecast(con, date(2025, 3, 9)) is not None
     counts = con.execute(
         "SELECT r.model, count(f.run_id) FROM forecast_runs r LEFT JOIN forecasts f USING (run_id) "
         "GROUP BY 1 ORDER BY 1"
@@ -179,9 +226,65 @@ def test_forecast_with_no_baseline_values(tmp_path: Path) -> None:
     assert counts == [("baseline_week", 0), ("lightgbm", 24)]
 
 
+def test_forecast_on_empty_history_is_skipped() -> None:
+    con = synthetic.warehouse(FIRST, FIRST)
+    con.execute("DELETE FROM observations")
+    assert service.issue_forecast(con, date(2025, 3, 9)) is None
+
+
+def test_issue_forecast_ignores_data_unknown_at_the_origin() -> None:
+    day = date(2025, 4, 20)
+    clean = synthetic.warehouse(FIRST, LAST)
+    leaked = synthetic.warehouse(FIRST, LAST)
+    leaked.execute(
+        "UPDATE observations SET value = value * 10 + 999 WHERE ts_utc >= ?", [cal.cutoff_for(day)]
+    )
+    values = []
+    for con in (clean, leaked):
+        service.issue_forecast(con, day)
+        values.append(
+            con.execute(
+                "SELECT r.model, f.target_ts_utc, f.value FROM forecasts f "
+                "JOIN forecast_runs r USING (run_id) ORDER BY 1, 2"
+            ).fetchall()
+        )
+    assert values[0] == values[1]
+    assert len(values[0]) == 48
+
+
+def test_zero_metric_backtest_counts_as_stale(tmp_path: Path) -> None:
+    settings = _settings_with_warehouse(tmp_path, FIRST, LAST)
+    with connect(settings.warehouse_path) as con:
+        con.execute(
+            "INSERT INTO backtest_runs VALUES ('empty', ?, ?, ?, '{}')",
+            [datetime(2025, 5, 1, tzinfo=UTC), FIRST, LAST],
+        )
+        assert service.backtest_is_stale(con, datetime(2025, 5, 2, tzinfo=UTC))
+
+
 def test_post_ingest_with_too_little_history_for_backtest(tmp_path: Path) -> None:
     settings = _settings_with_warehouse(tmp_path, FIRST, FIRST)
     with connect(settings.warehouse_path) as con:
         con.execute("DELETE FROM observations WHERE ts_utc = ?", [cal.local_midnight(FIRST)])
-        jobs.post_ingest_steps(con, settings, now=datetime(2025, 1, 1, 9, tzinfo=UTC))
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 1, 1, 13, tzinfo=cal.BERLIN))
         assert con.execute("SELECT count(*) FROM backtest_runs").fetchone() == (0,)
+        assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)
+
+
+def test_no_forecast_before_noon(tmp_path: Path) -> None:
+    settings = _settings_with_warehouse(tmp_path, FIRST, LAST)
+    with connect(settings.warehouse_path) as con:
+        jobs.post_ingest_steps(con, settings, now=datetime(2025, 4, 29, 11, 59, tzinfo=cal.BERLIN))
+        assert con.execute("SELECT count(*) FROM forecast_runs").fetchone() == (0,)
+
+
+def test_report_without_smard_forecast(result: BacktestResult) -> None:
+    no_tso = BacktestResult(
+        result.first_day,
+        result.last_day,
+        result.config,
+        metrics=[m for m in result.metrics if m.model != "tso" and m.scope != "overall_tso_hours"],
+    )
+    text = report.to_markdown(no_tso)
+    assert "SMARD grid load forecast |" not in text.split("## By day type")[0]
+    assert "hours that also have a SMARD forecast" not in text

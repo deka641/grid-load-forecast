@@ -25,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--days", type=int, default=365)
     parser.add_argument("--warehouse", type=Path, default=ROOT / "data" / "warehouse.duckdb")
     parser.add_argument("--out", type=Path, default=ROOT / "reports")
+    parser.add_argument("--rows", type=Path, default=ROOT / "data" / "backtest_rows.csv")
     args = parser.parse_args(argv)
 
     con = duckdb.connect(str(args.warehouse), read_only=True)
@@ -44,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "backtest.json").write_text(report.to_json(result), encoding="utf-8")
     (args.out / "backtest.md").write_text(report.to_markdown(result), encoding="utf-8")
-    report.write_rows(result, ROOT / "data" / "backtest_rows.csv")
+    report.write_rows(result, args.rows)
     print(report.to_markdown(result).split("## By day type")[0])
     return 0
 

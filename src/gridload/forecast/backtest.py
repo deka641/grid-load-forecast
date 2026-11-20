@@ -151,6 +151,8 @@ def run_backtest(
                     "delivery_day": day,
                     "target_ts": ts,
                     "hour_local": ts.astimezone(cal.BERLIN).hour,
+                    # fold 1 marks the repeated 02:00 hour on the autumn clock-change day
+                    "fold": ts.astimezone(cal.BERLIN).fold,
                     "day_type": cal.day_type(day),
                     "actual": float(actual[k]),
                     MODEL_NAME: float(model_pred[k]),
@@ -163,14 +165,50 @@ def run_backtest(
 
 
 def metrics_for(rows: list[dict[str, object]]) -> list[Metric]:
-    usable = [r for r in rows if all(not math.isnan(_f(r[k])) for k in ("actual", *MODELS))]
-    if not usable:
+    """Score the forecasts on comparable hours.
+
+    LightGBM and the baseline are scored on every hour with an actual value and
+    both predictions. The SMARD forecast is scored on the subset of those hours
+    where it exists; on that subset the two other forecasts are scored again
+    (scope ``overall_tso_hours``), so the three can be compared on equal terms
+    even if SMARD values are missing for some hours. Hours with a zero actual
+    value are excluded because MAPE is undefined for them (grid load is never
+    zero in practice).
+    """
+    primary = [r for r in rows if _present(r, ("actual", MODEL_NAME, BASELINE_NAME))]
+    primary = [r for r in primary if _f(r["actual"]) != 0]
+    if not primary:
         return []
-    actual = np.array([_f(r["actual"]) for r in usable])
-    predictions = {m: np.array([_f(r[m]) for r in usable]) for m in MODELS}
+    out = _score_rows(primary, (MODEL_NAME, BASELINE_NAME))
+    with_tso = [r for r in primary if _present(r, (TSO_NAME,))]
+    if with_tso:
+        out += _score_rows(with_tso, (TSO_NAME,))
+        actual = np.array([_f(r["actual"]) for r in with_tso])
+        for model in (MODEL_NAME, BASELINE_NAME):
+            predicted = np.array([_f(r[model]) for r in with_tso])
+            out.append(
+                Metric(
+                    model,
+                    "overall_tso_hours",
+                    "all",
+                    mae(actual, predicted),
+                    mape(actual, predicted),
+                    int(actual.size),
+                )
+            )
+    return out
+
+
+def _present(row: dict[str, object], keys: tuple[str, ...]) -> bool:
+    return all(not math.isnan(_f(row[k])) for k in keys)
+
+
+def _score_rows(rows: list[dict[str, object]], models: tuple[str, ...]) -> list[Metric]:
+    actual = np.array([_f(r["actual"]) for r in rows])
+    predictions = {m: np.array([_f(r[m]) for r in rows]) for m in models}
     groups = {
-        "hour": np.array([int(_f(r["hour_local"])) for r in usable]),
-        "day_type": np.array([str(r["day_type"]) for r in usable]),
+        "hour": np.array([int(_f(r["hour_local"])) for r in rows]),
+        "day_type": np.array([str(r["day_type"]) for r in rows]),
     }
     return score(actual, predictions, groups)
 
