@@ -52,7 +52,9 @@ UNREADABLE = "the data snapshot cannot be read"
 BUSY = "the server is busy; try again shortly"
 # Requests that read many rows (actuals, forecasts) run at most this many at a time.
 HEAVY_CONCURRENCY = 2
-HEAVY_WAIT_SECONDS = 30.0
+# Fail fast under load so waiting requests do not hold uvicorn slots that
+# /health and /status need (uvicorn runs with --limit-concurrency 32).
+HEAVY_WAIT_SECONDS = 5.0
 MAX_DAYS = {Resolution.QUARTERHOUR: 31, Resolution.HOUR: 366}
 DEFAULT_DAYS_LIMIT = 400
 MAX_DAYS_LIMIT = 5000
@@ -198,7 +200,7 @@ def create_app(
     app.state.heavy_slots = heavy.slots
 
     @app.get("/api/v1/health", tags=["status"])
-    def health() -> Health:
+    async def health() -> Health:
         """Report that the process is alive."""
         return Health(status="ok", version=__version__)
 
