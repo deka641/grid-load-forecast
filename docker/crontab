@@ -1,0 +1,2 @@
+# Daily pipeline run, times in UTC. Replaced by the real ingest and forecast job.
+30 10 * * * gridload --version
