@@ -11,8 +11,10 @@ COPY src ./src
 # Build id for the API's ETags: a hash of the code and the locked dependencies, so it
 # changes exactly when they do and a container restart keeps every ETag valid. It is
 # stored next to the installed package, where the API reads it.
-RUN find src pyproject.toml uv.lock -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum \
+RUN set -o pipefail \
+    && find src pyproject.toml uv.lock -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum \
         | sha256sum | cut -c1-32 > /tmp/build-id \
+    && grep -Eqx '[0-9a-f]{32}' /tmp/build-id \
     && uv sync --locked --no-dev --no-editable \
     && cp /tmp/build-id "$(/app/.venv/bin/python -c 'import gridload, pathlib; print(pathlib.Path(gridload.__file__).parent)')/BUILD_ID"
 
