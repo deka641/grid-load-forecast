@@ -6,6 +6,8 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-20
+
 ### Added
 
 - Data pipeline for 15 SMARD series (grid load, SMARD load forecast, twelve generation sources, day-ahead price): strict validation of every weekly chunk, quarter-hour storage in UTC with corrections as revisions, permanent source gaps kept as gaps and logged, hourly scheduled runs, atomic read-only snapshot.
@@ -16,4 +18,5 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 - Docker Compose stack with Caddy, healthchecks, memory limits, log rotation and non-root containers; local quality gates `make verify-fast` and `make verify` with style and secret scans; production-like check with image scan, and load test; seven-day wait period for new dependency versions.
 - Documentation: tutorial, how-to guides, reference and explanation.
 
-[Unreleased]: https://github.com/deka641/grid-load-forecast/commits/master
+[Unreleased]: https://github.com/deka641/grid-load-forecast/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/deka641/grid-load-forecast/releases/tag/v0.1.0
