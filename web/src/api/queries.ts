@@ -1,13 +1,13 @@
 import { QueryClient, keepPreviousData, useQuery } from '@tanstack/react-query'
 
-import { apiGet, isApiError } from './client'
+import { apiGet, isApiError, isNoData } from './client'
 
 /** 404 and 503 describe the data, not a transient failure, so they are not retried. */
 export function shouldRetry(failureCount: number, error: unknown): boolean {
   if (isApiError(error) && error.status < 500) {
     return false
   }
-  if (isApiError(error, 503)) {
+  if (isNoData(error)) {
     return false
   }
   return failureCount < 2

@@ -52,11 +52,12 @@ describe('Dashboard with data', () => {
 
     const table = await screen.findByRole('table', { name: /Backtest errors/ })
     const rows = within(table).getAllByRole('row')
-    expect(rows[2]).toHaveTextContent('LightGBM model1.20 GW2.4 %2.2 %2.6 %n/a')
-    expect(rows[4]).toHaveTextContent('SMARD forecastn/an/an/an/an/a')
-    expect(screen.getByText(/Backtest from 6 Jan 2025 to 15 Nov 2026/)).toHaveTextContent(
-      'over 16,032 hours',
+    expect(rows[2]).toHaveTextContent('LightGBM modelLightGBM1.20 GW2.4 %2.2 %2.6 %n/a16,032')
+    expect(rows[4]).toHaveTextContent('SMARD forecastSMARD forecastn/an/an/an/an/an/a')
+    expect(screen.getByText(/Each delivery day from 6 Jan 2025 to 15 Nov 2026/)).toHaveTextContent(
+      'retrained every 7 days on all earlier complete days. Errors are measured against the actual grid load over 16,032 hours.',
     )
+    expect(screen.queryByText(/hours that also have a SMARD forecast/)).toBeNull()
 
     expect(await screen.findByText(/HEDWIG procedure/)).toBeInTheDocument()
     expect(screen.getByText(/negative in 1 of 2 hours/)).toBeInTheDocument()
@@ -171,6 +172,43 @@ describe('Dashboard states', () => {
     expect(alert).toHaveTextContent('Could not load the forecast: the server could not be reached.')
     fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
     expect(await headline()).toBeInTheDocument()
+  })
+
+  it('treats a busy server as a failure with retry, not as missing data', async () => {
+    let attempts = 0
+    mockFetch(
+      routes({
+        '/api/v1/backtest/metrics': () => {
+          attempts += 1
+          return attempts === 1
+            ? { status: 503, body: { detail: 'the server is busy; try again shortly' } }
+            : { body: fx.backtest() }
+        },
+      }),
+    )
+    renderApp()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(
+      'Could not load the backtest: the server answered with HTTP 503 (the server is busy; try again shortly).',
+    )
+    expect(screen.queryByText(NO_DATA)).toBeNull()
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('table', { name: /Backtest errors/ })).toBeInTheDocument()
+  })
+
+  it('shows the SMARD comparison sentence when the run scored it', async () => {
+    const data = fx.backtest()
+    const metric = (mape: number) => [{ scope_value: 'all', mae: 1, mape, n: 15_998 }]
+    data.metrics.lightgbm = { ...data.metrics.lightgbm, overall_tso_hours: metric(2.38) }
+    data.metrics.baseline_week = { ...data.metrics.baseline_week, overall_tso_hours: metric(5.81) }
+    data.metrics.tso = { overall: metric(2.77) }
+    mockFetch(routes({ '/api/v1/backtest/metrics': ok(data) }))
+    renderApp()
+    expect(
+      await screen.findByText(
+        'On the 15,998 hours that also have a SMARD forecast: LightGBM 2.4 %, baseline 5.8 %, SMARD forecast 2.8 %.',
+      ),
+    ).toBeInTheDocument()
   })
 
   it('reports HTTP errors of the status, series and actuals', async () => {

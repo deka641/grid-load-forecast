@@ -24,8 +24,17 @@ test.afterAll(async () => {
 })
 
 interface MockOptions {
-  status?: ReturnType<typeof fixtures.status>
+  status?: ReturnType<typeof fixtures.status> | { error: number; detail: string }
   withPrice?: boolean
+  forecastError?: { error: number; detail: string }
+}
+
+async function expectNoSeriousAxe(page: Page) {
+  const axe = await new AxeBuilder({ page }).analyze()
+  const serious = axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
+  expect(
+    serious.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`),
+  ).toEqual([])
 }
 
 async function mockApi(page: Page, options: MockOptions = {}) {
@@ -34,13 +43,18 @@ async function mockApi(page: Page, options: MockOptions = {}) {
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
     switch (url.pathname) {
-      case '/api/v1/status':
-        return json(options.status ?? fixtures.status())
+      case '/api/v1/status': {
+        const status = options.status ?? fixtures.status()
+        return 'error' in status ? json({ detail: status.detail }, status.error) : json(status)
+      }
       case '/api/v1/series':
         return json(fixtures.seriesCatalog(options.withPrice ?? true))
       case '/api/v1/forecasts/days':
         return json({ days: fixtures.forecastDays(), limit: 400 })
       case '/api/v1/forecasts':
+        if (options.forecastError) {
+          return json({ detail: options.forecastError.detail }, options.forecastError.error)
+        }
         return json(
           fixtures.forecastDay(url.searchParams.get('delivery_day') ?? fixtures.LATEST_DAY),
         )
@@ -146,13 +160,7 @@ for (const scheme of ['light', 'dark'] as const) {
       const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
       expect(scrollWidth).toBeLessThanOrEqual(width)
 
-      const axe = await new AxeBuilder({ page }).analyze()
-      const serious = axe.violations.filter(
-        (v) => v.impact === 'serious' || v.impact === 'critical',
-      )
-      expect(
-        serious.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`),
-      ).toEqual([])
+      await expectNoSeriousAxe(page)
 
       expect(await cspViolations(page)).toEqual([])
       expect(problems).toEqual([])
@@ -198,6 +206,7 @@ test('switches days, handles the 25 hour day and toggles the theme', async ({ br
     window.scrollTo(0, 0)
   })
   await page.screenshot({ path: join(SHOTS, 'dashboard-dark-after-toggle.png') })
+  await expectNoSeriousAxe(page)
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await hoverCharts(page)
@@ -221,4 +230,33 @@ test('marks stale data', async ({ browser }) => {
   await page.goto('/')
   await expect(page.locator('.freshness-stale')).toContainText('more than 6 hours old')
   await page.close()
+})
+
+test('shows the first-start notice for a 503 without accessibility problems', async ({
+  browser,
+}) => {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  const problems = watchProblems(page)
+  await mockApi(page, { status: { error: 503, detail: 'no data snapshot is available yet' } })
+  await page.goto('/')
+  await expect(page.getByText(/No data yet\. The pipeline loads the history/)).toBeVisible()
+  await expectNoSeriousAxe(page)
+  // The browser logs failed requests as console errors; only those are expected here.
+  expect(problems.filter((p) => !p.includes('503'))).toEqual([])
+  await context.close()
+})
+
+test('offers a retry when the server is busy', async ({ browser }) => {
+  const context = await browser.newContext({ colorScheme: 'dark' })
+  const page = await context.newPage()
+  await mockApi(page, {
+    forecastError: { error: 503, detail: 'the server is busy; try again shortly' },
+  })
+  await page.goto('/')
+  const alert = page.getByRole('alert')
+  await expect(alert).toContainText('the server is busy; try again shortly')
+  await expect(alert.getByRole('button', { name: 'Retry' })).toBeVisible()
+  await expectNoSeriousAxe(page)
+  await context.close()
 })

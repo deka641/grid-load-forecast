@@ -6,8 +6,7 @@ import { Chart } from '../charts/Chart'
 import { LINE_STYLES, hourLabel, mapeByHourOption } from '../charts/options'
 import type { Palette } from '../charts/palette'
 import { NOT_AVAILABLE, formatPercent } from '../lib/format'
-import { MODELS, findMetric, mapeByHour } from '../lib/metrics'
-import { dayPlain } from '../lib/time'
+import { MODELS, findMetric, mapeByHour, methodSentence, tsoHoursSentence } from '../lib/metrics'
 import { Legend } from './Legend'
 import { Loading, QueryProblem } from './Notice'
 import { NO_BACKTEST } from './messages'
@@ -47,6 +46,9 @@ function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
             <th scope="colgroup" colSpan={4} className="group">
               MAPE
             </th>
+            <th scope="col" rowSpan={2} className="num">
+              Hours
+            </th>
           </tr>
           <tr>
             <th scope="col" className="num">
@@ -66,7 +68,10 @@ function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
               <tr key={m.key}>
                 <th scope="row">
                   <span className={`row-key stroke-${m.key}`} aria-hidden="true" />
-                  {m.label}
+                  <span className="label-long">{m.label}</span>
+                  <span className="label-short" aria-hidden="true">
+                    {m.short}
+                  </span>
                 </th>
                 <td className="num">
                   {overall ? `${(overall.mae / 1000).toFixed(2)} GW` : NOT_AVAILABLE}
@@ -77,6 +82,9 @@ function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
                     {mape(m.key, 'day_type', t.value)}
                   </td>
                 ))}
+                <td className="num">
+                  {overall ? overall.n.toLocaleString('en-GB') : NOT_AVAILABLE}
+                </td>
               </tr>
             )
           })}
@@ -124,17 +132,17 @@ function HourTable({ backtest }: { backtest: BacktestMetrics }) {
 function BacktestView({ backtest }: { backtest: BacktestMetrics }) {
   const build = useCallback((palette: Palette) => mapeByHourOption(backtest, palette), [backtest])
   const hours = findMetric(backtest, 'lightgbm', 'overall', 'all')?.n
+  const tsoSentence = tsoHoursSentence(backtest)
   return (
     <>
       <p className="prose">
-        Backtest from {dayPlain(backtest.first_day)} to {dayPlain(backtest.last_day)}: every day is
-        forecast with the data available at 12:00 (Europe/Berlin) on the day before, and the model
-        is retrained weekly. Errors are measured against the actual grid load
+        {methodSentence(backtest)} Errors are measured against the actual grid load
         {hours === undefined ? '' : ` over ${hours.toLocaleString('en-GB')} hours`}.
       </p>
       <div className="backtest-grid">
         <div>
           <MetricsTable backtest={backtest} />
+          {tsoSentence === null ? null : <p className="note">{tsoSentence}</p>}
           <p className="note">
             The SMARD forecast is scored on its values as published today. Its publication time is
             not known, so it may include revisions made after 12:00 on the day before.

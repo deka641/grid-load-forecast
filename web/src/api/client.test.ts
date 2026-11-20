@@ -1,4 +1,4 @@
-import { ApiError, apiGet, buildUrl, isApiError } from './client'
+import { ApiError, apiGet, buildUrl, isApiError, isNoData, isTransient } from './client'
 import { createQueryClient, shouldRetry } from './queries'
 
 describe('buildUrl', () => {
@@ -52,6 +52,10 @@ describe('retry policy', () => {
   it('does not retry data states but retries transient failures twice', () => {
     expect(shouldRetry(0, new ApiError(404, 'x'))).toBe(false)
     expect(shouldRetry(0, new ApiError(503, 'x'))).toBe(false)
+    expect(shouldRetry(0, new ApiError(503, 'the server is busy; try again shortly'))).toBe(true)
+    expect(isTransient(new ApiError(503, 'the data snapshot cannot be read'))).toBe(true)
+    expect(isNoData(new ApiError(503, 'no data snapshot exists yet'))).toBe(true)
+    expect(isNoData(new ApiError(404, 'x'))).toBe(false)
     expect(shouldRetry(0, new ApiError(500, 'x'))).toBe(true)
     expect(shouldRetry(1, new TypeError('network'))).toBe(true)
     expect(shouldRetry(2, new TypeError('network'))).toBe(false)

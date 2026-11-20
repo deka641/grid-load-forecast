@@ -1,4 +1,4 @@
-import { isApiError } from '../api/client'
+import { isApiError, isNoData } from '../api/client'
 import { NO_DATA, describeError } from './messages'
 
 export function Loading({ what }: { what: string }) {
@@ -46,7 +46,7 @@ export function QueryProblem({
   notFound?: string
   onRetry: () => void
 }) {
-  if (isApiError(error, 503)) {
+  if (isNoData(error)) {
     return <Info>{NO_DATA}</Info>
   }
   if (notFound !== undefined && isApiError(error, 404)) {

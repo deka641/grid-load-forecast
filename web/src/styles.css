@@ -58,6 +58,7 @@
     --color-error: #ff9b8f;
     --gen-hard-coal: #9aa0aa;
     --gen-wind-offshore: #4e86c4;
+    --gen-other-conventional: #c48a99;
   }
 }
 
@@ -77,6 +78,7 @@
   --color-error: #ff9b8f;
   --gen-hard-coal: #9aa0aa;
   --gen-wind-offshore: #4e86c4;
+  --gen-other-conventional: #c48a99;
 }
 
 *,
@@ -618,6 +620,16 @@ a:hover {
   font-size: var(--text-md);
 }
 
+/* Long column headers wrap so the table fits next to the hourly chart. */
+.metrics thead .num {
+  white-space: normal;
+  min-width: 5em;
+}
+
+.label-short {
+  display: none;
+}
+
 .metrics tbody tr:first-child td {
   font-weight: 600;
 }
@@ -742,6 +754,24 @@ a:hover {
   .metrics th,
   .metrics td {
     padding: 8px 6px;
+  }
+
+  .metrics thead .num {
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .label-long {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .label-short {
+    display: inline;
   }
 }
 

@@ -1,6 +1,6 @@
 import type { BacktestMetric, BacktestMetrics, ForecastPoint } from '../api/client'
-import { dayLong, wallClock } from './time'
-import { formatGW } from './format'
+import { formatGW, formatPercent } from './format'
+import { dayLong, dayPlain, wallClock } from './time'
 
 export type ForecastKey = 'lightgbm' | 'baseline_week' | 'tso'
 
@@ -76,4 +76,46 @@ export function mapeByHour(backtest: BacktestMetrics, model: ForecastKey): (numb
     byHour.set(Number(metric.scope_value), metric.mape)
   }
   return Array.from({ length: 24 }, (_, hour) => byHour.get(hour) ?? null)
+}
+
+function positiveInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null
+}
+
+/** The backtest method from the run config; parts whose keys are missing are left out. */
+export function methodSentence(backtest: BacktestMetrics): string {
+  const { config } = backtest
+  const cutoff = config.feature_cutoff_hours_before_origin
+  const cutoffHour =
+    typeof cutoff === 'number' && Number.isInteger(cutoff) && cutoff >= 0 && cutoff <= 12
+      ? 12 - cutoff
+      : null
+  const retrain = positiveInteger(config.retrain_every)
+  const using =
+    cutoffHour === null
+      ? ''
+      : `, using only hours that ended by ${String(cutoffHour).padStart(2, '0')}:00`
+  const first =
+    `Each delivery day from ${dayPlain(backtest.first_day)} to ${dayPlain(backtest.last_day)} ` +
+    `is forecast at 12:00 (Europe/Berlin) on the day before${using}.`
+  const second =
+    retrain === null
+      ? ' The model is retrained regularly on all earlier complete days.'
+      : ` The model is retrained every ${String(retrain)} ${retrain === 1 ? 'day' : 'days'} on all earlier complete days.`
+  return first + second
+}
+
+/** Comparison on the hours that also have a SMARD forecast, if the run scored it. */
+export function tsoHoursSentence(backtest: BacktestMetrics): string | null {
+  const model = findMetric(backtest, 'lightgbm', 'overall_tso_hours', 'all')
+  const baseline = findMetric(backtest, 'baseline_week', 'overall_tso_hours', 'all')
+  const tso = findMetric(backtest, 'tso', 'overall', 'all')
+  if (!model || !baseline || !tso) {
+    return null
+  }
+  return (
+    `On the ${model.n.toLocaleString('en-GB')} hours that also have a SMARD forecast: ` +
+    `LightGBM ${formatPercent(model.mape)}, baseline ${formatPercent(baseline.mape)}, ` +
+    `SMARD forecast ${formatPercent(tso.mape)}.`
+  )
 }

@@ -41,6 +41,20 @@ export function isApiError(error: unknown, status?: number): error is ApiError {
   return error instanceof ApiError && (status === undefined || error.status === status)
 }
 
+const TRANSIENT_503 = ['the server is busy', 'the data snapshot cannot be read']
+
+/**
+ * A 503 means "no snapshot yet" unless its detail says the server is busy or the
+ * snapshot is unreadable; those are failures worth retrying.
+ */
+export function isTransient(error: unknown): boolean {
+  return isApiError(error, 503) && TRANSIENT_503.some((text) => error.message.startsWith(text))
+}
+
+export function isNoData(error: unknown): boolean {
+  return isApiError(error, 503) && !isTransient(error)
+}
+
 export function buildUrl(
   path: string,
   query?: Record<string, string | number | undefined>,

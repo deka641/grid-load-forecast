@@ -229,9 +229,18 @@ function metric(scope_value: string, mae: number, mape: number, n: number) {
   return { scope_value, mae, mape, n }
 }
 
-function modelMetrics(level: number, mae: number, hourShape: (h: number) => number) {
+function modelMetrics(
+  level: number,
+  mae: number,
+  hourShape: (h: number) => number,
+  hours = 8_736,
+  tsoHours?: number,
+) {
   return {
-    overall: [metric('all', mae, level, 16_032)],
+    overall: [metric('all', mae, level, hours)],
+    ...(tsoHours === undefined
+      ? {}
+      : { overall_tso_hours: [metric('all', mae * 0.99, level * 0.99, tsoHours)] }),
     day_type: [
       metric('workday', mae * 0.95, level * 0.93, 11_136),
       metric('saturday', mae * 1.02, level * 1.08, 2_304),
@@ -249,13 +258,20 @@ export function backtest() {
   return {
     run_id: 'bt-2026-11-16',
     created_at: '2026-11-16T04:12:00+01:00',
-    first_day: '2025-01-06',
+    first_day: '2025-11-16',
     last_day: '2026-11-15',
-    config: { origin_hour: 12, retrain: 'weekly' },
+    config: {
+      days: 365,
+      retrain_every: 7,
+      training_start: '2019-01-01',
+      origin: '12:00 Europe/Berlin on the day before delivery',
+      feature_cutoff_hours_before_origin: 2,
+      seed: 42,
+    },
     metrics: {
-      lightgbm: modelMetrics(2.41, 1312, evening),
-      baseline_week: modelMetrics(5.87, 3205, (h) => 0.9 + 0.2 * Math.sin(h / 3.8)),
-      tso: modelMetrics(2.78, 1496, morning),
+      lightgbm: modelMetrics(2.41, 1312, evening, 8_736, 8_712),
+      baseline_week: modelMetrics(5.87, 3205, (h) => 0.9 + 0.2 * Math.sin(h / 3.8), 8_736, 8_712),
+      tso: modelMetrics(2.78, 1496, morning, 8_712),
     },
   }
 }

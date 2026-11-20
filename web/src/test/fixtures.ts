@@ -138,7 +138,7 @@ export function backtest(): BacktestMetrics {
     created_at: '2026-11-16T04:00:00+01:00',
     first_day: '2025-01-06',
     last_day: '2026-11-15',
-    config: {},
+    config: { retrain_every: 7, feature_cutoff_hours_before_origin: 2, days: 365 },
     metrics: { lightgbm: scopes(2.4), baseline_week: scopes(5.9) },
   }
 }

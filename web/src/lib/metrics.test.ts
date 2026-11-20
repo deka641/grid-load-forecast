@@ -1,6 +1,15 @@
 import { backtest, forecast } from '../test/fixtures'
 import { formatGW, formatPercent, formatPrice, toGW } from './format'
-import { dayMape, findMetric, forecastPeak, hasActuals, headline, mapeByHour } from './metrics'
+import {
+  dayMape,
+  findMetric,
+  forecastPeak,
+  hasActuals,
+  headline,
+  mapeByHour,
+  methodSentence,
+  tsoHoursSentence,
+} from './metrics'
 
 describe('format', () => {
   it('converts MWh per hour to GW', () => {
@@ -75,5 +84,41 @@ describe('backtest helpers', () => {
     expect(hours[10]).toBeCloseTo(3.4)
     expect(hours[0]).toBeNull()
     expect(mapeByHour(data, 'tso').every((v) => v === null)).toBe(true)
+  })
+})
+
+describe('backtest sentences', () => {
+  it('builds the method from the config', () => {
+    expect(methodSentence(backtest())).toBe(
+      'Each delivery day from 6 Jan 2025 to 15 Nov 2026 is forecast at 12:00 (Europe/Berlin) ' +
+        'on the day before, using only hours that ended by 10:00. The model is retrained ' +
+        'every 7 days on all earlier complete days.',
+    )
+  })
+
+  it('leaves out parts whose config keys are missing or invalid', () => {
+    const data = {
+      ...backtest(),
+      config: { retrain_every: 'weekly', feature_cutoff_hours_before_origin: 20 },
+    }
+    expect(methodSentence(data)).toBe(
+      'Each delivery day from 6 Jan 2025 to 15 Nov 2026 is forecast at 12:00 (Europe/Berlin) ' +
+        'on the day before. The model is retrained regularly on all earlier complete days.',
+    )
+    expect(methodSentence({ ...backtest(), config: { retrain_every: 1 } })).toContain(
+      'retrained every 1 day on',
+    )
+  })
+
+  it('compares the three forecasts on the SMARD hours when scored', () => {
+    expect(tsoHoursSentence(backtest())).toBeNull()
+    const data = backtest()
+    const metric = (mape: number, n = 15_998) => [{ scope_value: 'all', mae: 1, mape, n }]
+    data.metrics.lightgbm = { ...data.metrics.lightgbm, overall_tso_hours: metric(2.38) }
+    data.metrics.baseline_week = { ...data.metrics.baseline_week, overall_tso_hours: metric(5.81) }
+    data.metrics.tso = { overall: metric(2.77) }
+    expect(tsoHoursSentence(data)).toBe(
+      'On the 15,998 hours that also have a SMARD forecast: LightGBM 2.4 %, baseline 5.8 %, SMARD forecast 2.8 %.',
+    )
   })
 })
