@@ -132,6 +132,14 @@ class ChunkedResponse(Response):
                             }
                         )
         except TimeoutError:
+            # Returning without the final body message is the only way ASGI offers
+            # to abort a started response: the server closes the connection, and
+            # the client gets fewer bytes than Content-Length announced, so it
+            # knows the body is truncated. uvicorn also logs "ASGI callable
+            # returned without completing response." at ERROR level for every
+            # such drop; raising instead would log a traceback, and a final
+            # message with more_body False would present the truncated body as
+            # complete.
             log.warning("dropped a client that was too slow to read a %d byte body", len(body))
         finally:
             self._done()
