@@ -49,11 +49,16 @@ class SnapshotUnavailableError(RuntimeError):
 
 @dataclass(frozen=True)
 class Snapshot:
-    """An open snapshot, the modification time of its file and its series keys."""
+    """An open snapshot, the modification time of its file and its series keys.
+
+    ``key`` is the ``(st_ino, st_mtime_ns)`` pair of the file; it changes with
+    every published snapshot.
+    """
 
     connection: duckdb.DuckDBPyConnection
     created_at: datetime
     series_keys: frozenset[str]
+    key: tuple[int, int]
 
 
 def _open(path: Path) -> tuple[duckdb.DuckDBPyConnection, frozenset[str]]:
@@ -114,7 +119,7 @@ class SnapshotStore:
                 self._error = NEWEST_UNOPENABLE
             else:
                 created = datetime.fromtimestamp(stat.st_mtime_ns / 1e9, tz=UTC)
-                self._snapshot = Snapshot(con, created, series_keys)
+                self._snapshot = Snapshot(con, created, series_keys, key)
                 self._key = key
                 self._failed_key = None
                 self._error = None
@@ -130,11 +135,19 @@ class SnapshotStore:
             except SnapshotUnavailableError:
                 return None
 
-    @contextmanager
-    def cursor(self) -> Iterator[tuple[duckdb.DuckDBPyConnection, datetime]]:
-        """Yield a private cursor on the snapshot and the snapshot's creation time."""
+    def current(self) -> Snapshot:
+        """Return the current snapshot, reopening it if the file changed."""
         with self._lock:
-            snapshot = self._refresh()
+            return self._refresh()
+
+    @contextmanager
+    def cursor(
+        self, snapshot: Snapshot | None = None
+    ) -> Iterator[tuple[duckdb.DuckDBPyConnection, datetime]]:
+        """Yield a private cursor and the creation time of ``snapshot`` or the current one."""
+        with self._lock:
+            if snapshot is None:
+                snapshot = self._refresh()
             cur = snapshot.connection.cursor()
         try:
             cur.execute("USE snap")
