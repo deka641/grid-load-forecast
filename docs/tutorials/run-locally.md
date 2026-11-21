@@ -4,7 +4,7 @@ This tutorial starts the complete stack on your machine, loads the history from 
 
 ## Requirements
 
-Docker with Compose v2 and a free port 8460 on `127.0.0.1`. The containers have memory limits of 2.6 GB in total. After a full backfill the data files take about 0.63 GB on the volume (our run), and DuckDB may use up to 4 GB of temporary space there during large operations.
+Docker with Compose v2 and a free port 8460 on `127.0.0.1`. The containers have memory limits of 2.6 GB in total. After a full backfill the data files take about 0.58 GB on the volume (our run on 21 November 2026), and DuckDB may use up to 4 GB of temporary space there during large operations.
 
 ## Start
 
@@ -23,7 +23,7 @@ docker compose ps
 
 ## First run: loading the history
 
-On an empty data volume the pipeline loads all series since 29 December 2014. With requests throttled to two per second, our full backfill (8,954 weekly chunks) took 75 minutes. The first run logs its summary only when it ends, and `gridload status` reports `initialised: false` until the first snapshot is published. Meanwhile `docker compose ps` shows the pipeline as healthy while it works, and the dashboard says that no data is available yet. To see the summary when it arrives:
+On an empty data volume the pipeline loads all series since 29 December 2014. With requests throttled to two per second, our full backfill on 21 November 2026 (8,973 weekly chunks) took 75 minutes; how long yours takes depends on how fast SMARD answers. The first run logs its summary only when it ends, and `gridload status` reports `initialised: false` until the first snapshot is published. Meanwhile `docker compose ps` shows the pipeline as healthy while it works, and the dashboard says that no data is available yet. To see the summary when it arrives:
 
 ```bash
 docker compose logs -f pipeline
