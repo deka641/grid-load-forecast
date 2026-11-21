@@ -327,6 +327,22 @@ def test_the_trusted_proxy_forwards_the_right_most_untrusted_address() -> None:
     asyncio.run(scenario())
 
 
+def test_a_trusted_front_proxy_passes_on_the_address_it_saw() -> None:
+    # Caddy with trusted_proxies appends the front proxy's address to the header it got.
+    inner = Held()
+    limit = InflightLimit(inner, limit=10, per_client=2, exempt=EXEMPT)
+    app = ProxyHeadersMiddleware(cast(Any, limit), trusted_hosts=f"{PROXY},10.99.0.4")
+
+    async def scenario() -> None:
+        async with client_for(app, PROXY) as proxy:
+            inner.release.set()
+            for header in ("198.51.100.4, 10.99.0.4", "203.0.113.1, 198.51.100.4, 10.99.0.4"):
+                response = await proxy.get("/api/v1/series", headers={"X-Forwarded-For": header})
+                assert response.text == "198.51.100.4"
+
+    asyncio.run(scenario())
+
+
 def test_clients_behind_the_trusted_proxy_are_limited_separately() -> None:
     inner = Held()
     app, limit = behind_proxy(inner)

@@ -50,7 +50,7 @@ echo "health: $state"
 web_ip=$(docker inspect -f "{{(index .NetworkSettings.Networks \"${PROJECT}_backend\").IPAddress}}" "${PROJECT}-web-1")
 curl -sf -o /dev/null -H 'X-Forwarded-For: 203.0.113.9' "$BASE/api/v1/series?client-address-check" \
     || fail "client address request failed"
-seen=$("${COMPOSE[@]}" logs --no-log-prefix api | grep -F 'client-address-check' | tail -1 | awk '{print $2}')
+seen=$("${COMPOSE[@]}" logs --no-log-prefix api | { grep -F 'client-address-check' || true; } | tail -1 | awk '{print $2}')
 [[ -n "$seen" && "$seen" != "$web_ip":* && "$seen" != 203.0.113.9:* ]] \
     || fail "API sees client address '$seen' (web is $web_ip)"
 echo "client address seen by the API: $seen"
