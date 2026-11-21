@@ -31,8 +31,12 @@ services:
     build:
       context: .
       dockerfile: docker/python.Dockerfile
-    # First run at start-up (a full backfill on an empty volume), then hourly.
-    command: ["sh", "-c", "gridload run; exec supercronic /app/crontab"]
+    # First run at start-up (a full backfill on an empty volume), then hourly. Every
+    # run is stopped after 3 hours (the first backfill took 75 minutes), so a source
+    # that answers too slowly cannot hold the pipeline: supercronic starts no run
+    # while the previous one is active. A stopped run keeps the chunks it loaded,
+    # and the next run marks it aborted and continues.
+    command: ["sh", "-c", "timeout -k 1m 3h gridload run; exec supercronic /app/crontab"]
     volumes:
       - gridload-data:/data
     mem_limit: 2g

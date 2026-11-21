@@ -1,9 +1,10 @@
-"""Resource limits in the deployment files."""
+"""Resource limits and run time limits in the deployment files."""
 
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+RUN_LIMIT = "timeout -k 1m 3h gridload run"
 
 
 def read(name: str) -> str:
@@ -53,3 +54,10 @@ def test_web_connections_are_bounded() -> None:
     assert limit is not None
     # Caddy never opens enough connections for uvicorn to refuse /health and /status.
     assert sum(pools) < int(limit.group(1))
+
+
+def test_every_pipeline_run_has_a_time_limit() -> None:
+    pipeline = services(read("compose.yaml"))["pipeline"]
+    assert f'"{RUN_LIMIT}; exec supercronic /app/crontab"' in pipeline
+    jobs = [line for line in read("docker/crontab").splitlines() if line and line[0] != "#"]
+    assert jobs == [f"5 * * * * {RUN_LIMIT}"]
