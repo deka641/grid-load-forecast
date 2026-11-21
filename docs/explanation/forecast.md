@@ -4,7 +4,7 @@ This page explains what the forecast predicts, which information it may use, and
 
 ## What is forecast
 
-The target is the German grid load (SMARD filter 410) for every hour of the next local delivery day in Europe/Berlin. A delivery day has 24 hours, or 23 and 25 hours on the days of the clock changes. The forecast origin is 12:00 local time on the day before, the gate closure of the day-ahead electricity market, rather than "the next 24 hours". The forecast uses exactly the information available at the origin, but it is computed by the first hourly run after it (at 12:05 at the earliest, once the data up to 10:00 is loaded), so it is an evaluation of what a forecast at gate closure could achieve, not a forecast submitted to the auction. The field `issued_at` holds the origin.
+The target is the German grid load (SMARD filter 410) for every hour of the next local delivery day in Europe/Berlin. A delivery day has 24 hours, or 23 and 25 hours on the days of the clock changes. The forecast origin is 12:00 local time on the day before, the gate closure of the day-ahead electricity market, rather than "the next 24 hours". The forecast uses exactly the information available at the origin, but it is computed by the first hourly run after it that finds the load up to 10:00 loaded (at 12:05 at the earliest; if those values are still missing at 20:00, the forecast is issued anyway and marked as degraded, unless no load value of the 24 hours before the cutoff is available), so it is an evaluation of what a forecast at gate closure could achieve, not a forecast submitted to the auction. The field `issued_at` holds the origin.
 
 ## Which information it may use
 
