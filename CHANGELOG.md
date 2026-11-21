@@ -6,6 +6,8 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-21
+
 ### Added
 
 - `/forecasts` and `/status` report whether a forecast was issued with incomplete inputs (`degraded`) and which input checks failed (`degraded_checks`), so a client can mark such a forecast instead of presenting it as complete. Both are `null` for baseline runs and for runs stored before the checks were recorded.
@@ -66,5 +68,6 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 - Docker Compose stack with Caddy, healthchecks, memory limits, log rotation and non-root containers; local quality gates `make verify-fast` and `make verify` with style and secret scans; production-like check with image scan, and load test; seven-day wait period for new dependency versions.
 - Documentation: tutorial, how-to guides, reference and explanation.
 
-[Unreleased]: https://github.com/deka641/grid-load-forecast/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/deka641/grid-load-forecast/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/deka641/grid-load-forecast/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/deka641/grid-load-forecast/releases/tag/v0.1.0
