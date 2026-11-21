@@ -1,5 +1,6 @@
 # Copy to compose.override.yaml (git-ignored) for local use: containers do not restart
-# on their own and the dashboard is only reachable from this machine.
+# on their own. The port binding to 127.0.0.1 repeats the default, so a later change to
+# compose.yaml cannot expose the dashboard on a development machine.
 services:
   pipeline:
     restart: "no"

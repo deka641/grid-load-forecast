@@ -20,7 +20,7 @@ Paths are matched exactly: a path with a trailing slash, such as `/api/v1/series
 
 ## Forecast times
 
-Every run in `runs` of `/forecasts` carries two times. `issued_at` is the forecast origin, 12:00 Europe/Berlin on the day before delivery; it is the same for every run of a delivery day and does not say when the forecast became available. `created_at` is when the pipeline computed the forecast. Scheduled runs start at minute 5 of every hour, and the forecast is computed by the first run from 12:00 that finds the load up to 10:00 loaded; if that hour is still missing, from 20:00 on with the newest data, provided it is at most 24 hours old (the forecast is then marked as degraded). The forecast reaches the API with the snapshot that this run publishes at its end.
+Every run in `runs` of `/forecasts` carries two times. `issued_at` is the forecast origin, 12:00 Europe/Berlin on the day before delivery; it is the same for every run of a delivery day and does not say when the forecast became available. `created_at` is when the pipeline computed the forecast. Scheduled runs start at minute 5 of every hour, and the forecast is computed by the first run from 12:00 that finds the load up to 10:00 loaded; if that hour is still missing, from 20:00 on with the values available up to 10:00, provided at least one load value falls in the 24 hours before 10:00 (the forecast is then marked as degraded). The forecast reaches the API with the snapshot that this run publishes at its end.
 
 ## Degraded forecasts
 
