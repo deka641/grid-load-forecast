@@ -22,8 +22,10 @@ from gridload.api.limits import (
     SMALL_BODY_BYTES,
     ByteBudget,
     ChunkedResponse,
+    ClientGate,
     Gate,
     Limits,
+    client_key,
 )
 from gridload.api.store import Snapshot, SnapshotStore
 
@@ -71,6 +73,7 @@ class DataService:
         self.store = store
         self.heavy = Gate(HEAVY_CONCURRENCY, limits.heavy_wait, HEAVY_MAX_WAITING)
         self.query = Gate(QUERY_CONCURRENCY, limits.query_wait, QUERY_MAX_WAITING)
+        self.client_queries = ClientGate(limits.per_client_queries)
         self.budget = ByteBudget(limits.byte_budget)
         self.cache = ResponseCache(limits.cache_bytes, limits.cache_min_bytes)
         self._limits = limits
@@ -103,7 +106,13 @@ class DataService:
                 async with AsyncExitStack() as gates:
                     if gated:
                         await gates.enter_async_context(self.heavy())
-                    await gates.enter_async_context(self.query())
+                    # The client's own slot first, so its excess requests wait
+                    # outside the shared queue; one deadline covers both waits.
+                    deadline = time.monotonic() + self._limits.query_wait
+                    await gates.enter_async_context(
+                        self.client_queries(client_key(request.scope), self._limits.query_wait)
+                    )
+                    await gates.enter_async_context(self.query(deadline - time.monotonic()))
                     # Lets the watcher see a disconnect before the query starts.
                     await anyio.lowlevel.checkpoint()
                     if (body := cached()) is not None:
