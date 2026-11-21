@@ -241,11 +241,14 @@ export function ContextSection({ today, priceNote }: { today: string; priceNote:
           ? 'Context: the last seven days'
           : 'Context: the past week'}
       </h2>
-      <p className="prose">
-        Hourly electricity generation in Germany by source
-        {showPrice ? ', and the day-ahead wholesale price as far as SMARD has published it' : ''},
-        from {dayPlain(start)} to {dayPlain(today)}.
-      </p>
+      {/* Without its data the section shows only the failure, like the others. */}
+      {catalog.isError || actuals.isError ? null : (
+        <p className="prose">
+          Hourly electricity generation in Germany by source
+          {showPrice ? ', and the day-ahead wholesale price as far as SMARD has published it' : ''},
+          from {dayPlain(start)} to {dayPlain(today)}.
+        </p>
+      )}
       {body}
     </section>
   )
