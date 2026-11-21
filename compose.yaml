@@ -93,8 +93,16 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    mem_limit: 128m
-    memswap_limit: 128m
+    # Every open connection holds a file descriptor, so Caddy accepts at most
+    # about 4,000 at a time; further ones wait in the kernel's backlog. Each costs
+    # Caddy about 16 KB while open, and the memory limit leaves room for that next
+    # to the compression of large responses.
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 4096
+    mem_limit: 256m
+    memswap_limit: 256m
     tmpfs:
       - /tmp:size=16m,noexec,nosuid
       - /config:size=4m,uid=10002,gid=10002
