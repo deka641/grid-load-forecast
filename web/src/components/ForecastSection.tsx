@@ -247,16 +247,28 @@ function ForecastView({ forecast }: { forecast: ForecastDay }) {
   return (
     <>
       <DegradedNotice forecast={forecast} />
-      {hours === 24 ? null : (
-        <p className="clock-change">
-          Clock change: this day has {String(hours)} hours
-          {hours === 25
-            ? ', so 02:00 appears twice, first in summer time (UTC+2), then in winter time (UTC+1)'
-            : ', 02:00 does not exist'}
-          .
-        </p>
-      )}
-      <Legend items={legendItems(hasActuals(points))} label="Lines in the forecast chart" />
+      {/* The legend and, on clock-change days, the note on the dashed line head the chart. */}
+      <div className="chart-head">
+        <Legend items={legendItems(hasActuals(points))} label="Lines in the forecast chart" />
+        {hours === 24 ? null : (
+          <p className="clock-change">
+            <svg
+              className="clock-change-key"
+              width="6"
+              height="14"
+              viewBox="0 0 6 14"
+              aria-hidden="true"
+            >
+              <line x1="3" y1="0" x2="3" y2="14" strokeDasharray="4 3" />
+            </svg>
+            Clock change: this day has {String(hours)} hours
+            {hours === 25
+              ? ', so 02:00 appears twice, first in summer time (UTC+2), then in winter time (UTC+1)'
+              : ', 02:00 does not exist'}
+            .
+          </p>
+        )}
+      </div>
       <Chart
         build={build}
         label={`Line chart of the grid load on ${dayShort(forecast.delivery_day)} in GW by local hour: actual, LightGBM model, baseline and SMARD forecast`}

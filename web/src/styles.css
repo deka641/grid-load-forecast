@@ -445,10 +445,31 @@ a:hover {
   margin-top: 20px;
 }
 
+/* Legend and clock-change note sit together directly above the chart frame. */
+.chart-head {
+  margin-top: 16px;
+}
+
+.chart-head .legend {
+  margin-top: 0;
+}
+
 .clock-change {
-  margin-top: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
   font-size: var(--text-sm);
   color: var(--color-muted);
+}
+
+/* The same dashed stroke as the line that marks the change in the chart. */
+.clock-change-key {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 0.25em;
+  stroke: var(--color-muted);
+  stroke-width: 1;
 }
 
 .day-selector {
