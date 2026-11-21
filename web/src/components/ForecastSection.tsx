@@ -167,7 +167,7 @@ function DegradedNotice({ forecast }: { forecast: ForecastDay }) {
   return (
     <div className="notice notice-warn degraded">
       <p>
-        <strong>Computed with incomplete recent load data.</strong>{' '}
+        <strong>Computed with incomplete load data.</strong>{' '}
         {missing.length === 0
           ? 'Some of its inputs were missing when this forecast was issued.'
           : 'When this forecast was issued, these inputs were missing:'}

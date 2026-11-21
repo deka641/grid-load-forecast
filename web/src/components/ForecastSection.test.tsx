@@ -37,7 +37,7 @@ function serve(day: ForecastDay, days: string[] = fx.DAYS) {
   })
 }
 
-const NOTICE = /Computed with incomplete recent load data/
+const NOTICE = /Computed with incomplete load data/
 
 describe('Degraded forecast notice', () => {
   it('names the missing inputs of a degraded model run', async () => {
