@@ -1,4 +1,4 @@
-"""ETag and cache key from the validated parameters."""
+"""ETag and cache key from the validated parameters; no Host header in redirects."""
 
 from pathlib import Path
 from typing import Any
@@ -108,3 +108,13 @@ def test_different_requests_keep_different_tags_and_bodies(
         )
         hourly = client.get("/api/v1/actuals", params={**PAIR, "end": "2025-01-31"})
         assert quarter.headers["etag"] != hourly.headers["etag"]
+
+
+@pytest.mark.parametrize("path", ["/api/v1/series/", "/api/v1/forecasts/", "/api/v1/health/"])
+def test_trailing_slash_is_not_redirected_to_the_client_host(settings: Settings, path: str) -> None:
+    client = TestClient(create_app(settings), follow_redirects=False)
+    response = client.get(path, headers={"Host": "evil.example"})
+    assert response.status_code == 404
+    assert "location" not in response.headers
+    assert "evil.example" not in response.text
+    assert client.get(path.rstrip("/"), headers={"Host": "evil.example"}).status_code == 200

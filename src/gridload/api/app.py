@@ -158,6 +158,9 @@ def create_app(
         docs_url=None,
         redoc_url=None,
         openapi_url="/api/openapi.json",
+        # No redirect for a trailing slash: Starlette builds its Location from the
+        # Host header, which any client chooses, and always with http.
+        redirect_slashes=False,
     )
 
     _install_error_handlers(app)
