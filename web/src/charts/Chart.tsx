@@ -86,11 +86,13 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
         animate = false
       }
     }
-    if (!same) {
+    // Canvas text uses the web font only once it has loaded; render again only then. A
+    // draw-in waits for the font instead, since a second render would cut it short.
+    const fontsPending = 'fonts' in document && document.fonts.status !== 'loaded'
+    if (!same && !(animate && fontsPending)) {
       render()
     }
-    // Canvas text uses the web font only once it has loaded; render again only then.
-    if ('fonts' in document && document.fonts.status !== 'loaded') {
+    if (fontsPending) {
       void document.fonts.ready.then(render)
     }
     return () => {

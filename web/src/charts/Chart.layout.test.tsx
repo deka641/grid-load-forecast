@@ -77,6 +77,31 @@ describe('Chart layout', () => {
     })
   })
 
+  it('waits for the web font before the draw-in, so no second render cuts it short', async () => {
+    width = 900
+    motion(true)
+    let ready: () => void = () => undefined
+    const loading = { status: 'loading', ready: new Promise<void>((done) => (ready = done)) }
+    Object.defineProperty(document, 'fonts', { value: loading, configurable: true })
+    try {
+      const build = vi.fn(() => ({}))
+      render(<Chart build={build} label="Font first" />)
+      expect(build).not.toHaveBeenCalled()
+      await act(async () => {
+        ready()
+        await loading.ready
+      })
+      expect(build).toHaveBeenCalledTimes(1)
+      expect(build).toHaveBeenLastCalledWith(expect.anything(), {
+        compact: false,
+        motion: true,
+        animate: true,
+      })
+    } finally {
+      Object.defineProperty(document, 'fonts', { value: fonts, configurable: true })
+    }
+  })
+
   it('never animates when reduced motion is requested or cannot be queried', () => {
     width = 900
     motion(false)
