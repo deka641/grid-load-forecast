@@ -12,6 +12,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ### Changed
 
+- Busy 503 responses of the API carry `Retry-After: 1`, so clients know when to retry.
 - The web server compresses responses with gzip only. Under `make loadtest` the zstd encoders took the web container past its 128 MB memory limit, while gzip peaked at 56 MiB, so a client asking for zstd could exhaust that limit with parallel large downloads.
 - Repeated large data requests, such as one year of all series hourly, are answered from an in-memory cache of at most 32 MiB until the next snapshot, so they no longer wait for one of the two slots for large requests. Under `make loadtest` the median of that request dropped from 3344 ms to 156 ms.
 - The pipeline and API image runs on Python 3.15 instead of 3.14. The backtest in this image reproduces `reports/backtest.json`, `reports/backtest.md` and the scored rows byte for byte. Local development still works with Python 3.14.
@@ -28,7 +29,6 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 - One client can no longer crowd out others: the API allows each client address at most 16 data requests in progress, out of 64 in total, and answers further ones with the usual JSON 503. While one client held 100 parallel connections, a second client was answered 200 for all 406 of its requests in two runs, against 136 of 304 before. Locally all browsers on the host count as one client; behind another proxy all clients share one limit unless that proxy is trusted (see SECURITY.md).
 - The API takes the client address from `X-Forwarded-For` only on connections from the web container, at a fixed address on an internal network. A client cannot choose the address it is counted under by sending that header, and the API logs show the client address instead of Caddy's.
 - The API container has no network access beyond the web container: it no longer reaches the internet, and the pipeline and other containers no longer reach it.
-- Busy 503 responses carry `Retry-After: 1`.
 
 ## [0.1.0] - 2026-11-20
 
