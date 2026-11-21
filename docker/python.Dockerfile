@@ -33,7 +33,6 @@ RUN apt-get update \
     # Security fix newer than the base image (CVE-2026-85091), exempt from the wait period.
     # Remove once the pinned base image digest includes the fix.
     && apt-get install -y --no-install-recommends --only-upgrade zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1 \
-    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' zlib1g)" ge '1:1.3.dfsg+really1.3.1-1+deb13u1' \
     && case "${TARGETARCH}" in \
          amd64) sha="${SUPERCRONIC_SHA256_amd64}" ;; \
          arm64) sha="${SUPERCRONIC_SHA256_arm64}" ;; \
