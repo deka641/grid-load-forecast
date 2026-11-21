@@ -63,6 +63,8 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
       observer.disconnect()
       chart.dispose()
       instance.current = null
+      // A new instance (such as after a StrictMode remount) starts empty and must be drawn.
+      rendered.current = null
     }
   }, [])
 

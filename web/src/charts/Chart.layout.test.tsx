@@ -1,4 +1,5 @@
 import { act, render } from '@testing-library/react'
+import { StrictMode } from 'react'
 
 import { Chart } from './Chart'
 
@@ -100,6 +101,20 @@ describe('Chart layout', () => {
     } finally {
       Object.defineProperty(document, 'fonts', { value: fonts, configurable: true })
     }
+  })
+
+  it('draws the new instance after a StrictMode remount', () => {
+    width = 900
+    motion(false)
+    render(
+      <StrictMode>
+        <Chart build={() => ({})} label="Strict" />
+      </StrictMode>,
+    )
+    // The first instance is disposed by the remount; the second one must get an option.
+    expect(instance.dispose).toHaveBeenCalledTimes(1)
+    const disposed = instance.dispose.mock.invocationCallOrder[0] ?? 0
+    expect(instance.setOption.mock.invocationCallOrder.some((order) => order > disposed)).toBe(true)
   })
 
   it('never animates when reduced motion is requested or cannot be queried', () => {
