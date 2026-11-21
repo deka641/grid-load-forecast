@@ -1,4 +1,6 @@
-/* Design tokens. Light is the default; dark applies by system preference or data-theme. */
+/* Design tokens. Light is the default; dark applies by system preference or data-theme.
+   Both themes keep the same contrast order against the surface: ink, model, muted, the
+   SMARD line, then the baseline line and control borders (at least 3:1), then grid lines. */
 :root {
   color-scheme: light;
   --color-bg: #f4f6f8;
@@ -6,6 +8,10 @@
   --color-ink: #172131;
   --color-muted: #5a6577;
   --color-rule: #d6dce4;
+  --color-grid: #e6eaef;
+  --color-control-border: #7d8898;
+  --color-tooltip-bg: #ffffff;
+  --color-tooltip-border: #7d8898;
   --color-model: #1d5fbf;
   --color-baseline: #77829a;
   --color-tso: #0f8476;
@@ -36,6 +42,7 @@
   --text-lg: 20px;
   --text-xl: 28px;
   --text-xxl: 40px;
+  --text-display: 64px;
   --gutter: 48px;
   --radius: 4px;
   --control: 40px;
@@ -47,11 +54,15 @@
     --color-bg: #0e1520;
     --color-surface: #152030;
     --color-ink: #e4e9f0;
-    --color-muted: #95a1b3;
+    --color-muted: #909cae;
     --color-rule: #2a3647;
+    --color-grid: #1f2b3c;
+    --color-control-border: #64738a;
+    --color-tooltip-bg: #0a1019;
+    --color-tooltip-border: #64738a;
     --color-model: #6ea4f2;
-    --color-baseline: #7c879a;
-    --color-tso: #3fc2b0;
+    --color-baseline: #6f7b8f;
+    --color-tso: #2b9c8d;
     --color-focus: #6ea4f2;
     --color-warn: #f2b45c;
     --color-warn-bg: #3a2a12;
@@ -65,11 +76,15 @@
   --color-bg: #0e1520;
   --color-surface: #152030;
   --color-ink: #e4e9f0;
-  --color-muted: #95a1b3;
+  --color-muted: #909cae;
   --color-rule: #2a3647;
+  --color-grid: #1f2b3c;
+  --color-control-border: #64738a;
+  --color-tooltip-bg: #0a1019;
+  --color-tooltip-border: #64738a;
   --color-model: #6ea4f2;
-  --color-baseline: #7c879a;
-  --color-tso: #3fc2b0;
+  --color-baseline: #6f7b8f;
+  --color-tso: #2b9c8d;
   --color-focus: #6ea4f2;
   --color-warn: #f2b45c;
   --color-warn-bg: #3a2a12;
@@ -140,9 +155,10 @@ a:hover {
   color: var(--color-muted);
 }
 
-/* Page frame: left aligned, content at most 1200 px wide. */
+/* Page frame: content at most 1200 px wide, centred on wider screens. */
 .page {
   max-width: calc(1200px + 2 * var(--gutter));
+  margin-inline: auto;
   padding: 0 var(--gutter);
 }
 
@@ -158,15 +174,39 @@ a:hover {
 
 /* The heavy rule of the first section is the only divider below the header. */
 .page:has(.section) .site-header {
+  padding-bottom: 0;
   border-bottom: 0;
 }
 
 .site-header h1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   font-family: var(--font-display);
   font-size: var(--text-xl);
   font-weight: 600;
   line-height: 1.15;
   letter-spacing: 0.005em;
+  text-wrap: balance;
+}
+
+/* The mark: a day of load drawn in the model colour, as in the favicon. */
+.site-mark {
+  flex: none;
+  width: 30px;
+  height: 30px;
+}
+
+.site-mark rect {
+  fill: var(--color-model);
+}
+
+.site-mark path {
+  fill: none;
+  stroke: var(--color-bg);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .lede {
@@ -205,6 +245,19 @@ a:hover {
   color: var(--color-warn);
 }
 
+/* Old data is announced across the page, not only in the header corner. */
+.stale-banner {
+  margin-top: 24px;
+  padding: 12px 16px;
+  border-left-width: 4px;
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+
+.stale-banner + .section {
+  margin-top: 24px;
+}
+
 /* Segmented theme control built from native radio inputs. */
 .theme-toggle {
   display: inline-flex;
@@ -230,7 +283,7 @@ a:hover {
   align-items: center;
   min-height: var(--control);
   padding: 0 12px;
-  border: 1px solid var(--color-rule);
+  border: 1px solid var(--color-control-border);
   margin-left: -1px;
   font-size: var(--text-sm);
   font-weight: 500;
@@ -272,6 +325,14 @@ a:hover {
   font-size: var(--text-lg);
   font-weight: 600;
   line-height: 1.3;
+  text-wrap: balance;
+}
+
+/* The forecast section is named by a small label; its headline carries the result. */
+.section-title.eyebrow {
+  font-size: 15px;
+  color: var(--color-muted);
+  letter-spacing: 0.01em;
 }
 
 .subsection-title {
@@ -292,13 +353,85 @@ a:hover {
   color: var(--color-muted);
 }
 
+/* Headline and key figures form one block: the peak on the left, the backtest on the right. */
+.forecast-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px 48px;
+  margin-top: 8px;
+}
+
 .headline {
-  margin-top: 12px;
   font-family: var(--font-display);
   font-size: var(--text-xxl);
   font-weight: 600;
   line-height: 1.1;
   letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+
+.headline-lead {
+  display: block;
+  font-size: var(--text-xl);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--color-muted);
+}
+
+/* The figure is the focal point of the page: the peak and its hour in the model colour. */
+.headline-figure {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-display);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--color-model);
+  white-space: nowrap;
+}
+
+.key-figures-label {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.key-figures dl {
+  display: flex;
+  margin-top: 6px;
+}
+
+.key-figure {
+  padding: 0 24px;
+  border-left: 1px solid var(--color-rule);
+}
+
+.key-figure:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.key-figure dt {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.key-figure dt .row-key {
+  margin-right: 6px;
+}
+
+.key-figure dd {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.key-lightgbm dd {
+  color: var(--color-model);
 }
 
 .forecast-controls {
@@ -325,7 +458,7 @@ a:hover {
 .day-select select {
   min-height: var(--control);
   padding: 0 14px;
-  border: 1px solid var(--color-rule);
+  border: 1px solid var(--color-control-border);
   border-radius: var(--radius);
   background: var(--color-surface);
   color: var(--color-ink);
@@ -337,7 +470,7 @@ a:hover {
 
 .button:hover:not(:disabled),
 .day-select select:hover {
-  border-color: var(--color-muted);
+  border-color: var(--color-ink);
 }
 
 .button:disabled {
@@ -389,8 +522,9 @@ a:hover {
   flex: none;
 }
 
-/* An inner edge keeps pale swatches visible on the page background. */
-.legend-area {
+/* An inner edge keeps pale swatches visible on the page and tooltip backgrounds. */
+.legend-area,
+.tt-swatch {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 50%, transparent);
 }
 
@@ -473,14 +607,21 @@ a:hover {
 }
 .tt-none {
   background: transparent;
+  box-shadow: none;
 }
 
-/* Charts sit on the surface colour inside a hairline frame. */
+/* Charts sit on the surface colour inside a hairline frame. Its top edge is ink, like the
+   heavier rule above each section, and heaviest on the forecast chart. */
 .chart {
   position: relative;
   margin-top: 10px;
   border: 1px solid var(--color-rule);
+  border-top-color: var(--color-ink);
   background: var(--color-surface);
+}
+
+.chart-forecast {
+  border-top-width: 2px;
 }
 
 .chart-canvas {
@@ -716,7 +857,8 @@ tr.narrow-only {
 }
 
 /* Floors just below the usual height of each section's content while it loads. The
-   forecast floor also covers the headline and day controls, which wait for the data. */
+   forecast floor also covers the headline, key figures and day controls, which wait for
+   the data. */
 .loading-forecast {
   min-height: 600px;
 }
@@ -731,7 +873,7 @@ tr.narrow-only {
 
 @media (max-width: 900px) {
   .loading-forecast {
-    min-height: 660px;
+    min-height: 740px;
   }
 }
 
@@ -789,6 +931,39 @@ tr.narrow-only {
     font-size: var(--text-xl);
   }
 
+  .headline-lead {
+    font-size: var(--text-lg);
+  }
+
+  .headline-figure {
+    font-size: 44px;
+  }
+
+  .forecast-hero {
+    gap: 16px;
+  }
+
+  .key-figures {
+    width: 100%;
+  }
+
+  .key-figure {
+    flex: 1;
+    padding: 0 12px;
+  }
+
+  .key-figure dd {
+    font-size: 22px;
+  }
+
+  .empty-title {
+    font-size: 40px;
+  }
+
+  .empty-chart {
+    height: 220px;
+  }
+
   .chart-canvas {
     height: 300px;
   }
@@ -820,7 +995,7 @@ tr.narrow-only {
   }
 
   .loading-forecast {
-    min-height: 620px;
+    min-height: 720px;
   }
 
   .loading-backtest {
@@ -887,7 +1062,7 @@ tr.narrow-only {
   margin: 0 8px 8px auto;
   min-height: 36px;
   padding: 0 10px;
-  border: 1px solid var(--color-rule);
+  border: 1px solid var(--color-control-border);
   border-radius: var(--radius);
   background: var(--color-surface);
   color: var(--color-muted);
@@ -898,7 +1073,7 @@ tr.narrow-only {
 
 .chart-data-toggle:hover {
   color: var(--color-ink);
-  border-color: var(--color-muted);
+  border-color: var(--color-ink);
 }
 
 .chart-data {
@@ -1000,4 +1175,53 @@ tr.narrow-only {
 .day-single .muted {
   margin-right: 6px;
   font-weight: 400;
+}
+
+/* First start: the forecast section as it will look, with the text in place of the result. */
+.empty-state {
+  margin-top: 8px;
+  max-width: 44ch;
+  font-size: var(--text-lg);
+  line-height: 1.4;
+  color: var(--color-muted);
+}
+
+.empty-title {
+  display: block;
+  margin-bottom: 8px;
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-ink);
+}
+
+/* An empty chart frame with quiet grid lines and an axis, where the forecast will appear. */
+.empty-chart {
+  height: 300px;
+  margin-top: 28px;
+  border-top-width: 2px;
+  background:
+    linear-gradient(var(--color-muted), var(--color-muted)) 52px calc(100% - 28px) /
+      calc(100% - 68px) 1px no-repeat,
+    repeating-linear-gradient(to top, var(--color-grid) 0 1px, transparent 1px 64px) 52px 16px /
+      calc(100% - 68px) calc(100% - 44px) no-repeat,
+    var(--color-surface);
+}
+
+/* Between the stacked and the full backtest table, the rows use their short names, so the
+   day-type columns keep their headers on at most two lines. */
+@media (min-width: 761px) and (max-width: 900px) {
+  .metrics tbody .label-long {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .metrics tbody .label-short {
+    display: inline;
+  }
 }

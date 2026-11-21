@@ -1,12 +1,13 @@
 import { useCallback, useState } from 'react'
 
-import type { ForecastDay, ForecastPoint } from '../api/client'
-import { useForecast, useForecastDays } from '../api/queries'
+import type { BacktestMetrics, ForecastDay, ForecastPoint } from '../api/client'
+import { useBacktest, useForecast, useForecastDays } from '../api/queries'
 import { Chart } from '../charts/LazyChart'
 import { FORECAST_SERIES, LINE_STYLES, forecastOption } from '../charts/options'
+import type { ChartLayout } from '../charts/options'
 import type { Palette } from '../charts/palette'
 import { NOT_AVAILABLE, formatGW, formatPercent } from '../lib/format'
-import { MODELS, dayErrors, hasActuals, headline } from '../lib/metrics'
+import { MODELS, dayErrors, findMetric, hasActuals, headlineParts } from '../lib/metrics'
 import { neighbours } from '../lib/days'
 import { missingInputs } from '../lib/degraded'
 import { dayShort, offsetLabel, wallClock } from '../lib/time'
@@ -22,6 +23,51 @@ function legendItems(withActual: boolean) {
     width: LINE_STYLES[s.key].width,
     empty: s.key === 'actual' && !withActual,
   }))
+}
+
+function Headline({ forecast }: { forecast: ForecastDay }) {
+  const { lead, figure } = headlineParts(forecast.delivery_day, forecast.points)
+  return (
+    <p className="headline">
+      {figure === null ? (
+        lead
+      ) : (
+        <>
+          <span className="headline-lead">{lead}</span>{' '}
+          <span className="headline-figure">{figure}</span>
+        </>
+      )}
+    </p>
+  )
+}
+
+/**
+ * The overall backtest MAPE of each forecast, from the backtest the page loads anyway, so
+ * the peak can be read against how accurate the model has been.
+ */
+function KeyFigures({ backtest }: { backtest: BacktestMetrics }) {
+  const hours = findMetric(backtest, 'lightgbm', 'overall', 'all')?.n
+  return (
+    <div className="key-figures">
+      <p className="key-figures-label">
+        Backtest MAPE{hours === undefined ? '' : ` over ${hours.toLocaleString('en-GB')} hours`}
+      </p>
+      <dl>
+        {MODELS.map((m) => {
+          const metric = findMetric(backtest, m.key, 'overall', 'all')
+          return (
+            <div key={m.key} className={`key-figure key-${m.key}`}>
+              <dt>
+                <span className={`row-key stroke-${m.key}`} aria-hidden="true" />
+                {m.short}
+              </dt>
+              <dd>{metric ? formatPercent(metric.mape) : NOT_AVAILABLE}</dd>
+            </div>
+          )
+        })}
+      </dl>
+    </div>
+  )
 }
 
 function DaySelector({
@@ -188,7 +234,10 @@ function DegradedNotice({ forecast }: { forecast: ForecastDay }) {
 
 function ForecastView({ forecast }: { forecast: ForecastDay }) {
   const { points } = forecast
-  const build = useCallback((palette: Palette) => forecastOption(points, palette), [points])
+  const build = useCallback(
+    (palette: Palette, layout: ChartLayout) => forecastOption(points, palette, layout),
+    [points],
+  )
   const hours = points.length
   return (
     <>
@@ -224,6 +273,8 @@ export function ForecastSection() {
   // Ask for the newest listed day by date, so a later explicit request hits the same cache entry.
   const requested = day ?? list[0]
   const forecast = useForecast(requested, day !== undefined || !days.isPending)
+  // The same query as the backtest section, so this needs no request of its own.
+  const backtest = useBacktest(true)
 
   let body
   if (forecast.isPending) {
@@ -245,11 +296,14 @@ export function ForecastSection() {
   const shownDay = requested ?? forecast.data?.delivery_day
   return (
     <section className="section" aria-labelledby="forecast-title">
-      <h2 id="forecast-title" className="section-title">
+      <h2 id="forecast-title" className="section-title eyebrow">
         Day-ahead forecast
       </h2>
       {forecast.data && !forecast.isError ? (
-        <p className="headline">{headline(forecast.data.delivery_day, forecast.data.points)}</p>
+        <div className="forecast-hero">
+          <Headline forecast={forecast.data} />
+          {backtest.data ? <KeyFigures backtest={backtest.data} /> : null}
+        </div>
       ) : null}
       <div className="forecast-controls">
         {shownDay === undefined ? null : (

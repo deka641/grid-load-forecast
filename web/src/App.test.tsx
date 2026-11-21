@@ -37,7 +37,9 @@ function routes(overrides: Record<string, Handler> = {}): Record<string, Handler
   }
 }
 
-const headline = () => screen.findByText(/^Forecast peak for/)
+// The headline sets its figure apart, so the sentence is the text of the whole paragraph.
+const headline = async () =>
+  (await screen.findByText(/^Forecast peak for/)).closest('p') as HTMLElement
 
 describe('Dashboard with data', () => {
   it('shows the headline, freshness, backtest, context and footer', async () => {
@@ -170,7 +172,11 @@ describe('Dashboard states', () => {
       }),
     )
     renderApp()
-    expect(await screen.findByText(NO_DATA)).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        (_, element) => element?.className === 'empty-state' && element.textContent === NO_DATA,
+      ),
+    ).toBeInTheDocument()
     expect(calls.map((u) => u.pathname)).toEqual(['/api/v1/status'])
     expect(screen.getByText('Last pipeline run: none yet')).toBeInTheDocument()
   })
