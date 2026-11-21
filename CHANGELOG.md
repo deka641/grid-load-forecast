@@ -10,10 +10,16 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 - `/forecasts` and `/status` report whether a forecast was issued with incomplete inputs (`degraded`) and which input checks failed (`degraded_checks`), so a client can mark such a forecast instead of presenting it as complete. Both are `null` for baseline runs and for runs stored before the checks were recorded.
 - The dashboard marks a forecast that was computed with incomplete load data and names the missing inputs in plain words, so a reader knows it may be less accurate than the backtest suggests.
+- Next to the forecast peak, the dashboard shows the backtest MAPE of the model, the baseline and the SMARD forecast, so the peak can be read against how accurate each forecast has been. The values are the same as in the backtest table further down.
+- The dashboard has a favicon, a page description and a browser bar colour for the light and the dark theme.
 
 ### Changed
 
 - Busy 503 responses of the API carry `Retry-After: 1`, so clients know when to retry.
+- The forecast peak and its hour are the largest text on the dashboard, set in the colour of the model line, with the sentence that introduces them smaller above; the section is named by a small label instead of repeating the page title. Headings no longer leave a single word such as the hour alone on a line. On wide screens the page is centred instead of leaving an empty band on the right.
+- Old data is announced in a band across the page instead of only in a small note in the header. Before the first snapshot, the page shows the forecast section with the first-start text and an empty chart frame instead of a single line. Without a freshness line, the theme switch lines up with the page title.
+- Buttons, the day list and the theme switch have borders with at least 3:1 contrast in both themes, so they read as controls. The dark theme uses the same contrast order as the light one for muted text and the baseline and SMARD lines.
+- The forecast chart has a faint fill under the model line and calmer grid lines, the forecast lines draw in once when the page opens (not with reduced motion), and the tooltips stand off the chart with their own background, a visible border and a shadow.
 - The price chart shades the hours for which SMARD has not yet published prices and names the last published hour below the chart, so its early end no longer looks like a rendering fault. When prices turn negative, the zero line is drawn darker than the other grid lines. The price summary states once that each hourly price is the mean of four quarter hours.
 - With only one forecast day, the dashboard names the day as plain text instead of showing two buttons that can never be used.
 - While the dashboard loads, each section keeps about the height of its charts free, so the page no longer jumps when the data arrives. In every error notice the Retry button sits below the message.
@@ -25,6 +31,8 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ### Fixed
 
+- When several sections fail for the same reason, such as an unreadable snapshot, the dashboard shows one error notice with one Retry that reloads all of them, instead of one identical notice per section.
+- On phone-width screens, the forecast chart on clock-change days keeps its 00:00 and 06:00 labels (it labels every sixth hour there), the clock-change label no longer runs into the GW unit, and the "Not yet published" label of the price chart sits above the chart instead of over the prices. Between 761 and 900 px window width, the backtest table uses short row names, so "Sundays and holidays" no longer wraps to three lines.
 - On the 25-hour day of the autumn clock change, the dashboard names the two 02:00 hours with their UTC offset in the headline, the chart and the clock-change note, and a dashed line marks the change in the chart. The time axis keeps its three-hour rhythm instead of showing two identical 02:00 labels.
 - Between 641 and 760 px window width, the backtest table no longer needs sideways scrolling, and the page itself no longer scrolls sideways by a few pixels at 641 to 644 px.
 - Hourly values in the API are exact: `43648.21` instead of `43648.21000000001`. Two snapshots of the same data now give the same values to the last digit, so a client comparing them sees no spurious changes. Forecast inputs and backtest results are unchanged.
