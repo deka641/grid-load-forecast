@@ -109,14 +109,19 @@ class DataService:
             watcher = asyncio.create_task(_until_disconnected(request, scope))
             try:
                 async with AsyncExitStack() as gates:
-                    if gated:
-                        await gates.enter_async_context(self.heavy())
                     # The client's own slot first, so its excess requests wait
-                    # outside the shared queue; one deadline covers both waits.
+                    # outside the shared slots and queues, then a large-request
+                    # slot (for at most its own wait), then a query slot. One
+                    # deadline covers all three waits.
                     deadline = time.monotonic() + self._limits.query_wait
                     await gates.enter_async_context(
                         self.client_queries(client_key(request.scope), self._limits.query_wait)
                     )
+                    if gated:
+                        remaining = deadline - time.monotonic()
+                        await gates.enter_async_context(
+                            self.heavy(min(self._limits.heavy_wait, remaining))
+                        )
                     await gates.enter_async_context(self.query(deadline - time.monotonic()))
                     # Lets the watcher see a disconnect before the query starts.
                     await anyio.lowlevel.checkpoint()

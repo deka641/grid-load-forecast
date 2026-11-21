@@ -33,10 +33,12 @@ HEAVY_MAX_WAITING = 8
 QUERY_CONCURRENCY = 8
 QUERY_WAIT_SECONDS = 10.0
 # One client address (see client_key) may hold at most PER_CLIENT_QUERIES of these
-# slots. Its further requests wait for one of its own slots before they join the
-# shared queue, so a client that keeps many requests below HEAVY_POINTS in flight
-# cannot fill every slot and the queue in front of everyone else. Both waits
-# together take at most QUERY_WAIT_SECONDS; then the request gets a JSON 503.
+# slots. A request takes one of its client's slots first, then a heavy slot if it
+# is heavy, then a query slot, so a client's further requests wait without holding
+# any shared slot or place in a shared queue: a client that keeps many requests in
+# flight cannot fill every slot in front of everyone else. All waits together take
+# at most QUERY_WAIT_SECONDS, the heavy wait at most HEAVY_WAIT_SECONDS of them;
+# then the request gets a JSON 503.
 PER_CLIENT_QUERIES = 2
 # Requests in flight, apart from /health and /status, counted until the last byte
 # of the response is handed to the server. This is the effective bound on queued

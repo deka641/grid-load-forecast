@@ -239,7 +239,9 @@ def test_disconnected_clients_leave_the_heavy_queue(
     empty_wh: duckdb.DuckDBPyConnection, settings: Settings
 ) -> None:
     publish(empty_wh, settings)
-    app = create_app(settings, limits=Limits(heavy_wait=5.0))
+    # All requests come from one client address; lift its query share to reach the heavy queue.
+    limits = Limits(heavy_wait=5.0, per_client_queries=HEAVY_MAX_WAITING)
+    app = create_app(settings, limits=limits)
     gate = app.state.heavy_gate
 
     async def scenario() -> tuple[list[RawClient], float]:
@@ -406,8 +408,12 @@ def test_health_and_status_answer_while_heavy_requests_wait(
     empty_wh: duckdb.DuckDBPyConnection, settings: Settings
 ) -> None:
     publish(empty_wh, settings)
-    # All requests come from one client address; lift its limit to reach the heavy queue.
-    limits = Limits(heavy_wait=2.0, per_client_inflight=app_module.MAX_INFLIGHT)
+    # All requests come from one client address; lift its limits to reach the heavy queue.
+    limits = Limits(
+        heavy_wait=2.0,
+        per_client_inflight=app_module.MAX_INFLIGHT,
+        per_client_queries=app_module.MAX_INFLIGHT,
+    )
     app = create_app(settings, limits=limits)
     gate = app.state.heavy_gate
 

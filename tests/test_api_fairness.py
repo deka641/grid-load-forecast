@@ -2,6 +2,7 @@
 
 import asyncio
 import threading
+import time
 from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
@@ -14,6 +15,7 @@ import pytest
 from gridload.api import queries
 from gridload.api.app import create_app
 from gridload.api.limits import (
+    HEAVY_CONCURRENCY,
     PER_CLIENT_QUERIES,
     QUERY_CONCURRENCY,
     RETRY_AFTER_SECONDS,
@@ -24,7 +26,7 @@ from gridload.api.limits import (
 from gridload.config import Settings
 from gridload.pipeline.db import migrate
 from tests.test_api import add_run, publish
-from tests.test_api_hardening import BUSY, DAY, ISSUED
+from tests.test_api_hardening import BUSY, DAY, HEAVY, ISSUED
 
 # Requests for at least this many days block in their query until the test lets them go.
 BLOCKING_LIMIT = 100
@@ -143,6 +145,73 @@ def test_requests_beyond_the_share_get_a_busy_503_after_the_wait(
             blocking.set()
             assert [r.status_code for r in await asyncio.gather(*held)] == [200, 200]
             assert app.state.client_queries.users(GREEDY) == 0
+
+    asyncio.run(scenario())
+
+
+def test_a_client_waiting_for_its_own_slots_holds_no_large_request_slot(
+    settings: Settings, blocking: threading.Event
+) -> None:
+    app = create_app(settings, limits=Limits(heavy_wait=0.3, query_wait=5.0))
+
+    async def scenario() -> None:
+        async with client_for(app, GREEDY) as greedy, client_for(app, OTHER) as other:
+            # The greedy client's query slots are busy with slow medium requests.
+            medium = [
+                asyncio.create_task(
+                    greedy.get("/api/v1/forecasts/days", params={"limit": BLOCKING_LIMIT + i})
+                )
+                for i in range(PER_CLIENT_QUERIES)
+            ]
+            await settle(app, PER_CLIENT_QUERIES)
+            # Its large requests wait for its own slots, not in the large-request slots.
+            large = [
+                asyncio.create_task(greedy.get("/api/v1/actuals", params=HEAVY))
+                for _ in range(HEAVY_CONCURRENCY)
+            ]
+            await asyncio.sleep(0.1)
+            assert app.state.client_queries.users(GREEDY) == PER_CLIENT_QUERIES + HEAVY_CONCURRENCY
+            # Another client's large request still gets a large-request slot.
+            response = await asyncio.wait_for(other.get("/api/v1/actuals", params=HEAVY), 2.0)
+            assert response.status_code == 200, response.text
+            blocking.set()
+            responses = await asyncio.gather(*medium, *large)
+            assert [r.status_code for r in responses] == [200] * (
+                PER_CLIENT_QUERIES + HEAVY_CONCURRENCY
+            )
+            assert app.state.client_queries.users(GREEDY) == 0
+
+    asyncio.run(scenario())
+
+
+def test_all_waits_together_stay_within_the_query_wait(
+    settings: Settings, blocking: threading.Event
+) -> None:
+    app = create_app(settings, limits=Limits(heavy_wait=5.0, query_wait=0.3))
+
+    async def scenario() -> None:
+        async with client_for(app, GREEDY) as greedy:
+            held = [
+                asyncio.create_task(
+                    greedy.get("/api/v1/forecasts/days", params={"limit": BLOCKING_LIMIT + i})
+                )
+                for i in range(PER_CLIENT_QUERIES)
+            ]
+            await settle(app, PER_CLIENT_QUERIES)
+            # All large-request slots are taken, so this request waits for its own
+            # slot and then for a large-request slot: both within the query wait.
+            for _ in range(HEAVY_CONCURRENCY):
+                await app.state.heavy_gate.acquire()
+            started = time.monotonic()
+            response = await greedy.get("/api/v1/actuals", params=HEAVY)
+            elapsed = time.monotonic() - started
+            for _ in range(HEAVY_CONCURRENCY):
+                app.state.heavy_gate.release()
+            assert response.status_code == 503
+            assert response.json() == BUSY
+            assert elapsed < 1.0
+            blocking.set()
+            await asyncio.gather(*held)
 
     asyncio.run(scenario())
 
