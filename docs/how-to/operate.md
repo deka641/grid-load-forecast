@@ -22,11 +22,20 @@ Unchanged chunks are recognised by their hash and skipped, changed values overwr
 
 ## Accept values that SMARD removed
 
-If the status reports "stored values are now missing in a completed chunk" for a week and you have checked on SMARD.de that the values were removed on purpose, accept the withdrawal for that series only, with N large enough to reach the reported week:
+The pipeline keeps stored values that a new response no longer contains, unless only a short tail at the end of the current week is missing (at most 8 quarter hours, all newer than the newest value still published). It reports the chunk as an error with one of two messages:
+
+- "N stored values are now missing in an open chunk (more than 8, not at its end or no value left); kept the stored values, wrote M new values" for the current week. New values are still stored, and the chunk is fetched again by every run.
+- "N stored values are now missing in a completed chunk; kept the stored values" for a week that has ended.
+
+For the grid load this fails the run while the week is open and for seven days after it ended, because the forecast depends on it; after that the run is `partial`, and the error stays in the status for as long as the hourly run still reloads that week (the newest four). If SMARD keeps serving the response without those values, every hourly run is `failed` for that whole time: `gridload status` lists the message under `errors_last_run`, `/api/v1/status` shows the last load run as `failed`, and once no run has succeeded for 26 hours the pipeline container turns unhealthy. Forecasts and snapshots continue meanwhile, computed from the stored values. For other series the run is `partial` and the container stays healthy.
+
+First check on SMARD.de whether the values were removed on purpose. If they were not, wait: the next run fetches the week again and takes the values once SMARD serves them. If they were, accept the withdrawal for that series only, with N large enough to reach the reported week (the default of 4 covers the current week and the three before it):
 
 ```bash
 docker compose exec pipeline gridload ingest --series KEY --refetch-weeks N --accept-withdrawals
 ```
+
+This deletes the withdrawn values locally, stores the chunk, publishes a new snapshot and records the run as `ok` (`partial` if other chunks of the series still report errors; both count as a success for the healthcheck), so the container is healthy again after its next check. It accepts every withdrawal in the reloaded weeks of that series, so keep N as small as the report allows. Later scheduled runs no longer report the chunk, and if SMARD publishes the values again they are stored as usual. Like every writing command it fails with a lock error while the hourly run is active; run it again afterwards.
 
 ## Switch wholesale prices off
 

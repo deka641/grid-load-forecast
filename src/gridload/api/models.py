@@ -82,10 +82,23 @@ DEGRADED_CHECKS = (
 )
 
 
+ISSUED_AT = (
+    "Forecast origin: 12:00 Europe/Berlin on the day before delivery. The forecast uses only "
+    "data available at this time; it is not the time the forecast was computed (created_at)"
+)
+CREATED_AT = (
+    "When the pipeline computed the forecast, on the day before delivery: in the first run "
+    "that reaches its forecast step, after loading, at or after 12:00 and finds the load up "
+    "to 10:00 (scheduled runs start at minute 5 of each hour), or from 20:00 on if that hour "
+    "is still missing. The forecast reaches the API with the snapshot that run publishes "
+    "afterwards"
+)
+
+
 class ForecastRunInfo(BaseModel):
     run_id: str
-    issued_at: datetime
-    created_at: datetime
+    issued_at: datetime = Field(description=ISSUED_AT)
+    created_at: datetime = Field(description=CREATED_AT)
     degraded: bool | None = Field(default=None, description=DEGRADED)
     degraded_checks: list[str] | None = Field(default=None, description=DEGRADED_CHECKS)
 
@@ -145,7 +158,7 @@ class LoadRunInfo(BaseModel):
 class LastForecast(BaseModel):
     model: str
     delivery_day: date
-    issued_at: datetime
+    issued_at: datetime = Field(description=ISSUED_AT)
     degraded: bool | None = Field(default=None, description=DEGRADED)
     degraded_checks: list[str] | None = Field(default=None, description=DEGRADED_CHECKS)
 

@@ -17,7 +17,11 @@ make verify        # before merging larger changes, before every push and releas
 
 Both gates first check that the environments were installed from the current lockfiles (otherwise they stop with a hint to run `make install`) and stop at the first failing step.
 
-The fast gate runs ruff, ESLint and Prettier, mypy in strict mode and `tsc`, a check that no versioned text file contains emojis or em and en dashes, a secret scan of the working tree with gitleaks, and all tests without coverage. The full gate adds the dependency audit (pip-audit, npm audit), a secret scan over the whole git history, the tests with coverage thresholds (100 % for the data source, pipeline, forecast and API packages), the freshness check of the generated API types, the frontend build with its size budget, and the strict documentation build. Tests never reach the network: a guard fails any test that tries. gitleaks runs from a digest-pinned container, so Docker is needed.
+`make verify-fast` runs, in this order: ruff (lint and format check), ESLint and Prettier, mypy in strict mode and `tsc`, a check that no versioned text file contains emojis or em and en dashes, a secret scan of the working tree with gitleaks, and pytest and Vitest without coverage.
+
+`make verify` runs the same lint, type, style and working-tree secret steps, then the dependency audit (pip-audit, npm audit; needs network), a secret scan over the whole git history, pytest and Vitest with coverage thresholds (100 % for the data source, pipeline, forecast and API packages), the freshness check of `openapi.json` and the generated TypeScript API types, the frontend build with its size budget, and the strict documentation build. It runs no browser.
+
+Tests never reach the network: a guard fails any test that tries. gitleaks runs from a digest-pinned container, so Docker is needed.
 
 ## Dependencies
 
@@ -55,9 +59,24 @@ The first command writes `reports/backtest.json` and `reports/backtest.md`. The 
 
 ```bash
 make smoke        # live request against SMARD
-make prod-check   # production build behind Caddy on an isolated port with a data copy, image scan with Trivy
+make prod-check   # fixture browser checks, then the production stack on an isolated port with a data copy
 make loadtest     # parallel dashboard requests against the isolated stack
 ```
+
+The browser checks need Playwright's Chromium, installed once with `npx --prefix web playwright install chromium`.
+
+`make prod-check` first runs `make e2e`: the frontend build with its size budget, then the browser suite in `web/e2e` against that build, served on port 8471 with the production Content-Security-Policy and mocked API responses. Its tests cover the 25 hour day of the autumn clock change, Berlin time in a browser set to another time zone, the degraded, stale, busy and first-start notices, unpublished and negative prices, a single forecast day, both themes at several widths and accessibility with axe. They took 1 min 47 s including the build on an Intel Core i7-14650HX, which is why they are not part of `make verify`.
+
+`scripts/prod_check.sh` then builds the images, starts the stack as the project `grid-load-forecast-check` on port 8461 with a copy of `data/serving.duckdb` (the live stack on port 8460 and its volume are not touched), and checks:
+
+- the images with Trivy: critical vulnerabilities with a fix fail the check, high ones are listed;
+- that all three services become healthy;
+- that the API logs the client address Caddy saw, not the web container's address and not a forged `X-Forwarded-For`;
+- the security and cache headers, gzip compression of the hashed assets and a 404 for a missing asset;
+- that the snapshot is initialised, the main endpoints answer 200 and the range limit answers 422;
+- the real-data dashboard in the browser (`web/live`): light and dark theme at 1440 and 390 px, no console errors or warnings, no Content-Security-Policy violations, no sideways scrolling and no serious or critical axe findings.
+
+The stack keeps running for `make loadtest`; `make prod-down` removes it.
 
 ## Record new fixtures
 

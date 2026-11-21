@@ -285,6 +285,7 @@ export interface components {
             /**
              * Created At
              * Format: date-time
+             * @description When the pipeline computed the forecast, on the day before delivery: in the first run that reaches its forecast step, after loading, at or after 12:00 and finds the load up to 10:00 (scheduled runs start at minute 5 of each hour), or from 20:00 on if that hour is still missing. The forecast reaches the API with the snapshot that run publishes afterwards
              */
             created_at: string;
             /**
@@ -300,6 +301,7 @@ export interface components {
             /**
              * Issued At
              * Format: date-time
+             * @description Forecast origin: 12:00 Europe/Berlin on the day before delivery. The forecast uses only data available at this time; it is not the time the forecast was computed (created_at)
              */
             issued_at: string;
             /** Run Id */
@@ -340,6 +342,7 @@ export interface components {
             /**
              * Issued At
              * Format: date-time
+             * @description Forecast origin: 12:00 Europe/Berlin on the day before delivery. The forecast uses only data available at this time; it is not the time the forecast was computed (created_at)
              */
             issued_at: string;
             /** Model */

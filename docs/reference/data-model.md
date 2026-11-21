@@ -11,7 +11,7 @@ The warehouse (`warehouse.duckdb`) is created by versioned SQL migrations in `sr
 | `observations` | Cleaned quarter-hour values with `updated_at` and a `revision` counter that increases on every correction | `series_key, resolution, ts_utc` |
 | `load_runs` | One row per pipeline run: mode, start, end, status (`running`, `ok`, `partial`, `failed`, `aborted`) | `run_id` |
 | `load_log` | One row per chunk and run: status (`loaded`, `unchanged`, `error`, plus `warning` for a gap in a week that ended within seven days), values written, message (source gaps, removed values, error text) | none |
-| `forecast_runs` | One row per issued forecast and model: origin (`issued_at`), local delivery day, details as JSON (cutoff, training rows, parameter hash, `degraded` and the `degraded_checks` that triggered it) | `run_id` |
+| `forecast_runs` | One row per issued forecast and model: origin (`issued_at`, 12:00 on the day before delivery), local delivery day, time the pipeline computed it (`created_at`), details as JSON (cutoff, training rows, parameter hash, `degraded` and the `degraded_checks` that triggered it) | `run_id` |
 | `forecasts` | Hourly forecast values in MWh per hour | `run_id, target_ts_utc` |
 | `backtest_runs` | One row per stored backtest: evaluation period and configuration as JSON | `run_id` |
 | `backtest_metrics` | MAE (MWh per hour), MAPE (percent) and number of scored hours per model and scope | `run_id, model, scope, scope_value` |

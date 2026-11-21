@@ -9,6 +9,8 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 ### Added
 
 - `/forecasts` and `/status` report whether a forecast was issued with incomplete inputs (`degraded`) and which input checks failed (`degraded_checks`), so a client can mark such a forecast instead of presenting it as complete. Both are `null` for baseline runs and for runs stored before the checks were recorded.
+- The OpenAPI description explains `issued_at` (the forecast origin, 12:00 on the day before delivery) and `created_at` (when the pipeline computed the forecast), so a client no longer takes the origin for the time the forecast became available.
+- `make prod-check` first runs the browser checks of the production build with fixture data (`make e2e`, also available on its own), which cover the clock-change day, the degraded, stale and busy notices and unpublished prices.
 - The dashboard marks a forecast that was computed with incomplete load data and names the missing inputs in plain words, so a reader knows it may be less accurate than the backtest suggests.
 
 ### Changed
@@ -34,7 +36,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ### Security
 
-- One client can no longer crowd out others: the API allows each client address at most 16 data requests in progress, out of 64 in total, and answers further ones with the usual JSON 503. While one client held 100 parallel connections, a second client was answered 200 for all 406 of its requests in two runs, against 136 of 304 before. Locally all browsers on the host count as one client; behind another proxy all clients share one limit unless that proxy is trusted (see SECURITY.md).
+- One client can no longer crowd out others: the API allows each client address at most 16 data requests in progress, out of 64 in total, and answers further ones with the usual JSON 503. In a manual check on the `make prod-check` stack on 21 November 2026 (no script in the repository repeats it), while one container held 100 parallel connections to `/forecasts/days` for 10 seconds, a second container was answered 200 for all 406 of its requests in two runs, against 136 of 304 without the limit. Locally all browsers on the host count as one client; behind another proxy all clients share one limit unless that proxy is trusted (see SECURITY.md).
 - The API takes the client address from `X-Forwarded-For` only on connections from the web container, at a fixed address on an internal network. A client cannot choose the address it is counted under by sending that header, and the API logs show the client address instead of Caddy's.
 - The API container has no network access beyond the web container: it no longer reaches the internet, and the pipeline and other containers no longer reach it.
 

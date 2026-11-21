@@ -1,8 +1,8 @@
 import { defineConfig } from '@playwright/test'
 
 /**
- * Browser checks against the production build (`npm run build` first). Not part of
- * `make verify`; meant for a later prod check. Screenshots go to SCREENSHOT_DIR.
+ * Browser checks of the production build with mocked API responses (`make e2e`, which
+ * builds first; also run by `make prod-check`). Screenshots go to SCREENSHOT_DIR.
  */
 export default defineConfig({
   testDir: './e2e',

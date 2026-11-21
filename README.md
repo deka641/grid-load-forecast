@@ -6,7 +6,7 @@ Day-ahead forecast of the German grid load from public SMARD data, with a valida
 
 ## What it does
 
-Every day the pipeline forecasts the grid load for each hour of the next delivery day as of 12:00 (Europe/Berlin), the time the day-ahead electricity market closes. The forecast uses only the information available at 12:00. It is computed by the first hourly run after 12:00 that finds the load up to 10:00 loaded, at 12:05 at the earliest; until then the newest forecast on the dashboard is the one for the current day. If those values are still missing at 20:00, the forecast is issued anyway and marked as computed with incomplete data, unless no load value of the 24 hours before 10:00 is available at all. A LightGBM model is trained on all history since 2015 and may only use hours that ended by 10:00, which matches the publication delay of the source. The dashboard compares the forecast with the actual load, with a naive baseline (the same hour one week earlier) and with the grid load forecast that SMARD publishes.
+Every day the pipeline forecasts the grid load as SMARD publishes it (filter 410) for each hour of the next delivery day as of 12:00 (Europe/Berlin), the time the day-ahead electricity market closes. The forecast uses only the information available at 12:00. It is computed by the first hourly run after 12:00 that finds the load up to 10:00 loaded, at 12:05 at the earliest in the hourly schedule; until then the newest forecast on the dashboard is the one for the current day. If those values are still missing at 20:00, the forecast is issued anyway and marked as computed with incomplete data, unless no load value of the 24 hours before 10:00 is available at all. A LightGBM model is trained on all history since 2015 and may only use hours that ended by 10:00, which matches the publication delay of the source. Its inputs are the calendar and earlier load values only; it uses no weather data. The dashboard compares the forecast with the actual load, with a naive baseline (the same hour one week earlier) and with the grid load forecast that SMARD publishes.
 
 ## How good the forecast is
 
@@ -36,7 +36,7 @@ Three containers: the pipeline and the API share one data volume, and the web se
 
 ## Quickstart
 
-Requirements: Docker with Compose v2, port 8460 free, memory for container limits totalling 2.6 GB, and disk space on the data volume (our full backfill on 21 November 2026 took 0.58 GB, and DuckDB may use up to 4 GB of temporary space during large operations).
+Requirements: Docker with Compose v2, port 8460 free, memory for container limits totalling 2.6 GB, and disk space on the data volume (a full backfill on 21 November 2026 took 0.58 GB, and DuckDB may use up to 4 GB of temporary space during large operations).
 
 ```bash
 git clone https://github.com/deka641/grid-load-forecast.git
@@ -44,7 +44,7 @@ cd grid-load-forecast
 docker compose up -d --build
 ```
 
-On the first start the pipeline loads the full history (our run on 21 November 2026: 75 minutes for 8,973 weekly chunks; the time depends on SMARD and the network), then issues the forecast if it is already past 12:00 in Germany (otherwise with the first hourly run after noon) and computes the backtest. Open [http://127.0.0.1:8460](http://127.0.0.1:8460). The [tutorial](docs/tutorials/run-locally.md) walks through it.
+On the first start the pipeline loads the full history (a run on 21 November 2026: 75 minutes for 8,973 weekly chunks; the time depends on SMARD and the network), then issues the forecast if it is already past 12:00 in Germany (otherwise with the first hourly run after noon) and computes the backtest. Open [http://127.0.0.1:8460](http://127.0.0.1:8460). The [tutorial](docs/tutorials/run-locally.md) walks through it.
 
 ## Development
 

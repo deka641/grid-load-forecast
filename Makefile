@@ -11,10 +11,10 @@ T   := timeout -k 10
 # Scanner image pins are updated by hand (Dependabot does not read the Makefile).
 GITLEAKS := zricethezav/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9
 
-.PHONY: help install deps verify-fast verify style secrets secrets-history test-fast prod-check loadtest prod-down audit lint typecheck test openapi openapi-check build docs smoke clean
+.PHONY: help install deps verify-fast verify style secrets secrets-history test-fast prod-check loadtest prod-down audit lint typecheck test openapi openapi-check build docs e2e smoke clean
 
 help: ## List targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
 install: ## Install Python and frontend dependencies from the lockfiles
 	uv sync --locked
@@ -103,7 +103,11 @@ docs: ## MkDocs strict build
 smoke: ## Live request against SMARD (not part of verify)
 	$(T) 120 $(UV) python scripts/smoke.py
 
-prod-check: ## Production-like build on port 8461 with a copy of the local data
+# Uses Playwright's Chromium (npx --prefix web playwright install chromium) and port 8471.
+e2e: build ## Browser checks of the production build with fixture data (part of prod-check)
+	$(T) 300 npx --no-install --prefix web playwright test --config web/playwright.config.ts
+
+prod-check: e2e ## Fixture browser checks, then a production-like build on port 8461 with a copy of the local data
 	$(T) 900 ./scripts/prod_check.sh
 
 loadtest: ## Parallel dashboard requests against the prod-check stack
