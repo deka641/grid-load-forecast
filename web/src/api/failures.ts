@@ -13,15 +13,14 @@ const SECTIONS: readonly { key: string; what: string }[] = [
   { key: 'actuals', what: 'the generation data' },
 ]
 
-/** 404 and the first-start 503 describe the data and keep their own texts. */
+/**
+ * The reason a query failed, or null. Only failed queries count: one that is still retrying
+ * shows Loading in its section and must not be named in the notice. 404 and the first-start
+ * 503 describe the data and keep their own texts.
+ */
 function failureOf(query: Query): string | null {
   const { state } = query
-  const error =
-    state.status === 'error'
-      ? state.error
-      : state.fetchFailureCount > 0
-        ? state.fetchFailureReason
-        : null
+  const error = state.status === 'error' ? state.error : null
   if (error === null || isNoData(error) || (isApiError(error) && error.status < 500)) {
     return null
   }
@@ -31,14 +30,13 @@ function failureOf(query: Query): string | null {
 interface Failure {
   reason: string
   whats: string[]
-  failed: boolean
 }
 
 /**
  * Sections whose data failed for the same reason, such as an unreadable snapshot.
  * Encoded as a string, so that the store snapshot only changes when the result does.
  */
-function sharedFailure(client: QueryClient): string {
+export function sharedFailure(client: QueryClient): string {
   const groups = new Map<string, Failure>()
   for (const query of client.getQueryCache().getAll()) {
     const section = SECTIONS.find((s) => s.key === query.queryKey[0])
@@ -46,14 +44,13 @@ function sharedFailure(client: QueryClient): string {
     if (!section || reason === null || query.getObserversCount() === 0) {
       continue
     }
-    const group = groups.get(reason) ?? { reason, whats: [], failed: false }
+    const group = groups.get(reason) ?? { reason, whats: [] }
     if (!group.whats.includes(section.what)) {
       group.whats.push(section.what)
     }
-    group.failed ||= query.state.status === 'error'
     groups.set(reason, group)
   }
-  const shared = [...groups.values()].find((g) => g.failed && g.whats.length > 1)
+  const shared = [...groups.values()].find((g) => g.whats.length > 1)
   if (!shared) {
     return ''
   }
