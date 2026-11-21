@@ -188,7 +188,10 @@ function ForecastView({ forecast }: { forecast: ForecastDay }) {
       {hours === 24 ? null : (
         <p className="clock-change">
           Clock change: this day has {String(hours)} hours
-          {hours === 25 ? ', so 02:00 appears twice' : ', 02:00 does not exist'}.
+          {hours === 25
+            ? ', so 02:00 appears twice, first in summer time (UTC+2), then in winter time (UTC+1)'
+            : ', 02:00 does not exist'}
+          .
         </p>
       )}
       <Legend items={legendItems(hasActuals(points))} label="Lines in the forecast chart" />

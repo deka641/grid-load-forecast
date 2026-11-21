@@ -1,6 +1,6 @@
 import type { BacktestMetric, BacktestMetrics, ForecastPoint } from '../api/client'
 import { formatGW, formatPercent } from './format'
-import { dayLong, dayPlain, wallClock } from './time'
+import { dayLong, dayPlain, hourLabels } from './time'
 
 export type ForecastKey = 'lightgbm' | 'baseline_week' | 'tso'
 
@@ -72,7 +72,9 @@ export function headline(deliveryDay: string, points: readonly ForecastPoint[]):
   if (peak === null) {
     return `No model forecast for ${day}`
   }
-  return `Forecast peak for ${day}: ${formatGW(peak.value)} at ${wallClock(peak.ts)}`
+  // A repeated hour (02:00 on the autumn clock-change day) is named with its offset.
+  const at = hourLabels(points.map((p) => p.ts))[points.findIndex((p) => p.ts === peak.ts)] ?? ''
+  return `Forecast peak for ${day}: ${formatGW(peak.value)} at ${at}`
 }
 
 export function findMetric(

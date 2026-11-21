@@ -35,6 +35,8 @@ interface Series {
   lineStyle: { color?: string; type?: unknown; width: number }
   areaStyle?: { color: string }
   z?: number
+  markLine?: { data: unknown[]; label: { formatter: string }; lineStyle: { color: string } }
+  markArea?: { data: unknown[][]; label: { formatter: string } }
 }
 interface Built {
   animation: boolean
@@ -47,22 +49,33 @@ interface Built {
 const built = (option: unknown) => option as Built
 
 describe('forecastOption', () => {
-  it('labels the repeated 02:00 hour twice and shows the offset in the tooltip', () => {
+  it('names the repeated 02:00 hour with its offset and marks the clock change', () => {
     const day = forecast('2026-10-25')
     const option = built(forecastOption(day.points, palette))
     expect(option.animation).toBe(false)
     expect(option.xAxis.data).toHaveLength(25)
     const labels = option.xAxis.data.map((v) => option.xAxis.axisLabel.formatter(v))
-    expect(labels.filter((l) => l === '02:00')).toHaveLength(2)
-    // Both 02:00 hours carry a label; 03:00 gives way to them.
-    expect(option.xAxis.axisLabel.interval(2)).toBe(true)
-    expect(option.xAxis.axisLabel.interval(3)).toBe(true)
-    expect(option.xAxis.axisLabel.interval(4)).toBe(false)
+    expect(labels.slice(1, 5)).toEqual(['01:00', '02:00 (UTC+2)', '02:00 (UTC+1)', '03:00'])
+    // Ticks keep the three-hour rhythm of the wall clock; neither 02:00 is one.
+    expect(option.xAxis.axisLabel.interval(0)).toBe(true)
+    expect(option.xAxis.axisLabel.interval(2)).toBe(false)
+    expect(option.xAxis.axisLabel.interval(3)).toBe(false)
+    expect(option.xAxis.axisLabel.interval(4)).toBe(true)
     expect(option.xAxis.axisLabel.interval(7)).toBe(true)
     expect(option.tooltip.formatter([{ dataIndex: 2 }])).toContain('02:00 (UTC+2)')
     expect(option.tooltip.formatter({ dataIndex: 3 })).toContain('02:00 (UTC+1)')
     expect(option.tooltip.formatter([{ dataIndex: 99 }])).toBe('')
     expect(option.yAxis.name).toBe('GW')
+    const mark = option.series[0]?.markLine
+    expect(mark?.data).toEqual([{ xAxis: '3' }])
+    expect(mark?.label.formatter).toBe('UTC+2 | UTC+1')
+    expect(option.series.slice(1).every((s) => s.markLine === undefined)).toBe(true)
+  })
+
+  it('marks no clock change on a normal day', () => {
+    const option = built(forecastOption(forecast('2026-11-20').points, palette))
+    expect(option.series.every((s) => s.markLine === undefined)).toBe(true)
+    expect(option.xAxis.axisLabel.formatter('2')).toBe('02:00')
   })
 
   it('converts to GW and styles each line', () => {

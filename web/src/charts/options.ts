@@ -2,7 +2,7 @@ import type { BacktestMetrics, ForecastPoint } from '../api/client'
 import { MODELS, mapeByHour } from '../lib/metrics'
 import type { ForecastKey } from '../lib/metrics'
 import { NOT_AVAILABLE } from '../lib/format'
-import { dayShort, localDay, offsetLabel, wallClock } from '../lib/time'
+import { dayShort, hourLabels, localDay, offsetChange, offsetLabel, wallClock } from '../lib/time'
 import type { EChartsCoreOption } from './echarts'
 import type { Palette } from './palette'
 
@@ -155,14 +155,37 @@ export const FORECAST_SERIES: readonly { key: ForecastKey | 'actual'; label: str
   ...MODELS.map((m) => ({ key: m.key, label: m.label })),
 ]
 
-const TICKS_25H = new Set(['00:00', '02:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00'])
+/** Every third wall-clock hour. The repeated 02:00 of a 25-hour day is never a tick. */
+export function forecastTick(ts: string): boolean {
+  return Number(wallClock(ts).slice(0, 2)) % 3 === 0
+}
 
-/** Every third hour; on 25-hour days both 02:00 hours instead of 03:00. */
-export function forecastTick(label: string, hours: number): boolean {
-  if (hours === 25) {
-    return TICKS_25H.has(label)
+/** A dashed vertical line where the clock changes, labelled with the offsets on both sides. */
+function clockChangeMark(stamps: readonly string[], palette: Palette) {
+  const index = offsetChange(stamps)
+  const before = stamps[index - 1]
+  const after = stamps[index]
+  if (before === undefined || after === undefined) {
+    return {}
   }
-  return Number(label.slice(0, 2)) % 3 === 0
+  return {
+    markLine: {
+      silent: true,
+      symbol: 'none',
+      animation: false,
+      lineStyle: { color: palette.muted, width: 1, type: [4, 3] },
+      label: {
+        show: true,
+        position: 'end',
+        distance: 3,
+        color: palette.muted,
+        fontFamily: palette.fontFamily,
+        fontSize: 11,
+        formatter: `${offsetLabel(before)} | ${offsetLabel(after)}`,
+      },
+      data: [{ xAxis: String(index) }],
+    },
+  }
 }
 
 /** Hours of a delivery day are labelled by local wall clock; 02:00 repeats on 25-hour days. */
@@ -197,19 +220,25 @@ export function forecastOption(points: readonly ForecastPoint[], palette: Palett
     },
     xAxis: categoryAxis(
       palette,
-      points.map((p) => wallClock(p.ts)),
-      points.map((p) => forecastTick(wallClock(p.ts), points.length)),
+      hourLabels(points.map((p) => p.ts)),
+      points.map((p) => forecastTick(p.ts)),
     ),
     yAxis: valueAxis(palette, 'GW'),
-    series: FORECAST_SERIES.map((s) =>
-      lineSeries(
+    series: FORECAST_SERIES.map((s, i) => ({
+      ...lineSeries(
         s.label,
         points.map((p) => gw(p[s.key])),
         LINE_STYLES[s.key],
         palette,
         z[s.key],
       ),
-    ),
+      ...(i === 0
+        ? clockChangeMark(
+            points.map((p) => p.ts),
+            palette,
+          )
+        : {}),
+    })),
   }
 }
 

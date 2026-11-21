@@ -19,6 +19,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ### Fixed
 
+- On the 25-hour day of the autumn clock change, the dashboard names the two 02:00 hours with their UTC offset in the headline, the chart and the clock-change note, and a dashed line marks the change in the chart. The time axis keeps its three-hour rhythm instead of showing two identical 02:00 labels.
 - Hourly values in the API are exact: `43648.21` instead of `43648.21000000001`. Two snapshots of the same data now give the same values to the last digit, so a client comparing them sees no spurious changes. Forecast inputs and backtest results are unchanged.
 - Restarting the API container no longer invalidates the ETags that clients hold. The image build stores a hash of the code and the locked dependencies as the build id, so only an image with changed code makes clients download data again.
 - Values that SMARD withdraws from a recent week of a series other than the grid load no longer fail the run and, after 26 hours, mark the pipeline container unhealthy while load data and forecasts are fine. The run is now `partial` and the error is still shown in `gridload status`; withdrawals in the grid load still fail the run.

@@ -57,6 +57,25 @@ export function offsetLabel(ts: string): string {
   return minutes === '00' ? `UTC${sign}${hours}` : `UTC${sign}${hours}:${minutes}`
 }
 
+/**
+ * Wall-clock labels for the hours of a day. An hour that occurs twice (02:00 on the
+ * autumn clock-change day) carries its offset, "02:00 (UTC+2)" and "02:00 (UTC+1)".
+ */
+export function hourLabels(stamps: readonly string[]): string[] {
+  const counts = new Map<string, number>()
+  for (const ts of stamps) {
+    counts.set(wallClock(ts), (counts.get(wallClock(ts)) ?? 0) + 1)
+  }
+  return stamps.map((ts) =>
+    (counts.get(wallClock(ts)) ?? 0) > 1 ? `${wallClock(ts)} (${offsetLabel(ts)})` : wallClock(ts),
+  )
+}
+
+/** Index of the first hour whose offset differs from the hour before, or -1. */
+export function offsetChange(stamps: readonly string[]): number {
+  return stamps.findIndex((ts, i) => i > 0 && offsetLabel(ts) !== offsetLabel(stamps[i - 1] ?? ts))
+}
+
 /** "Friday 21 November" */
 export function dayLong(day: string): string {
   const date = parseDay(day)
