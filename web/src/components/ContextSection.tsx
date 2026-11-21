@@ -3,7 +3,7 @@ import { useCallback, useMemo } from 'react'
 import type { SeriesCatalog } from '../api/client'
 import { useActuals, useSeries } from '../api/queries'
 import { Chart } from '../charts/LazyChart'
-import { mixOption, priceOption } from '../charts/options'
+import { lastValueIndex, mixOption, priceOption } from '../charts/options'
 import type { TimeSeries } from '../charts/options'
 import { GENERATION, generationColor } from '../charts/palette'
 import type { Palette } from '../charts/palette'
@@ -92,17 +92,28 @@ function PriceTable({
   )
 }
 
-function PriceStats({ values }: { values: readonly (number | null)[] }) {
+function PriceStats({
+  stamps,
+  values,
+}: {
+  stamps: readonly string[]
+  values: readonly (number | null)[]
+}) {
   const s = stats(values)
   if (s === null) {
     return <p className="chart-stats muted">No price data in this period.</p>
   }
+  const last = stamps[lastValueIndex(values)]
+  const ends = last !== undefined && last !== stamps.at(-1)
   return (
     <p className="chart-stats">
-      Hourly prices from {s.min.toFixed(2)} to {s.max.toFixed(2)} EUR/MWh, average{' '}
-      {s.mean.toFixed(2)} EUR/MWh, negative in {String(s.negativeHours)} of {String(s.hours)} hours.
-      Since October 2025 each hour is the mean of four quarter-hour prices, so single negative
-      quarter hours can be hidden.
+      Hourly prices (each the mean of four quarter hours) from {s.min.toFixed(2)} to{' '}
+      {s.max.toFixed(2)} EUR/MWh, average {s.mean.toFixed(2)} EUR/MWh, negative in{' '}
+      {String(s.negativeHours)} of {String(s.hours)} hours. A single negative quarter hour can be
+      hidden in its hourly mean.
+      {ends
+        ? ` The last published price is for ${dayShort(localDay(last), false)}, ${wallClock(last)} (${offsetLabel(last)}); the shaded part of the chart has no prices yet.`
+        : ''}
     </p>
   )
 }
@@ -163,7 +174,7 @@ function ContextCharts({
           >
             <PriceTable stamps={aligned.stamps} values={prices} />
           </Chart>
-          <PriceStats values={prices} />
+          <PriceStats stamps={aligned.stamps} values={prices} />
           <p className="note">{priceNote}</p>
         </>
       ) : null}

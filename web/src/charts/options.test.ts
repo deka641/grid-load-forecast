@@ -4,9 +4,11 @@ import {
   firstIndex,
   forecastOption,
   hourLabel,
+  lastValueIndex,
   mapeByHourOption,
   mixOption,
   priceOption,
+  stepEnds,
   tooltipHtml,
 } from './options'
 import type { Palette } from './palette'
@@ -160,6 +162,45 @@ describe('mixOption and priceOption', () => {
     expect(option.tooltip.formatter([{ dataIndex: 0 }])).toContain('-5.50 EUR/MWh')
     expect(option.tooltip.formatter([{ dataIndex: 1 }])).toContain('n/a')
     expect(option.tooltip.formatter([{ dataIndex: 2 }])).toBe('')
+  })
+
+  it('draws the zero line strongly only when a price is negative', () => {
+    const negative = built(priceOption(stamps, [-5.5, 10], palette))
+    expect(negative.series[0]?.markLine?.data).toEqual([{ yAxis: 0 }])
+    expect(negative.series[0]?.markLine?.lineStyle.color).toBe(palette.muted)
+    const positive = built(priceOption(stamps, [0, 10], palette))
+    expect(positive.series[0]?.markLine).toBeUndefined()
+  })
+
+  it('shades the hours after the last published price', () => {
+    const hours = [
+      '2026-11-20T21:00:00+01:00',
+      '2026-11-20T22:00:00+01:00',
+      '2026-11-20T23:00:00+01:00',
+      '2026-11-21T00:00:00+01:00',
+      '2026-11-21T01:00:00+01:00',
+    ]
+    const early = built(priceOption(hours, [50, 60, null, null, null], palette))
+    expect(early.series[0]?.markArea?.data).toEqual([[{ xAxis: '2' }, { xAxis: '4' }]])
+    expect(early.series[0]?.markArea?.label.formatter).toBe('Not yet published')
+    // The last price is drawn over its whole hour; the tooltip keeps the gap.
+    expect(early.series[0]?.data).toEqual([50, 60, 60, null, null])
+    expect(early.tooltip.formatter([{ dataIndex: 2 }])).toContain('n/a')
+    // Only the last hour missing, complete or empty: nothing to shade.
+    for (const values of [
+      [1, 2, 3, 4, null],
+      [1, 2, 3, 4, 5],
+      [null, null, null, null, null],
+    ]) {
+      expect(built(priceOption(hours, values, palette)).series[0]?.markArea).toBeUndefined()
+    }
+  })
+
+  it('extends each price to the end of its hour', () => {
+    expect(stepEnds([1, null, null, 2, null])).toEqual([1, 1, null, 2, 2])
+    expect(stepEnds([null, 3])).toEqual([null, 3])
+    expect(lastValueIndex([1, null, 2, null])).toBe(2)
+    expect(lastValueIndex([null])).toBe(-1)
   })
 })
 

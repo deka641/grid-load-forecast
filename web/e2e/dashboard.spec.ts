@@ -31,6 +31,7 @@ interface MockOptions {
   onForecast?: () => void
   degradedChecks?: string[]
   days?: string[]
+  priceEnd?: number
 }
 
 async function expectNoSeriousAxe(page: Page) {
@@ -72,6 +73,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
             (url.searchParams.get('series') ?? '').split(','),
             url.searchParams.get('start') ?? fixtures.TODAY,
             url.searchParams.get('end') ?? fixtures.TODAY,
+            options.priceEnd,
           ),
         )
       default:
@@ -398,6 +400,35 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(page.locator('.day-single')).toHaveText('Delivery day Sat 21 Nov 2026')
     await expect(page.getByRole('button', { name: /day$/ })).toHaveCount(0)
     await page.screenshot({ path: join(SHOTS, `single-day-${scheme}-390.png`) })
+    await expectNoSeriousAxe(page)
+    expect(await cspViolations(page)).toEqual([])
+    expect(problems).toEqual([])
+    await context.close()
+  })
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`marks unpublished prices and negative prices in ${scheme}`, async ({ browser }) => {
+    const context = await browser.newContext({
+      colorScheme: scheme,
+      viewport: { width: 1440, height: 900 },
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    const problems = watchProblems(page)
+    // Prices end with 19 November, while generation runs into 20 November.
+    await mockApi(page, { priceEnd: Date.parse('2026-11-19T22:00:00Z') })
+    await open(page)
+    await expect(page.locator('.chart-stats')).toContainText(
+      'The last published price is for Thu 19 Nov, 23:00 (UTC+1)',
+    )
+    await expect(page.locator('.chart-stats')).toContainText(
+      'Hourly prices (each the mean of four quarter hours) from',
+    )
+    await expect(page.locator('.chart-stats')).not.toContainText('negative in 0 of')
+    const chart = page.locator('.chart-price')
+    await chart.scrollIntoViewIfNeeded()
+    await chart.screenshot({ path: join(SHOTS, `price-end-${scheme}-1440.png`) })
     await expectNoSeriousAxe(page)
     expect(await cspViolations(page)).toEqual([])
     expect(problems).toEqual([])

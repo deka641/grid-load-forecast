@@ -354,12 +354,59 @@ export function mixOption(
   }
 }
 
+/** Index of the last value that is not null, or -1. */
+export function lastValueIndex(values: readonly (number | null)[]): number {
+  return values.findLastIndex((v) => v !== null)
+}
+
+/**
+ * A price holds for the hour that starts at its timestamp, so a step line needs the
+ * point where that hour ends. Where the next price is missing, the value is repeated
+ * there for drawing only; the tooltip still reads the published values.
+ */
+export function stepEnds(values: readonly (number | null)[]): (number | null)[] {
+  return values.map((value, i) => value ?? (i > 0 ? (values[i - 1] ?? null) : null))
+}
+
 export function priceOption(
   stamps: readonly string[],
   values: (number | null)[],
   palette: Palette,
 ) {
   const option = base(palette)
+  const last = lastValueIndex(values)
+  // Hours after the last published price that the shared time axis still shows.
+  const unpublished =
+    last >= 0 && last + 1 < stamps.length - 1
+      ? {
+          markArea: {
+            silent: true,
+            itemStyle: { color: palette.rule, opacity: 0.5 },
+            label: {
+              show: true,
+              position: 'insideTop',
+              color: palette.muted,
+              fontFamily: palette.fontFamily,
+              fontSize: 11,
+              formatter: 'Not yet published',
+            },
+            data: [[{ xAxis: String(last + 1) }, { xAxis: String(stamps.length - 1) }]],
+          },
+        }
+      : {}
+  // Negative prices: the zero line is drawn darker than the other grid lines, and unlike the
+  // price line it is grey.
+  const zero = values.some((v) => v !== null && v < 0)
+    ? {
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          label: { show: false },
+          lineStyle: { color: palette.muted, width: 1, type: 'solid' },
+          data: [{ yAxis: 0 }],
+        },
+      }
+    : {}
   return {
     ...option,
     tooltip: {
@@ -386,7 +433,7 @@ export function priceOption(
       {
         type: 'line',
         name: 'Day-ahead price DE/LU',
-        data: values,
+        data: stepEnds(values),
         showSymbol: false,
         symbol: 'none',
         // A price holds for the hour that starts at its timestamp.
@@ -394,6 +441,8 @@ export function priceOption(
         lineStyle: { color: palette.price, width: 1.5 },
         itemStyle: { color: palette.price },
         emphasis: { disabled: true },
+        ...unpublished,
+        ...zero,
       },
     ],
   }

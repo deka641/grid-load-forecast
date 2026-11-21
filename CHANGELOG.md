@@ -13,6 +13,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ### Changed
 
+- The price chart shades the hours for which SMARD has not yet published prices and names the last published hour below the chart, so its early end no longer looks like a rendering fault. When prices turn negative, the zero line is drawn darker than the other grid lines. The price summary states once that each hourly price is the mean of four quarter hours.
 - With only one forecast day, the dashboard names the day as plain text instead of showing two buttons that can never be used.
 - The web server compresses responses with gzip only. Under `make loadtest` the zstd encoders took the web container past its 128 MB memory limit, while gzip peaked at 56 MiB, so a client asking for zstd could exhaust that limit with parallel large downloads.
 - Repeated large data requests, such as one year of all series hourly, are answered from an in-memory cache of at most 32 MiB until the next snapshot, so they no longer wait for one of the two slots for large requests. Under `make loadtest` the median of that request dropped from 3344 ms to 156 ms.
