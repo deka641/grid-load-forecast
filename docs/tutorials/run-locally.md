@@ -4,7 +4,7 @@ This tutorial starts the complete stack on your machine, loads the history from 
 
 ## Requirements
 
-Docker with Compose v2 and a free port 8460 on `127.0.0.1`. The containers have memory limits of 2.6 GB in total. After a full backfill the data files take about 0.58 GB on the volume (a run on 21 November 2026), and DuckDB may use up to 4 GB of temporary space there during large operations.
+Docker with Compose v2 and a free port 8460 on `127.0.0.1`. The containers have memory limits of 2.75 GiB in total (2 GiB pipeline, 512 MiB API, 256 MiB web) and CPU limits of 4, 3 and 2 cores. After a full backfill the data files take about 0.58 GB on the volume (a run on 21 November 2026), and DuckDB may use up to 4 GB of temporary space there during large operations.
 
 ## Start
 

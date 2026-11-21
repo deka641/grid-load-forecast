@@ -36,7 +36,7 @@ Three containers: the pipeline and the API share one data volume, and the web se
 
 ## Quickstart
 
-Requirements: Docker with Compose v2, port 8460 free, memory for container limits totalling 2.6 GB, and disk space on the data volume (a full backfill on 21 November 2026 took 0.58 GB, and DuckDB may use up to 4 GB of temporary space during large operations).
+Requirements: Docker with Compose v2, port 8460 free, memory for container limits totalling 2.75 GiB (2 GiB pipeline, 512 MiB API, 256 MiB web), and disk space on the data volume (a full backfill on 21 November 2026 took 0.58 GB, and DuckDB may use up to 4 GB of temporary space during large operations).
 
 ```bash
 git clone https://github.com/deka641/grid-load-forecast.git
