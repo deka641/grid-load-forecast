@@ -90,3 +90,29 @@ describe('Degraded forecast notice', () => {
     expect(screen.queryByText(NOTICE)).toBeNull()
   })
 })
+
+describe('Day selector', () => {
+  it.each([[['2026-11-21']], [[]]])(
+    'shows a single day as text without dead buttons (list %j)',
+    async (days) => {
+      serve(fx.forecast('2026-11-21', false), days)
+      renderApp()
+      await screen.findByText(/^Forecast peak for/)
+      expect(screen.getByText('Delivery day').parentElement).toHaveTextContent(
+        'Delivery day Sat 21 Nov 2026',
+      )
+      expect(screen.queryByRole('button', { name: 'Previous day' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Next day' })).toBeNull()
+      expect(screen.queryByLabelText('Delivery day')).toBeNull()
+    },
+  )
+
+  it('keeps the buttons and the list with two days', async () => {
+    serve(fx.forecast('2026-11-21', false), ['2026-11-21', '2026-11-20'])
+    renderApp()
+    await screen.findByText(/^Forecast peak for/)
+    expect(screen.getByRole('button', { name: 'Next day' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Previous day' })).toBeEnabled()
+    expect(screen.getByLabelText('Delivery day')).toHaveValue('2026-11-21')
+  })
+})

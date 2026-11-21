@@ -30,6 +30,7 @@ interface MockOptions {
   forecastError?: { error: number; detail: string }
   onForecast?: () => void
   degradedChecks?: string[]
+  days?: string[]
 }
 
 async function expectNoSeriousAxe(page: Page) {
@@ -51,7 +52,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
       case '/api/v1/series':
         return json(fixtures.seriesCatalog(options.withPrice ?? true))
       case '/api/v1/forecasts/days':
-        return json({ days: fixtures.forecastDays(), limit: 400 })
+        return json({ days: options.days ?? fixtures.forecastDays(), limit: 400 })
       case '/api/v1/forecasts':
         options.onForecast?.()
         if (options.forecastError) {
@@ -381,3 +382,25 @@ test('shows no degraded notice for a complete forecast', async ({ browser }) => 
   await expect(page.locator('.notice-warn')).toHaveCount(0)
   await page.close()
 })
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`shows a single forecast day without dead controls in ${scheme}`, async ({ browser }) => {
+    const context = await browser.newContext({
+      colorScheme: scheme,
+      viewport: { width: 390, height: 900 },
+      deviceScaleFactor: 2,
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    const problems = watchProblems(page)
+    await mockApi(page, { days: [fixtures.LATEST_DAY] })
+    await open(page)
+    await expect(page.locator('.day-single')).toHaveText('Delivery day Sat 21 Nov 2026')
+    await expect(page.getByRole('button', { name: /day$/ })).toHaveCount(0)
+    await page.screenshot({ path: join(SHOTS, `single-day-${scheme}-390.png`) })
+    await expectNoSeriousAxe(page)
+    expect(await cspViolations(page)).toEqual([])
+    expect(problems).toEqual([])
+    await context.close()
+  })
+}

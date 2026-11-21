@@ -13,6 +13,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ### Changed
 
+- With only one forecast day, the dashboard names the day as plain text instead of showing two buttons that can never be used.
 - The web server compresses responses with gzip only. Under `make loadtest` the zstd encoders took the web container past its 128 MB memory limit, while gzip peaked at 56 MiB, so a client asking for zstd could exhaust that limit with parallel large downloads.
 - Repeated large data requests, such as one year of all series hourly, are answered from an in-memory cache of at most 32 MiB until the next snapshot, so they no longer wait for one of the two slots for large requests. Under `make loadtest` the median of that request dropped from 3344 ms to 156 ms.
 - The pipeline and API image runs on Python 3.15 instead of 3.14. The backtest in this image reproduces `reports/backtest.json`, `reports/backtest.md` and the scored rows byte for byte. Local development still works with Python 3.14.

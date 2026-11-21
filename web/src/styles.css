@@ -934,3 +934,13 @@ tr.narrow-only {
 .notice-warn p + p {
   margin-top: 4px;
 }
+
+.day-single {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.day-single .muted {
+  margin-right: 6px;
+  font-weight: 400;
+}

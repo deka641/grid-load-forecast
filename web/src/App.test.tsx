@@ -143,12 +143,14 @@ describe('Dashboard with data', () => {
     expect(screen.getByRole('button', { name: 'Previous day' })).toBeDisabled()
   })
 
-  it('lists the shown day even if the day list does not contain it', async () => {
+  it('names the shown day even if the day list does not contain it', async () => {
     mockFetch(routes({ '/api/v1/forecasts/days': ok({ days: [], limit: 400 }) }))
     renderApp()
     await headline()
-    expect(screen.getByRole('option', { name: 'Sat 21 Nov 2026' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Previous day' })).toBeDisabled()
+    expect(screen.getByText('Delivery day').parentElement).toHaveTextContent(
+      'Delivery day Sat 21 Nov 2026',
+    )
+    expect(screen.queryByRole('button', { name: 'Previous day' })).toBeNull()
   })
 })
 

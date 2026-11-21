@@ -35,6 +35,14 @@ function DaySelector({
 }) {
   const { older, newer } = neighbours(days, current)
   const options = days.includes(current) ? days : [current, ...days]
+  // With a single day there is nothing to choose: plain text instead of dead controls.
+  if (options.length < 2) {
+    return (
+      <p className="day-single">
+        <span className="muted">Delivery day</span> {dayShort(current)}
+      </p>
+    )
+  }
   return (
     <div className="day-selector">
       <button
