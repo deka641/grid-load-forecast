@@ -368,29 +368,49 @@ export function stepEnds(values: readonly (number | null)[]): (number | null)[] 
   return values.map((value, i) => value ?? (i > 0 ? (values[i - 1] ?? null) : null))
 }
 
+/**
+ * The hours after the last published price that the shared time axis still shows, as
+ * first and last index, or null. The chart shades exactly this span, and the summary
+ * below the chart mentions the shading only when it exists. A missing last hour alone
+ * is not shaded, because the last price is drawn to the end of its hour.
+ */
+export function unpublishedSpan(
+  stamps: readonly string[],
+  values: readonly (number | null)[],
+): { first: number; last: number; lastPrice: number } | null {
+  const lastPrice = lastValueIndex(values)
+  return lastPrice >= 0 && lastPrice + 1 < stamps.length - 1
+    ? { first: lastPrice + 1, last: stamps.length - 1, lastPrice }
+    : null
+}
+
 export function priceOption(
   stamps: readonly string[],
   values: (number | null)[],
   palette: Palette,
 ) {
   const option = base(palette)
-  const last = lastValueIndex(values)
-  // Hours after the last published price that the shared time axis still shows.
+  const span = unpublishedSpan(stamps, values)
   const unpublished =
-    last >= 0 && last + 1 < stamps.length - 1
+    span !== null
       ? {
           markArea: {
             silent: true,
             itemStyle: { color: palette.rule, opacity: 0.5 },
+            // Anchored at the right edge of the plot and growing to the left, so the label
+            // stays inside the chart however narrow the shaded span is.
             label: {
               show: true,
-              position: 'insideTop',
+              position: 'insideTopRight',
+              distance: 4,
               color: palette.muted,
+              backgroundColor: palette.surface,
+              padding: [1, 3],
               fontFamily: palette.fontFamily,
               fontSize: 11,
               formatter: 'Not yet published',
             },
-            data: [[{ xAxis: String(last + 1) }, { xAxis: String(stamps.length - 1) }]],
+            data: [[{ xAxis: String(span.first) }, { xAxis: String(span.last) }]],
           },
         }
       : {}

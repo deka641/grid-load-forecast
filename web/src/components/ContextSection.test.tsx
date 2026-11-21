@@ -71,10 +71,14 @@ describe('Price summary', () => {
     expect(summary.textContent.match(/mean/g)).toHaveLength(2)
   })
 
-  it('says nothing about the end when prices reach the end of the axis', async () => {
-    serve([10, 20, 30, 40])
-    renderApp()
-    const summary = await screen.findByText(/^Hourly prices/)
-    expect(summary).not.toHaveTextContent('last published price')
-  })
+  it.each([[[10, 20, 30, 40]], [[10, 20, 30, null]]])(
+    'says nothing about the end when the chart shades nothing (%j)',
+    async (prices) => {
+      serve(prices)
+      renderApp()
+      const summary = await screen.findByText(/^Hourly prices/)
+      expect(summary).not.toHaveTextContent('last published price')
+      expect(summary).not.toHaveTextContent('shaded')
+    },
+  )
 })

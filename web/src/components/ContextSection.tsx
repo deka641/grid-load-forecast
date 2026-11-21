@@ -3,7 +3,7 @@ import { useCallback, useMemo } from 'react'
 import type { SeriesCatalog } from '../api/client'
 import { useActuals, useSeries } from '../api/queries'
 import { Chart } from '../charts/LazyChart'
-import { lastValueIndex, mixOption, priceOption } from '../charts/options'
+import { mixOption, priceOption, unpublishedSpan } from '../charts/options'
 import type { TimeSeries } from '../charts/options'
 import { GENERATION, generationColor } from '../charts/palette'
 import type { Palette } from '../charts/palette'
@@ -103,15 +103,15 @@ function PriceStats({
   if (s === null) {
     return <p className="chart-stats muted">No price data in this period.</p>
   }
-  const last = stamps[lastValueIndex(values)]
-  const ends = last !== undefined && last !== stamps.at(-1)
+  const span = unpublishedSpan(stamps, values)
+  const last = span === null ? undefined : stamps[span.lastPrice]
   return (
     <p className="chart-stats">
       Hourly prices (each the mean of four quarter hours) from {s.min.toFixed(2)} to{' '}
       {s.max.toFixed(2)} EUR/MWh, average {s.mean.toFixed(2)} EUR/MWh, negative in{' '}
       {String(s.negativeHours)} of {String(s.hours)} hours. A single negative quarter hour can be
       hidden in its hourly mean.
-      {ends
+      {last !== undefined
         ? ` The last published price is for ${dayShort(localDay(last), false)}, ${wallClock(last)} (${offsetLabel(last)}); the shaded part of the chart has no prices yet.`
         : ''}
     </p>

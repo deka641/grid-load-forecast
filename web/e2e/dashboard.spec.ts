@@ -373,7 +373,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await mockApi(page, { degradedChecks: ['cutoff_hour_missing', 'lag_1d', 'lag_2d', 'x_new'] })
     await open(page)
     const notice = page.locator('.forecast-body .notice-warn')
-    await expect(notice).toContainText('Computed with incomplete recent load data.')
+    await expect(notice).toContainText('Computed with incomplete load data.')
     await expect(notice.locator('li')).toHaveText([
       'the load of the last hour before the cutoff (09:00 to 10:00 on the day before)',
       'for some hours, the load of the same hour one and two days earlier',
@@ -417,11 +417,19 @@ for (const scheme of ['light', 'dark'] as const) {
   })
 }
 
-for (const scheme of ['light', 'dark'] as const) {
-  test(`marks unpublished prices and negative prices in ${scheme}`, async ({ browser }) => {
+for (const [scheme, width] of [
+  ['light', 1440],
+  ['dark', 1440],
+  ['light', 390],
+  ['dark', 390],
+] as const) {
+  test(`marks unpublished prices and negative prices in ${scheme} at ${String(width)} px`, async ({
+    browser,
+  }) => {
     const context = await browser.newContext({
       colorScheme: scheme,
-      viewport: { width: 1440, height: 900 },
+      viewport: { width, height: 900 },
+      deviceScaleFactor: width < 600 ? 2 : 1,
       timezoneId: 'Europe/Berlin',
     })
     const page = await context.newPage()
@@ -438,7 +446,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(page.locator('.chart-stats')).not.toContainText('negative in 0 of')
     const chart = page.locator('.chart-price')
     await chart.scrollIntoViewIfNeeded()
-    await chart.screenshot({ path: join(SHOTS, `price-end-${scheme}-1440.png`) })
+    await chart.screenshot({ path: join(SHOTS, `price-end-${scheme}-${String(width)}.png`) })
     await expectNoSeriousAxe(page)
     expect(await cspViolations(page)).toEqual([])
     expect(problems).toEqual([])

@@ -10,6 +10,7 @@ import {
   priceOption,
   stepEnds,
   tooltipHtml,
+  unpublishedSpan,
 } from './options'
 import type { Palette } from './palette'
 
@@ -186,6 +187,11 @@ describe('mixOption and priceOption', () => {
     // The last price is drawn over its whole hour; the tooltip keeps the gap.
     expect(early.series[0]?.data).toEqual([50, 60, 60, null, null])
     expect(early.tooltip.formatter([{ dataIndex: 2 }])).toContain('n/a')
+    expect(unpublishedSpan(hours, [50, 60, null, null, null])).toEqual({
+      first: 2,
+      last: 4,
+      lastPrice: 1,
+    })
     // Only the last hour missing, complete or empty: nothing to shade.
     for (const values of [
       [1, 2, 3, 4, null],
@@ -193,6 +199,7 @@ describe('mixOption and priceOption', () => {
       [null, null, null, null, null],
     ]) {
       expect(built(priceOption(hours, values, palette)).series[0]?.markArea).toBeUndefined()
+      expect(unpublishedSpan(hours, values)).toBeNull()
     }
   })
 
