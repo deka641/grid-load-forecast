@@ -16,7 +16,7 @@ x-hardening: &hardening
 x-python: &python
   <<: *hardening
   image: grid-load-forecast-python:local
-  environment:
+  environment: &python-env
     GRIDLOAD_INCLUDE_PRICES: ${GRIDLOAD_INCLUDE_PRICES:-true}
     # Fixed thread pools instead of one or more threads per host core.
     POLARS_MAX_THREADS: "2"
@@ -49,7 +49,17 @@ services:
   api:
     <<: *python
     pull_policy: never  # image is built by the pipeline service
-    command: ["uvicorn", "gridload.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header", "--limit-concurrency", "256"]
+    # The client address of a request is taken from X-Forwarded-For only when the
+    # connection comes from the web container (FORWARDED_ALLOW_IPS), so the per-client
+    # limit counts the address Caddy saw, and no other peer can choose its own.
+    command: ["uvicorn", "gridload.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header", "--limit-concurrency", "256", "--proxy-headers"]
+    environment:
+      <<: *python-env
+      FORWARDED_ALLOW_IPS: 10.46.60.2
+    # Only on the internal network: reachable from the web container, no egress.
+    networks:
+      backend:
+        ipv4_address: 10.46.60.3
     depends_on:
       pipeline:
         condition: service_started
@@ -74,6 +84,12 @@ services:
     user: "10002:10002"
     ports:
       - "127.0.0.1:8460:8080"
+    # default carries the published port; backend reaches the API at a fixed address,
+    # the only one the API trusts for X-Forwarded-For.
+    networks:
+      default: {}
+      backend:
+        ipv4_address: 10.46.60.2
     depends_on:
       api:
         condition: service_healthy
@@ -88,6 +104,17 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+networks:
+  # The pipeline and the web container use the default network, which has egress:
+  # the pipeline needs it for SMARD. The API shares only this internal network with
+  # the web container and has no route out. Both addresses are fixed, so the web
+  # address the API trusts cannot be taken by another container.
+  backend:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.46.60.0/29
 
 volumes:
   gridload-data:

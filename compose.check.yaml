@@ -13,6 +13,11 @@ services:
   api:
     image: grid-load-forecast-python:check
     restart: "no"
+    environment:
+      FORWARDED_ALLOW_IPS: 10.46.60.10
+    networks:
+      backend:
+        ipv4_address: 10.46.60.11
     healthcheck:
       interval: 5s
   web:
@@ -20,5 +25,15 @@ services:
     restart: "no"
     ports: !override
       - "127.0.0.1:8461:8080"
+    networks:
+      backend:
+        ipv4_address: 10.46.60.10
     healthcheck:
       interval: 5s
+
+# A subnet of its own, so the check stack can run next to the live stack.
+networks:
+  backend:
+    ipam: !override
+      config:
+        - subnet: 10.46.60.8/29
