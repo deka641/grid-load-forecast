@@ -84,6 +84,47 @@ for path in /api/v1/forecasts /api/v1/backtest/metrics /api/v1/series; do
 done
 [[ $(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/v1/actuals?series=load&start=2025-01-01&end=2026-01-02") == 422 ]] \
     || fail "range limit not enforced"
+
+# Abusive clients run in containers on the stack's default network, so that each one
+# has an address of its own, as different clients on the internet would.
+abuse() {
+    local name=$1; shift
+    docker run --rm --name "$PROJECT-abuse-$name" --network "${PROJECT}_default" --read-only --cap-drop ALL \
+        --ulimit nofile=65536:65536 -v "$(realpath scripts):/t:ro" --entrypoint python \
+        grid-load-forecast-python:check -I /t/loadtest_abuse.py "$@"
+}
+W=http://web:8080/api/v1
+
+# One address with 400 connections: another address must still get 200 from /health
+# and /status on every probe.
+abuse flood flood 12 400 "$W/forecasts/days" >/dev/null &
+flood_pid=$!
+sleep 1.5
+probe=$(abuse probe probe 9 250 "$W/health" "$W/status")
+wait "$flood_pid" || fail "flood client failed"
+python3 -c '
+import json, sys
+results = json.load(sys.stdin)["results"]
+for name in ("health", "status"):
+    codes, p95 = results[name]["codes"], results[name]["p95"]
+    assert set(codes) == {"200"}, (name, codes)
+    print(f"{name} under 400 connections from one address: {codes}, p95 {p95} ms")
+' <<<"$probe" || fail "health or status refused under 400 connections: $probe"
+
+# Half-open connections from one address: more than Caddy may open at once and more
+# than got a 128 MB web container killed. The container must survive and answer again.
+flood=$(abuse halfopen halfopen 9000 20)
+state=$(docker inspect -f '{{.State.Status}} {{.State.OOMKilled}}' "$PROJECT-web-1")
+[[ $state == "running false" ]] || fail "web container did not survive the connection flood: $state"
+code=000
+for _ in $(seq 1 20); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$BASE/api/v1/health") || true
+    [[ $code == 200 ]] && break
+    sleep 1
+done
+[[ $code == 200 ]] || fail "web does not answer after the connection flood"
+peak=$(docker exec "$PROJECT-web-1" cat /sys/fs/cgroup/memory.peak)
+echo "web survived the connection flood (memory peak $((peak / 1048576)) MiB): $flood"
 "${COMPOSE[@]}" ps --format '{{.Name}} {{.Status}}'
 echo "prod-check: server checks passed"
 

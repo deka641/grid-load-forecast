@@ -31,12 +31,18 @@ services:
     build:
       context: .
       dockerfile: docker/python.Dockerfile
-    # First run at start-up (a full backfill on an empty volume), then hourly.
-    command: ["sh", "-c", "gridload run; exec supercronic /app/crontab"]
+    # First run at start-up (a full backfill on an empty volume), then hourly. Every
+    # run is stopped after 3 hours (the first backfill took 75 minutes), so a source
+    # that answers too slowly cannot hold the pipeline: supercronic starts no run
+    # while the previous one is active. A stopped run keeps the chunks it loaded,
+    # and the next run marks it aborted and continues.
+    command: ["sh", "-c", "timeout -k 1m 3h gridload run; exec supercronic /app/crontab"]
     volumes:
       - gridload-data:/data
     mem_limit: 2g
     memswap_limit: 2g
+    # The 365-day backtest peaked at 3.1 cores.
+    cpus: 4
     healthcheck:
       # Healthy while a run reports progress, or if the last ok or partial run is under
       # 26 h old and the newest load value under 12 h old.
@@ -67,6 +73,8 @@ services:
       - gridload-data:/data:ro
     mem_limit: 512m
     memswap_limit: 512m
+    # make loadtest peaked at 2.4 cores.
+    cpus: 3
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
       interval: 30s
@@ -93,8 +101,18 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    mem_limit: 128m
-    memswap_limit: 128m
+    # Every open connection holds a file descriptor, so Caddy accepts at most
+    # about 4,000 at a time; further ones wait in the kernel's backlog. Each costs
+    # Caddy about 16 KB while open, and the memory limit leaves room for that next
+    # to the compression of large responses.
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 4096
+    mem_limit: 256m
+    memswap_limit: 256m
+    # make loadtest peaked at 1.7 cores.
+    cpus: 2
     tmpfs:
       - /tmp:size=16m,noexec,nosuid
       - /config:size=4m,uid=10002,gid=10002

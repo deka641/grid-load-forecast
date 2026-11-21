@@ -1,11 +1,23 @@
 {
 	admin off
 	auto_https off
+	servers {
+		# A connection that has not sent its request header within 10 s is
+		# closed, as is a keep-alive connection idle for 60 s. Half-open
+		# connections cost this container about 16 KB each, so they must not
+		# live long; the number open at once is bounded by the open file limit
+		# of the web service in compose.yaml.
+		timeouts {
+			read_header 10s
+			read_body 10s
+			idle 60s
+		}
+	}
 }
 
 :8080 {
 	# gzip only: under `make loadtest` the zstd encoders took this container past its
-	# 128 MB memory limit, while gzip peaked at 56 MiB. Offering zstd would let any
+	# memory limit of then 128 MB, while gzip peaked at 56 MiB. Offering zstd would let any
 	# client that asks for it exhaust the limit with parallel large downloads.
 	encode gzip
 
@@ -20,8 +32,32 @@
 		-Via
 	}
 
+	# At most 192 + 16 + 16 connections to the API, below uvicorn's
+	# --limit-concurrency of 256: further requests wait here instead of being
+	# refused by uvicorn. /health and /status have pools of their own, so a
+	# flood of data requests does not hold the connections they need.
+	handle /api/v1/health {
+		reverse_proxy api:8000 {
+			transport http {
+				max_conns_per_host 16
+			}
+		}
+	}
+
+	handle /api/v1/status {
+		reverse_proxy api:8000 {
+			transport http {
+				max_conns_per_host 16
+			}
+		}
+	}
+
 	handle /api/* {
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			transport http {
+				max_conns_per_host 192
+			}
+		}
 	}
 
 	handle /assets/* {

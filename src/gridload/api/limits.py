@@ -32,6 +32,14 @@ HEAVY_MAX_WAITING = 8
 # thread, so /health and /status, which run on the event loop, stay responsive.
 QUERY_CONCURRENCY = 8
 QUERY_WAIT_SECONDS = 10.0
+# One client address (see client_key) may hold at most PER_CLIENT_QUERIES of these
+# slots. A request takes one of its client's slots first, then a heavy slot if it
+# is heavy, then a query slot, so a client's further requests wait without holding
+# any shared slot or place in a shared queue: a client that keeps many requests in
+# flight cannot fill every slot in front of everyone else. All waits together take
+# at most QUERY_WAIT_SECONDS, the heavy wait at most HEAVY_WAIT_SECONDS of them;
+# then the request gets a JSON 503.
+PER_CLIENT_QUERIES = 2
 # Requests in flight, apart from /health and /status, counted until the last byte
 # of the response is handed to the server. This is the effective bound on queued
 # data requests: QUERY_MAX_WAITING plus QUERY_CONCURRENCY equals it.
@@ -117,6 +125,7 @@ class Limits:
     query_wait: float = QUERY_WAIT_SECONDS
     max_inflight: int = MAX_INFLIGHT
     per_client_inflight: int = PER_CLIENT_INFLIGHT
+    per_client_queries: int = PER_CLIENT_QUERIES
     byte_budget: int = BYTE_BUDGET
     send_timeout: float = SEND_TIMEOUT_SECONDS
     min_throughput: float = MIN_THROUGHPUT
@@ -220,8 +229,8 @@ class Gate:
             semaphore = self._semaphores[loop] = asyncio.BoundedSemaphore(self._slots)
         return semaphore
 
-    async def acquire(self) -> None:
-        """Take a slot, or raise ServerBusyError."""
+    async def acquire(self, wait: float | None = None) -> None:
+        """Take a slot within ``wait`` seconds (default: the gate's), or raise ServerBusyError."""
         semaphore = self._semaphore()
         if not semaphore.locked():
             await semaphore.acquire()
@@ -230,7 +239,7 @@ class Gate:
             raise ServerBusyError(BUSY)
         self.waiting += 1
         try:
-            async with asyncio.timeout(self._wait):
+            async with asyncio.timeout(self._wait if wait is None else max(wait, 0.0)):
                 await semaphore.acquire()
         except TimeoutError:
             raise ServerBusyError(BUSY) from None
@@ -241,12 +250,83 @@ class Gate:
         self._semaphore().release()
 
     @asynccontextmanager
-    async def __call__(self) -> AsyncIterator[None]:
-        await self.acquire()
+    async def __call__(self, wait: float | None = None) -> AsyncIterator[None]:
+        await self.acquire(wait)
         try:
             yield
         finally:
             self.release()
+
+
+@dataclass
+class _ClientSlots:
+    semaphore: asyncio.Semaphore
+    # Requests that hold or wait for one of the slots; the entry goes at zero.
+    users: int = 0
+
+
+class ClientGate:
+    """Bound the requests of one client key that hold or wait for slots of a shared gate.
+
+    A request takes one of its client's ``per_client`` slots first and only then
+    waits for the shared gate, so the shared queue holds at most ``per_client``
+    requests of any client. Only keys with requests present have an entry, so
+    many client addresses do not accumulate state. As with :class:`Gate`, the
+    slots are kept per event loop.
+    """
+
+    def __init__(self, per_client: int) -> None:
+        self._per_client = per_client
+        self._clients: WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, _ClientSlots]] = (
+            WeakKeyDictionary()
+        )
+
+    def _slots(self) -> dict[str, _ClientSlots]:
+        loop = asyncio.get_running_loop()
+        clients = self._clients.get(loop)
+        if clients is None:
+            clients = self._clients[loop] = {}
+        return clients
+
+    def users(self, key: str) -> int:
+        """Requests of ``key`` that hold or wait for a slot."""
+        entry = self._slots().get(key)
+        return 0 if entry is None else entry.users
+
+    async def acquire(self, key: str, wait: float) -> None:
+        """Take a slot of ``key`` within ``wait`` seconds, or raise ServerBusyError."""
+        clients = self._slots()
+        entry = clients.get(key)
+        if entry is None:
+            entry = clients[key] = _ClientSlots(asyncio.Semaphore(self._per_client))
+        entry.users += 1
+        try:
+            async with asyncio.timeout(max(wait, 0.0)):
+                await entry.semaphore.acquire()
+        except TimeoutError:
+            self._leave(key, entry)
+            raise ServerBusyError(BUSY) from None
+        except BaseException:
+            self._leave(key, entry)
+            raise
+
+    def release(self, key: str) -> None:
+        entry = self._slots()[key]
+        entry.semaphore.release()
+        self._leave(key, entry)
+
+    def _leave(self, key: str, entry: _ClientSlots) -> None:
+        entry.users -= 1
+        if not entry.users:
+            del self._slots()[key]
+
+    @asynccontextmanager
+    async def __call__(self, key: str, wait: float) -> AsyncIterator[None]:
+        await self.acquire(key, wait)
+        try:
+            yield
+        finally:
+            self.release(key)
 
 
 class InflightLimit:

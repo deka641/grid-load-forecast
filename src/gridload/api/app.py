@@ -158,6 +158,9 @@ def create_app(
         docs_url=None,
         redoc_url=None,
         openapi_url="/api/openapi.json",
+        # No redirect for a trailing slash: Starlette builds its Location from the
+        # Host header, which any client chooses, and always with http.
+        redirect_slashes=False,
     )
 
     _install_error_handlers(app)
@@ -170,6 +173,7 @@ def create_app(
     app.state.heavy_gate = data.heavy
     app.state.budget = data.budget
     app.state.query_gate = data.query
+    app.state.client_queries = data.client_queries
     app.state.cache = data.cache
 
     # The include order is the route order of the OpenAPI document.

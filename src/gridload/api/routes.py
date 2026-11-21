@@ -136,6 +136,13 @@ def data_router(data: DataService, served: Served, *, bytes_per_point: int) -> A
         return await serve(
             request,
             lambda cur: queries.actuals_json(cur, chosen, first, last, resolution),
+            # The body lists the series in the requested order, so the key keeps it.
+            params={
+                "series": ",".join(s.key for s in chosen),
+                "start": first.isoformat(),
+                "end": last.isoformat(),
+                "resolution": resolution.value,
+            },
             estimate=points * bytes_per_point,
             gated=points > HEAVY_POINTS,
         )
@@ -177,7 +184,8 @@ def forecasts_router(data: DataService) -> APIRouter:
                 raise HTTPException(404, f"no forecast exists for delivery day {day.isoformat()}")
             return result.model_dump_json().encode()
 
-        return await serve(request, build)
+        params = {} if requested is None else {"delivery_day": requested.isoformat()}
+        return await serve(request, build, params=params)
 
     @router.get(
         "/api/v1/forecasts/days",
@@ -199,6 +207,7 @@ def forecasts_router(data: DataService) -> APIRouter:
                 .model_dump_json()
                 .encode()
             ),
+            params={"limit": str(limit)},
         )
 
     @router.get(
@@ -216,7 +225,7 @@ def forecasts_router(data: DataService) -> APIRouter:
                 raise HTTPException(404, "no backtest run is available yet")
             return result.model_dump_json().encode()
 
-        return await serve(request, build)
+        return await serve(request, build, params={})
 
     return router
 
