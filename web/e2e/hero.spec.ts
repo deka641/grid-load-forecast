@@ -8,7 +8,7 @@ import type { FixtureOptions } from './mock.ts'
 import { serveDist } from './server.ts'
 
 /** Placement of the forecast peak and the backtest key figures, and what moves when. */
-const PORT = 8473
+const PORT = 8471
 const DIST = resolve(import.meta.dirname, '..', 'dist')
 
 let server: Server
@@ -99,11 +99,16 @@ for (const width of [1440, 1024, 900, 390]) {
     await expect(pending).toHaveAttribute('aria-hidden', 'true')
     await expect(pending).not.toBeVisible()
     const before = await box(page, '.chart-forecast .chart-canvas')
+    const held = await box(page, '.key-figures')
     release()
     await expect(page.locator('.key-figures dd').first()).toHaveText('2.4 %')
     await expect(page.locator('.key-figures')).toBeVisible()
     const after = await box(page, '.chart-forecast .chart-canvas')
     expect(after.y).toBe(before.y)
+    // About the same width too, so the values cannot push the band onto a new line.
+    const shown = await box(page, '.key-figures')
+    expect(Math.abs(shown.width - held.width)).toBeLessThanOrEqual(4)
+    expect(shown.height).toBe(held.height)
     await context.close()
   })
 }

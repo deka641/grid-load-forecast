@@ -895,8 +895,8 @@ tr.narrow-only {
   min-height: 890px;
 }
 
-/* The key figures wrap under the headline only where they do not fit beside it; for the
-   usual headline length that is below about 1000 px, where the floor grows with them. */
+/* The key figures wrap under the headline only where they do not fit beside it, below about
+   970 to 1010 px depending on the day name; the floor grows with them there. */
 @media (max-width: 1000px) {
   .loading-forecast {
     min-height: 740px;

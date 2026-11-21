@@ -10,7 +10,7 @@ import { serveDist } from './server.ts'
  * The draw-in of the forecast lines, in a real browser: the unit tests replace
  * ResizeObserver and the canvas, so they cannot see a redraw that cuts the animation short.
  */
-const PORT = 8472
+const PORT = 8471
 const DIST = resolve(import.meta.dirname, '..', 'dist')
 
 let server: Server
