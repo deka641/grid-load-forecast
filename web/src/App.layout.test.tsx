@@ -56,7 +56,9 @@ describe('Page layout', () => {
     const band = container.querySelector('.key-figures')
     expect(band).not.toBeNull()
     if (band instanceof HTMLElement) {
-      expect(band).toHaveTextContent('Backtest MAPE over 16,032 hours')
+      // No shared hour count: the SMARD forecast is scored on fewer hours than the others.
+      expect(band.querySelector('.key-figures-label')?.textContent).toBe('Backtest MAPE')
+      expect(band).not.toHaveTextContent(/hours/)
       const values = within(band)
         .getAllByRole('definition')
         .map((d) => d.textContent)

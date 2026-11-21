@@ -43,15 +43,14 @@ function Headline({ forecast }: { forecast: ForecastDay }) {
 
 /**
  * The overall backtest MAPE of each forecast, from the backtest the page loads anyway, so
- * the peak can be read against how accurate the model has been.
+ * the peak can be read against how accurate the model has been. No hour count: the SMARD
+ * forecast is scored only on the hours SMARD published, so the values have different bases;
+ * the backtest section below names them.
  */
 function KeyFigures({ backtest }: { backtest: BacktestMetrics }) {
-  const hours = findMetric(backtest, 'lightgbm', 'overall', 'all')?.n
   return (
     <div className="key-figures">
-      <p className="key-figures-label">
-        Backtest MAPE{hours === undefined ? '' : ` over ${hours.toLocaleString('en-GB')} hours`}
-      </p>
+      <p className="key-figures-label">Backtest MAPE</p>
       <dl>
         {MODELS.map((m) => {
           const metric = findMetric(backtest, m.key, 'overall', 'all')
