@@ -46,6 +46,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ### Security
 
+- Responses that the web server answers itself, such as a missing asset, a refused method or a 502 while the API is down, carry the same security headers as all other responses and no longer name the server.
 - One client can no longer crowd out others: the API allows each client address at most 16 data requests in progress, out of 64 in total, and answers further ones with the usual JSON 503. With `scripts/loadtest_abuse.py` on the `make prod-check` stack (21 November 2026), while one container held 100 parallel connections to `/forecasts/days` for 10 seconds, a second container received 200 for all 212 of its requests in two runs (see SECURITY.md). Locally all browsers on the host count as one client; behind another proxy all clients share one limit unless that proxy is trusted (see SECURITY.md).
 - The API takes the client address from `X-Forwarded-For` only on connections from the web container, at a fixed address on an internal network. A client cannot choose the address it is counted under by sending that header, and the API logs show the client address instead of Caddy's.
 - The API container has no network access beyond the web container: it no longer reaches the internet, and the pipeline and other containers no longer reach it.

@@ -68,8 +68,12 @@ asset=$(curl -sf "$BASE/" | grep -o '/assets/[^"]*\.js' | head -1) || true
 [[ -n "$asset" ]] || fail "no hashed script in index.html"
 curl -sfI "$BASE$asset" | grep -qi 'cache-control: public, max-age=31536000, immutable' \
     || fail "hashed asset not cacheable"
-[[ $(curl -s -o /dev/null -w '%{http_code}' "$BASE/assets/missing.js") == 404 ]] \
-    || fail "missing asset does not return 404"
+missing=$(curl -s -D - -o /dev/null "$BASE/assets/missing.js")
+grep -q '^HTTP/[0-9.]* 404' <<<"$missing" || fail "missing asset does not return 404"
+for response in "$missing" "$(curl -s -D - -o /dev/null -X TRACE "$BASE/")"; do
+    grep -qi '^content-security-policy:' <<<"$response" || fail "CSP missing on an error response"
+    grep -qi '^server:' <<<"$response" && fail "Server header is exposed on an error response"
+done
 encoding=$(curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip' "$BASE$asset")
 grep -qi '^content-encoding: gzip' <<<"$encoding" || fail "static assets are not compressed"
 gzip_size=$(curl -s -H 'Accept-Encoding: gzip' "$BASE$asset" | wc -c)
