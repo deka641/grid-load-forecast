@@ -1,6 +1,7 @@
 """Load limits of the API: concurrency gates, the in-flight limit and the byte budget."""
 
 import asyncio
+import ipaddress
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -36,6 +37,16 @@ QUERY_WAIT_SECONDS = 10.0
 # data requests: QUERY_MAX_WAITING plus QUERY_CONCURRENCY equals it.
 MAX_INFLIGHT = 64
 QUERY_MAX_WAITING = MAX_INFLIGHT - QUERY_CONCURRENCY
+# Of these, one client address may have at most PER_CLIENT_INFLIGHT in flight, so
+# a single client fills at most a quarter of MAX_INFLIGHT. Loading the dashboard
+# sends five data requests, and scripts/loadtest.py runs ten clients from one
+# address; both stay below the limit. IPv6 clients count per /64 network, since a
+# single host can pick any address in its /64. The client address is the one
+# uvicorn reports, from X-Forwarded-For only when the peer is a trusted proxy.
+PER_CLIENT_INFLIGHT = 16
+IPV6_CLIENT_PREFIX = 64
+# Busy responses ask the client to wait this many seconds before retrying.
+RETRY_AFTER_SECONDS = 1
 # Response bodies are sent in chunks, and each chunk waits until the client has
 # read enough of the previous ones (uvicorn's write flow control). A client that
 # reads nothing for SEND_TIMEOUT_SECONDS is dropped, and so is one that has not
@@ -69,6 +80,35 @@ def error_response(detail: str) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": detail})
 
 
+def busy_response() -> JSONResponse:
+    """The JSON 503 of a request refused for load, with Retry-After."""
+    response = error_response(BUSY)
+    response.headers["Retry-After"] = str(RETRY_AFTER_SECONDS)
+    return response
+
+
+def client_key(scope: Scope) -> str:
+    """The address a request is counted under for the per-client limit.
+
+    IPv4 addresses count as they are, IPv4-mapped IPv6 addresses as their IPv4
+    address, other IPv6 addresses by their /64 network. A client value that is
+    no IP address counts as it is; requests without a client share one key.
+    """
+    client = scope.get("client")
+    if not client:
+        return ""
+    host = str(client[0])
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return host
+    if isinstance(address, ipaddress.IPv6Address):
+        if address.ipv4_mapped is not None:
+            return str(address.ipv4_mapped)
+        return str(ipaddress.IPv6Network((address, IPV6_CLIENT_PREFIX), strict=False))
+    return str(address)
+
+
 @dataclass(frozen=True)
 class Limits:
     """Load limits of one API process; tests pass smaller values."""
@@ -76,6 +116,7 @@ class Limits:
     heavy_wait: float = HEAVY_WAIT_SECONDS
     query_wait: float = QUERY_WAIT_SECONDS
     max_inflight: int = MAX_INFLIGHT
+    per_client_inflight: int = PER_CLIENT_INFLIGHT
     byte_budget: int = BYTE_BUDGET
     send_timeout: float = SEND_TIMEOUT_SECONDS
     min_throughput: float = MIN_THROUGHPUT
@@ -209,27 +250,40 @@ class Gate:
 
 
 class InflightLimit:
-    """Answer requests beyond ``limit`` in flight with a JSON 503.
+    """Answer requests beyond ``limit`` in flight, or beyond ``per_client`` in
+    flight from one client address (see ``client_key``), with a JSON 503.
 
     /health and /status are neither counted nor limited, so they stay
-    reachable under any number of connections.
+    reachable under any number of connections. A request counts until the app
+    returns, whether it completed, failed or the client went away.
     """
 
-    def __init__(self, app: ASGIApp, limit: int, exempt: frozenset[str]) -> None:
+    def __init__(self, app: ASGIApp, limit: int, per_client: int, exempt: frozenset[str]) -> None:
         self.app = app
         self.limit = limit
+        self.per_client = per_client
         self.exempt = exempt
         self.inflight = 0
+        # Only clients with requests in flight have an entry.
+        self.by_client: dict[str, int] = {}
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or scope["path"] in self.exempt:
             await self.app(scope, receive, send)
             return
-        if self.inflight >= self.limit:
-            await error_response(BUSY)(scope, receive, send)
+        key = client_key(scope)
+        count = self.by_client.get(key, 0)
+        if self.inflight >= self.limit or count >= self.per_client:
+            await busy_response()(scope, receive, send)
             return
         self.inflight += 1
+        self.by_client[key] = count + 1
         try:
             await self.app(scope, receive, send)
         finally:
             self.inflight -= 1
+            remaining = self.by_client[key] - 1
+            if remaining:
+                self.by_client[key] = remaining
+            else:
+                del self.by_client[key]

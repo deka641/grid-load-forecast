@@ -31,6 +31,7 @@ from gridload.api.limits import (
     InflightLimit,
     Limits,
     ServerBusyError,
+    busy_response,
     error_response,
 )
 from gridload.api.models import Health
@@ -110,8 +111,8 @@ def _install_error_handlers(app: FastAPI) -> None:
         return error_response(str(exc))
 
     @app.exception_handler(ServerBusyError)
-    def server_busy(_request: Request, exc: ServerBusyError) -> JSONResponse:
-        return error_response(str(exc))
+    def server_busy(_request: Request, _exc: ServerBusyError) -> JSONResponse:
+        return busy_response()
 
     @app.exception_handler(duckdb.Error)
     def snapshot_unreadable(request: Request, exc: duckdb.Error) -> JSONResponse:
@@ -161,7 +162,10 @@ def create_app(
 
     _install_error_handlers(app)
     app.add_middleware(
-        InflightLimit, limit=limits.max_inflight, exempt=frozenset({HEALTH_PATH, STATUS_PATH})
+        InflightLimit,
+        limit=limits.max_inflight,
+        per_client=limits.per_client_inflight,
+        exempt=frozenset({HEALTH_PATH, STATUS_PATH}),
     )
     app.state.heavy_gate = data.heavy
     app.state.budget = data.budget
