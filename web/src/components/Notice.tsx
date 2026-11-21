@@ -1,12 +1,23 @@
 import { isApiError, isNoData } from '../api/client'
 import { NO_DATA, describeError } from './messages'
 
-export function Loading({ what }: { what: string }) {
-  return (
+/**
+ * `reserve` keeps about the final height of a section's content free while it loads,
+ * so the page does not jump when the charts arrive.
+ */
+export function Loading({
+  what,
+  reserve,
+}: {
+  what: string
+  reserve?: 'forecast' | 'backtest' | 'context'
+}) {
+  const notice = (
     <p className="notice notice-loading" role="status">
       Loading {what}
     </p>
   )
+  return reserve === undefined ? notice : <div className={`loading-${reserve}`}>{notice}</div>
 }
 
 export function Info({ children }: { children: string }) {

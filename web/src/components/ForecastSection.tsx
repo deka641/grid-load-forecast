@@ -8,6 +8,7 @@ import type { Palette } from '../charts/palette'
 import { NOT_AVAILABLE, formatGW, formatPercent } from '../lib/format'
 import { MODELS, dayErrors, hasActuals, headline } from '../lib/metrics'
 import { neighbours } from '../lib/days'
+import { missingInputs } from '../lib/degraded'
 import { dayShort, offsetLabel, wallClock } from '../lib/time'
 import { Legend } from './Legend'
 import { Loading, QueryProblem } from './Notice'
@@ -34,6 +35,14 @@ function DaySelector({
 }) {
   const { older, newer } = neighbours(days, current)
   const options = days.includes(current) ? days : [current, ...days]
+  // With a single day there is nothing to choose: plain text instead of dead controls.
+  if (options.length < 2) {
+    return (
+      <p className="day-single">
+        <span className="muted">Delivery day</span> {dayShort(current)}
+      </p>
+    )
+  }
   return (
     <div className="day-selector">
       <button
@@ -148,16 +157,49 @@ function ForecastTable({ forecast }: { forecast: ForecastDay }) {
   )
 }
 
+/** Shown only when the model run says so; null (not assessed) and false show nothing. */
+function DegradedNotice({ forecast }: { forecast: ForecastDay }) {
+  const run = forecast.runs.lightgbm
+  if (run?.degraded !== true) {
+    return null
+  }
+  const missing = missingInputs(run.degraded_checks)
+  return (
+    <div className="notice notice-warn degraded">
+      <p>
+        <strong>Computed with incomplete load data.</strong>{' '}
+        {missing.length === 0
+          ? 'Some of its inputs were missing when this forecast was issued.'
+          : 'When this forecast was issued, these inputs were missing:'}
+      </p>
+      {missing.length === 0 ? null : (
+        <ul>
+          {missing.map((phrase) => (
+            <li key={phrase}>{phrase}</li>
+          ))}
+        </ul>
+      )}
+      <p>
+        The forecast is shown as computed, but it may be less accurate than the backtest suggests.
+      </p>
+    </div>
+  )
+}
+
 function ForecastView({ forecast }: { forecast: ForecastDay }) {
   const { points } = forecast
   const build = useCallback((palette: Palette) => forecastOption(points, palette), [points])
   const hours = points.length
   return (
     <>
+      <DegradedNotice forecast={forecast} />
       {hours === 24 ? null : (
         <p className="clock-change">
           Clock change: this day has {String(hours)} hours
-          {hours === 25 ? ', so 02:00 appears twice' : ', 02:00 does not exist'}.
+          {hours === 25
+            ? ', so 02:00 appears twice, first in summer time (UTC+2), then in winter time (UTC+1)'
+            : ', 02:00 does not exist'}
+          .
         </p>
       )}
       <Legend items={legendItems(hasActuals(points))} label="Lines in the forecast chart" />
@@ -185,7 +227,7 @@ export function ForecastSection() {
 
   let body
   if (forecast.isPending) {
-    body = <Loading what="forecast" />
+    body = <Loading what="forecast" reserve="forecast" />
   } else if (forecast.isError) {
     body = (
       <QueryProblem

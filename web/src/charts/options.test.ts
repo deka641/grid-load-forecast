@@ -4,10 +4,13 @@ import {
   firstIndex,
   forecastOption,
   hourLabel,
+  lastValueIndex,
   mapeByHourOption,
   mixOption,
   priceOption,
+  stepEnds,
   tooltipHtml,
+  unpublishedSpan,
 } from './options'
 import type { Palette } from './palette'
 
@@ -35,6 +38,8 @@ interface Series {
   lineStyle: { color?: string; type?: unknown; width: number }
   areaStyle?: { color: string }
   z?: number
+  markLine?: { data: unknown[]; label: { formatter: string }; lineStyle: { color: string } }
+  markArea?: { data: unknown[][]; label: { formatter: string } }
 }
 interface Built {
   animation: boolean
@@ -47,22 +52,33 @@ interface Built {
 const built = (option: unknown) => option as Built
 
 describe('forecastOption', () => {
-  it('labels the repeated 02:00 hour twice and shows the offset in the tooltip', () => {
+  it('names the repeated 02:00 hour with its offset and marks the clock change', () => {
     const day = forecast('2026-10-25')
     const option = built(forecastOption(day.points, palette))
     expect(option.animation).toBe(false)
     expect(option.xAxis.data).toHaveLength(25)
     const labels = option.xAxis.data.map((v) => option.xAxis.axisLabel.formatter(v))
-    expect(labels.filter((l) => l === '02:00')).toHaveLength(2)
-    // Both 02:00 hours carry a label; 03:00 gives way to them.
-    expect(option.xAxis.axisLabel.interval(2)).toBe(true)
-    expect(option.xAxis.axisLabel.interval(3)).toBe(true)
-    expect(option.xAxis.axisLabel.interval(4)).toBe(false)
+    expect(labels.slice(1, 5)).toEqual(['01:00', '02:00 (UTC+2)', '02:00 (UTC+1)', '03:00'])
+    // Ticks keep the three-hour rhythm of the wall clock; neither 02:00 is one.
+    expect(option.xAxis.axisLabel.interval(0)).toBe(true)
+    expect(option.xAxis.axisLabel.interval(2)).toBe(false)
+    expect(option.xAxis.axisLabel.interval(3)).toBe(false)
+    expect(option.xAxis.axisLabel.interval(4)).toBe(true)
     expect(option.xAxis.axisLabel.interval(7)).toBe(true)
     expect(option.tooltip.formatter([{ dataIndex: 2 }])).toContain('02:00 (UTC+2)')
     expect(option.tooltip.formatter({ dataIndex: 3 })).toContain('02:00 (UTC+1)')
     expect(option.tooltip.formatter([{ dataIndex: 99 }])).toBe('')
     expect(option.yAxis.name).toBe('GW')
+    const mark = option.series[0]?.markLine
+    expect(mark?.data).toEqual([{ xAxis: '3' }])
+    expect(mark?.label.formatter).toBe('UTC+2 | UTC+1')
+    expect(option.series.slice(1).every((s) => s.markLine === undefined)).toBe(true)
+  })
+
+  it('marks no clock change on a normal day', () => {
+    const option = built(forecastOption(forecast('2026-11-20').points, palette))
+    expect(option.series.every((s) => s.markLine === undefined)).toBe(true)
+    expect(option.xAxis.axisLabel.formatter('2')).toBe('02:00')
   })
 
   it('converts to GW and styles each line', () => {
@@ -147,6 +163,51 @@ describe('mixOption and priceOption', () => {
     expect(option.tooltip.formatter([{ dataIndex: 0 }])).toContain('-5.50 EUR/MWh')
     expect(option.tooltip.formatter([{ dataIndex: 1 }])).toContain('n/a')
     expect(option.tooltip.formatter([{ dataIndex: 2 }])).toBe('')
+  })
+
+  it('draws the zero line strongly only when a price is negative', () => {
+    const negative = built(priceOption(stamps, [-5.5, 10], palette))
+    expect(negative.series[0]?.markLine?.data).toEqual([{ yAxis: 0 }])
+    expect(negative.series[0]?.markLine?.lineStyle.color).toBe(palette.muted)
+    const positive = built(priceOption(stamps, [0, 10], palette))
+    expect(positive.series[0]?.markLine).toBeUndefined()
+  })
+
+  it('shades the hours after the last published price', () => {
+    const hours = [
+      '2026-11-20T21:00:00+01:00',
+      '2026-11-20T22:00:00+01:00',
+      '2026-11-20T23:00:00+01:00',
+      '2026-11-21T00:00:00+01:00',
+      '2026-11-21T01:00:00+01:00',
+    ]
+    const early = built(priceOption(hours, [50, 60, null, null, null], palette))
+    expect(early.series[0]?.markArea?.data).toEqual([[{ xAxis: '2' }, { xAxis: '4' }]])
+    expect(early.series[0]?.markArea?.label.formatter).toBe('Not yet published')
+    // The last price is drawn over its whole hour; the tooltip keeps the gap.
+    expect(early.series[0]?.data).toEqual([50, 60, 60, null, null])
+    expect(early.tooltip.formatter([{ dataIndex: 2 }])).toContain('n/a')
+    expect(unpublishedSpan(hours, [50, 60, null, null, null])).toEqual({
+      first: 2,
+      last: 4,
+      lastPrice: 1,
+    })
+    // Only the last hour missing, complete or empty: nothing to shade.
+    for (const values of [
+      [1, 2, 3, 4, null],
+      [1, 2, 3, 4, 5],
+      [null, null, null, null, null],
+    ]) {
+      expect(built(priceOption(hours, values, palette)).series[0]?.markArea).toBeUndefined()
+      expect(unpublishedSpan(hours, values)).toBeNull()
+    }
+  })
+
+  it('extends each price to the end of its hour', () => {
+    expect(stepEnds([1, null, null, 2, null])).toEqual([1, 1, null, 2, 2])
+    expect(stepEnds([null, 3])).toEqual([null, 3])
+    expect(lastValueIndex([1, null, 2, null])).toBe(2)
+    expect(lastValueIndex([null])).toBe(-1)
   })
 })
 

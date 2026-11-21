@@ -29,6 +29,13 @@ interface MockOptions {
   withPrice?: boolean
   forecastError?: { error: number; detail: string }
   onForecast?: () => void
+  degradedChecks?: string[]
+  days?: string[]
+  priceEnd?: number
+  /** Paths that answer 500. */
+  failing?: string[]
+  /** Data requests (all but status and series) wait for this. */
+  hold?: Promise<unknown>
 }
 
 async function expectNoSeriousAxe(page: Page) {
@@ -44,20 +51,29 @@ async function mockApi(page: Page, options: MockOptions = {}) {
     const url = new URL(route.request().url())
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+    if (options.failing?.includes(url.pathname)) {
+      return json({ detail: 'the snapshot could not be read' }, 500)
+    }
+    if (options.hold && !['/api/v1/status', '/api/v1/series'].includes(url.pathname)) {
+      await options.hold
+    }
     switch (url.pathname) {
       case '/api/v1/status':
         return json(options.status ?? fixtures.status())
       case '/api/v1/series':
         return json(fixtures.seriesCatalog(options.withPrice ?? true))
       case '/api/v1/forecasts/days':
-        return json({ days: fixtures.forecastDays(), limit: 400 })
+        return json({ days: options.days ?? fixtures.forecastDays(), limit: 400 })
       case '/api/v1/forecasts':
         options.onForecast?.()
         if (options.forecastError) {
           return json({ detail: options.forecastError.detail }, options.forecastError.error)
         }
         return json(
-          fixtures.forecastDay(url.searchParams.get('delivery_day') ?? fixtures.LATEST_DAY),
+          fixtures.forecastDay(
+            url.searchParams.get('delivery_day') ?? fixtures.LATEST_DAY,
+            options.degradedChecks,
+          ),
         )
       case '/api/v1/backtest/metrics':
         return json(fixtures.backtest())
@@ -67,6 +83,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
             (url.searchParams.get('series') ?? '').split(','),
             url.searchParams.get('start') ?? fixtures.TODAY,
             url.searchParams.get('end') ?? fixtures.TODAY,
+            options.priceEnd,
           ),
         )
       default:
@@ -119,7 +136,7 @@ async function hoverCharts(page: Page) {
 }
 
 for (const scheme of ['light', 'dark'] as const) {
-  for (const width of [1440, 1024, 768, 390]) {
+  for (const width of [1440, 1024, 768, 750, 700, 641, 390]) {
     test(`renders cleanly in ${scheme} at ${String(width)} px`, async ({ browser }) => {
       const context = await browser.newContext({
         colorScheme: scheme,
@@ -343,3 +360,158 @@ test('offers a retry when the server is busy', async ({ browser }) => {
   await expect.poll(() => attempts, { timeout: 15_000 }).toBeGreaterThan(3)
   await context.close()
 })
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`explains a degraded forecast in ${scheme}`, async ({ browser }) => {
+    const context = await browser.newContext({
+      colorScheme: scheme,
+      viewport: { width: 1024, height: 900 },
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    const problems = watchProblems(page)
+    await mockApi(page, { degradedChecks: ['cutoff_hour_missing', 'lag_1d', 'lag_2d', 'x_new'] })
+    await open(page)
+    const notice = page.locator('.forecast-body .notice-warn')
+    await expect(notice).toContainText('Computed with incomplete load data.')
+    await expect(notice.locator('li')).toHaveText([
+      'the load of the last hour before the cutoff (09:00 to 10:00 on the day before)',
+      'for some hours, the load of the same hour one and two days earlier',
+      'other input data',
+    ])
+    await notice.screenshot({ path: join(SHOTS, `degraded-${scheme}-1024.png`) })
+    await expectNoSeriousAxe(page)
+    expect(await cspViolations(page)).toEqual([])
+    expect(problems).toEqual([])
+    await context.close()
+  })
+}
+
+test('shows no degraded notice for a complete forecast', async ({ browser }) => {
+  const page = await browser.newPage()
+  await mockApi(page)
+  await open(page)
+  await expect(page.locator('.notice-warn')).toHaveCount(0)
+  await page.close()
+})
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`shows a single forecast day without dead controls in ${scheme}`, async ({ browser }) => {
+    const context = await browser.newContext({
+      colorScheme: scheme,
+      viewport: { width: 390, height: 900 },
+      deviceScaleFactor: 2,
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    const problems = watchProblems(page)
+    await mockApi(page, { days: [fixtures.LATEST_DAY] })
+    await open(page)
+    await expect(page.locator('.day-single')).toHaveText('Delivery day Sat 21 Nov 2026')
+    await expect(page.getByRole('button', { name: /day$/ })).toHaveCount(0)
+    await page.screenshot({ path: join(SHOTS, `single-day-${scheme}-390.png`) })
+    await expectNoSeriousAxe(page)
+    expect(await cspViolations(page)).toEqual([])
+    expect(problems).toEqual([])
+    await context.close()
+  })
+}
+
+for (const [scheme, width] of [
+  ['light', 1440],
+  ['dark', 1440],
+  ['light', 390],
+  ['dark', 390],
+] as const) {
+  test(`marks unpublished prices and negative prices in ${scheme} at ${String(width)} px`, async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      colorScheme: scheme,
+      viewport: { width, height: 900 },
+      deviceScaleFactor: width < 600 ? 2 : 1,
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    const problems = watchProblems(page)
+    // Prices end with 19 November, while generation runs into 20 November.
+    await mockApi(page, { priceEnd: Date.parse('2026-11-19T22:00:00Z') })
+    await open(page)
+    await expect(page.locator('.chart-stats')).toContainText(
+      'The last published price is for Thu 19 Nov, 23:00 (UTC+1)',
+    )
+    await expect(page.locator('.chart-stats')).toContainText(
+      'Hourly prices (each the mean of four quarter hours) from',
+    )
+    await expect(page.locator('.chart-stats')).not.toContainText('negative in 0 of')
+    const chart = page.locator('.chart-price')
+    await chart.scrollIntoViewIfNeeded()
+    await chart.screenshot({ path: join(SHOTS, `price-end-${scheme}-${String(width)}.png`) })
+    await expectNoSeriousAxe(page)
+    expect(await cspViolations(page)).toEqual([])
+    expect(problems).toEqual([])
+    await context.close()
+  })
+}
+
+for (const width of [1440, 390]) {
+  test(`places Retry below the message in every notice at ${String(width)} px`, async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({ viewport: { width, height: 900 } })
+    const page = await context.newPage()
+    await mockApi(page, {
+      failing: ['/api/v1/forecasts', '/api/v1/backtest/metrics', '/api/v1/actuals'],
+    })
+    await page.goto('/')
+    const alerts = page.getByRole('alert')
+    // The client retries a 500 twice before it shows the error.
+    await expect(alerts).toHaveCount(3, { timeout: 20_000 })
+    for (const alert of await alerts.all()) {
+      const text = await alert.locator('p').boundingBox()
+      const button = await alert.getByRole('button', { name: 'Retry' }).boundingBox()
+      const box = await alert.boundingBox()
+      expect(text && button && box).toBeTruthy()
+      if (text && button && box) {
+        expect(button.y).toBeGreaterThanOrEqual(text.y + text.height)
+        // Left aligned with the message in every notice.
+        expect(Math.abs(button.x - text.x)).toBeLessThan(1)
+      }
+    }
+    await page.screenshot({ path: join(SHOTS, `errors-${String(width)}.png`), fullPage: true })
+    await expectNoSeriousAxe(page)
+    await context.close()
+  })
+}
+
+for (const width of [1440, 1024, 641, 390]) {
+  test(`reserves the section heights while loading at ${String(width)} px`, async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    let release: (value: undefined) => void = () => undefined
+    const hold = new Promise<undefined>((done) => {
+      release = done
+    })
+    await mockApi(page, { hold })
+    await page.goto('/')
+    await expect(page.getByText('Loading generation data')).toBeVisible()
+    const heights = () =>
+      page
+        .locator('main > .section')
+        .evaluateAll((list) => list.map((el) => Math.round(el.getBoundingClientRect().height)))
+    const loading = await heights()
+    await page.screenshot({ path: join(SHOTS, `loading-${String(width)}.png`), fullPage: true })
+    release(undefined)
+    await expect(page.locator('.chart-canvas canvas')).toHaveCount(4)
+    const loaded = await heights()
+    // Each section grows by less than a tenth of its final height once its data arrives.
+    loaded.forEach((height, i) => {
+      expect(height - (loading[i] ?? 0)).toBeLessThan(height * 0.1)
+      expect(loading[i] ?? 0).toBeLessThanOrEqual(height)
+    })
+    await context.close()
+  })
+}

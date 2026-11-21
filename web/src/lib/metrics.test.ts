@@ -57,14 +57,22 @@ describe('headline', () => {
     )
   })
 
-  it('keeps the first of equal peaks and handles the repeated 02:00', () => {
+  it('keeps the first of equal peaks and names the repeated 02:00 with its offset', () => {
     const points = forecast('2026-10-25').points.map((p, i) => ({
       ...p,
       lightgbm: i === 2 || i === 3 ? 70_000 : 40_000,
     }))
     expect(forecastPeak(points)?.ts).toBe('2026-10-25T02:00:00+02:00')
     expect(headline('2026-10-25', points)).toBe(
-      'Forecast peak for Sunday 25 October: 70.0 GW at 02:00',
+      'Forecast peak for Sunday 25 October: 70.0 GW at 02:00 (UTC+2)',
+    )
+    const later = points.map((p, i) => ({ ...p, lightgbm: i === 3 ? 71_000 : p.lightgbm }))
+    expect(headline('2026-10-25', later)).toBe(
+      'Forecast peak for Sunday 25 October: 71.0 GW at 02:00 (UTC+1)',
+    )
+    const evening = points.map((p, i) => ({ ...p, lightgbm: i === 20 ? 80_000 : p.lightgbm }))
+    expect(headline('2026-10-25', evening)).toBe(
+      'Forecast peak for Sunday 25 October: 80.0 GW at 19:00',
     )
   })
 

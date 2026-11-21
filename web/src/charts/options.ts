@@ -2,7 +2,7 @@ import type { BacktestMetrics, ForecastPoint } from '../api/client'
 import { MODELS, mapeByHour } from '../lib/metrics'
 import type { ForecastKey } from '../lib/metrics'
 import { NOT_AVAILABLE } from '../lib/format'
-import { dayShort, localDay, offsetLabel, wallClock } from '../lib/time'
+import { dayShort, hourLabels, localDay, offsetChange, offsetLabel, wallClock } from '../lib/time'
 import type { EChartsCoreOption } from './echarts'
 import type { Palette } from './palette'
 
@@ -155,14 +155,37 @@ export const FORECAST_SERIES: readonly { key: ForecastKey | 'actual'; label: str
   ...MODELS.map((m) => ({ key: m.key, label: m.label })),
 ]
 
-const TICKS_25H = new Set(['00:00', '02:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00'])
+/** Every third wall-clock hour. The repeated 02:00 of a 25-hour day is never a tick. */
+export function forecastTick(ts: string): boolean {
+  return Number(wallClock(ts).slice(0, 2)) % 3 === 0
+}
 
-/** Every third hour; on 25-hour days both 02:00 hours instead of 03:00. */
-export function forecastTick(label: string, hours: number): boolean {
-  if (hours === 25) {
-    return TICKS_25H.has(label)
+/** A dashed vertical line where the clock changes, labelled with the offsets on both sides. */
+function clockChangeMark(stamps: readonly string[], palette: Palette) {
+  const index = offsetChange(stamps)
+  const before = stamps[index - 1]
+  const after = stamps[index]
+  if (before === undefined || after === undefined) {
+    return {}
   }
-  return Number(label.slice(0, 2)) % 3 === 0
+  return {
+    markLine: {
+      silent: true,
+      symbol: 'none',
+      animation: false,
+      lineStyle: { color: palette.muted, width: 1, type: [4, 3] },
+      label: {
+        show: true,
+        position: 'end',
+        distance: 3,
+        color: palette.muted,
+        fontFamily: palette.fontFamily,
+        fontSize: 11,
+        formatter: `${offsetLabel(before)} | ${offsetLabel(after)}`,
+      },
+      data: [{ xAxis: String(index) }],
+    },
+  }
 }
 
 /** Hours of a delivery day are labelled by local wall clock; 02:00 repeats on 25-hour days. */
@@ -197,19 +220,25 @@ export function forecastOption(points: readonly ForecastPoint[], palette: Palett
     },
     xAxis: categoryAxis(
       palette,
-      points.map((p) => wallClock(p.ts)),
-      points.map((p) => forecastTick(wallClock(p.ts), points.length)),
+      hourLabels(points.map((p) => p.ts)),
+      points.map((p) => forecastTick(p.ts)),
     ),
     yAxis: valueAxis(palette, 'GW'),
-    series: FORECAST_SERIES.map((s) =>
-      lineSeries(
+    series: FORECAST_SERIES.map((s, i) => ({
+      ...lineSeries(
         s.label,
         points.map((p) => gw(p[s.key])),
         LINE_STYLES[s.key],
         palette,
         z[s.key],
       ),
-    ),
+      ...(i === 0
+        ? clockChangeMark(
+            points.map((p) => p.ts),
+            palette,
+          )
+        : {}),
+    })),
   }
 }
 
@@ -325,12 +354,79 @@ export function mixOption(
   }
 }
 
+/** Index of the last value that is not null, or -1. */
+export function lastValueIndex(values: readonly (number | null)[]): number {
+  return values.findLastIndex((v) => v !== null)
+}
+
+/**
+ * A price holds for the hour that starts at its timestamp, so a step line needs the
+ * point where that hour ends. Where the next price is missing, the value is repeated
+ * there for drawing only; the tooltip still reads the published values.
+ */
+export function stepEnds(values: readonly (number | null)[]): (number | null)[] {
+  return values.map((value, i) => value ?? (i > 0 ? (values[i - 1] ?? null) : null))
+}
+
+/**
+ * The hours after the last published price that the shared time axis still shows, as
+ * first and last index, or null. The chart shades exactly this span, and the summary
+ * below the chart mentions the shading only when it exists. A missing last hour alone
+ * is not shaded, because the last price is drawn to the end of its hour.
+ */
+export function unpublishedSpan(
+  stamps: readonly string[],
+  values: readonly (number | null)[],
+): { first: number; last: number; lastPrice: number } | null {
+  const lastPrice = lastValueIndex(values)
+  return lastPrice >= 0 && lastPrice + 1 < stamps.length - 1
+    ? { first: lastPrice + 1, last: stamps.length - 1, lastPrice }
+    : null
+}
+
 export function priceOption(
   stamps: readonly string[],
   values: (number | null)[],
   palette: Palette,
 ) {
   const option = base(palette)
+  const span = unpublishedSpan(stamps, values)
+  const unpublished =
+    span !== null
+      ? {
+          markArea: {
+            silent: true,
+            itemStyle: { color: palette.rule, opacity: 0.5 },
+            // Anchored at the right edge of the plot and growing to the left, so the label
+            // stays inside the chart however narrow the shaded span is.
+            label: {
+              show: true,
+              position: 'insideTopRight',
+              distance: 4,
+              color: palette.muted,
+              backgroundColor: palette.surface,
+              padding: [1, 3],
+              fontFamily: palette.fontFamily,
+              fontSize: 11,
+              formatter: 'Not yet published',
+            },
+            data: [[{ xAxis: String(span.first) }, { xAxis: String(span.last) }]],
+          },
+        }
+      : {}
+  // Negative prices: the zero line is drawn darker than the other grid lines, and unlike the
+  // price line it is grey.
+  const zero = values.some((v) => v !== null && v < 0)
+    ? {
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          label: { show: false },
+          lineStyle: { color: palette.muted, width: 1, type: 'solid' },
+          data: [{ yAxis: 0 }],
+        },
+      }
+    : {}
   return {
     ...option,
     tooltip: {
@@ -357,7 +453,7 @@ export function priceOption(
       {
         type: 'line',
         name: 'Day-ahead price DE/LU',
-        data: values,
+        data: stepEnds(values),
         showSymbol: false,
         symbol: 'none',
         // A price holds for the hour that starts at its timestamp.
@@ -365,6 +461,8 @@ export function priceOption(
         lineStyle: { color: palette.price, width: 1.5 },
         itemStyle: { color: palette.price },
         emphasis: { disabled: true },
+        ...unpublished,
+        ...zero,
       },
     ],
   }

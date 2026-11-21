@@ -101,7 +101,8 @@ export function forecastDays(): string[] {
   return days
 }
 
-export function forecastDay(day: string) {
+/** `degradedChecks` marks the model run as issued with these failed input checks. */
+export function forecastDay(day: string, degradedChecks: string[] = []) {
   const hasActual = day <= TODAY
   return {
     delivery_day: day,
@@ -111,6 +112,15 @@ export function forecastDay(day: string) {
         run_id: `fc-${day}`,
         issued_at: isoLocal(Date.parse(`${addDays(day, -1)}T11:00:00Z`)),
         created_at: isoLocal(Date.parse(`${addDays(day, -1)}T11:04:00Z`)),
+        degraded: degradedChecks.length > 0,
+        degraded_checks: degradedChecks,
+      },
+      baseline_week: {
+        run_id: `bl-${day}`,
+        issued_at: isoLocal(Date.parse(`${addDays(day, -1)}T11:00:00Z`)),
+        created_at: isoLocal(Date.parse(`${addDays(day, -1)}T11:04:00Z`)),
+        degraded: null,
+        degraded_checks: null,
       },
     },
     points: hoursOfDay(day).map((t) => {
@@ -198,7 +208,8 @@ function price(instant: number): number {
   return Math.round(value * 100) / 100
 }
 
-export function actuals(keys: string[], start: string, end: string) {
+/** `priceEnd` makes prices stop at that instant, as when SMARD has not published more yet. */
+export function actuals(keys: string[], start: string, end: string, priceEnd?: number) {
   const hours: number[] = []
   for (let day = start; day <= end; day = addDays(day, 1)) {
     hours.push(...hoursOfDay(day))
@@ -212,7 +223,7 @@ export function actuals(keys: string[], start: string, end: string) {
       const info = catalog.find((s) => s.key === key)
       const isPrice = key === 'price_day_ahead'
       // Prices exist for tomorrow already; measured values end with the last full hour.
-      const limit = isPrice ? Date.parse(`${addDays(end, 1)}T23:00:00Z`) : NOW - HOUR
+      const limit = isPrice ? (priceEnd ?? Date.parse(`${addDays(end, 1)}T23:00:00Z`)) : NOW - HOUR
       return {
         key,
         label: info?.label ?? key,

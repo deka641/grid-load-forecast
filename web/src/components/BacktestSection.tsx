@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { BacktestMetrics } from '../api/client'
 import { useBacktest } from '../api/queries'
@@ -24,14 +24,44 @@ const LEGEND = MODELS.map((m) => ({
   width: LINE_STYLES[m.key].width,
 }))
 
+/** True while the element's content is wider than its box, so that it scrolls sideways. */
+function useOverflowsX<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
+  const [overflows, setOverflows] = useState(false)
+  useEffect(() => {
+    const element = ref.current
+    if (!element) {
+      return
+    }
+    const measure = () => {
+      setOverflows(element.scrollWidth > element.clientWidth)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    if (element.firstElementChild) {
+      observer.observe(element.firstElementChild)
+    }
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+  return [ref, overflows] as const
+}
+
 function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
+  const [box, overflows] = useOverflowsX<HTMLDivElement>()
   const mape = (model: (typeof MODELS)[number]['key'], scope: string, value: string) => {
     const metric = findMetric(backtest, model, scope, value)
     return metric ? formatPercent(metric.mape) : NOT_AVAILABLE
   }
   return (
-    // Narrow windows may scroll the table sideways, so the box takes keyboard focus.
-    <div className="table-scroll" tabIndex={0} role="region" aria-label="Backtest errors table">
+    // Only a box that scrolls sideways is a keyboard stop and a named region.
+    <div
+      ref={box}
+      className="table-scroll"
+      {...(overflows ? { tabIndex: 0, role: 'region', 'aria-label': 'Backtest errors table' } : {})}
+    >
       <table className="metrics">
         <caption className="visually-hidden">
           Backtest errors by forecast: mean absolute error in GW, number of scored hours and mean
@@ -185,7 +215,7 @@ export function BacktestSection() {
   const backtest = useBacktest(true)
   let body
   if (backtest.isPending) {
-    body = <Loading what="backtest" />
+    body = <Loading what="backtest" reserve="backtest" />
   } else if (backtest.isError) {
     body = (
       <QueryProblem

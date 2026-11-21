@@ -4,7 +4,9 @@ import {
   dayLong,
   dayPlain,
   dayShort,
+  hourLabels,
   localDay,
+  offsetChange,
   offsetLabel,
   wallClock,
 } from './time'
@@ -38,5 +40,24 @@ describe('time helpers', () => {
     expect(dateTimeBerlin('2026-11-20T13:15:00+01:00', 15)).toBe('20 Nov 2026, 13:30')
     expect(dateTimeBerlin('2026-11-20T13:56:12.345678+01:00')).toBe('20 Nov 2026, 13:56')
     expect(dateTimeBerlin(new Date(Date.UTC(2026, 11, 31, 23, 30)))).toBe('1 Jan 2027, 00:30')
+  })
+})
+
+describe('hourLabels and offsetChange', () => {
+  it('adds the offset only to an hour that occurs twice', () => {
+    const autumn = [
+      '2026-10-25T01:00:00+02:00',
+      '2026-10-25T02:00:00+02:00',
+      '2026-10-25T02:00:00+01:00',
+      '2026-10-25T03:00:00+01:00',
+    ]
+    expect(hourLabels(autumn)).toEqual(['01:00', '02:00 (UTC+2)', '02:00 (UTC+1)', '03:00'])
+    expect(offsetChange(autumn)).toBe(2)
+    const spring = ['2026-03-29T01:00:00+01:00', '2026-03-29T03:00:00+02:00']
+    expect(hourLabels(spring)).toEqual(['01:00', '03:00'])
+    expect(offsetChange(spring)).toBe(1)
+    expect(offsetChange(['2026-11-20T00:00:00+01:00', '2026-11-20T01:00:00+01:00'])).toBe(-1)
+    expect(offsetChange([])).toBe(-1)
+    expect(hourLabels([])).toEqual([])
   })
 })

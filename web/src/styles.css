@@ -579,7 +579,9 @@ a:hover {
   margin-top: 0;
 }
 
+/* Positioned, so that its visually hidden header text is clipped with the table. */
 .table-scroll {
+  position: relative;
   max-width: 100%;
   overflow-x: auto;
 }
@@ -704,12 +706,33 @@ tr.narrow-only {
   color: var(--color-muted);
 }
 
+/* The Retry button always sits below the message, whatever its length. */
 .notice-error {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 20px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
   border-left-color: var(--color-error);
+}
+
+/* Floors just below the usual height of each section's content while it loads. The
+   forecast floor also covers the headline and day controls, which wait for the data. */
+.loading-forecast {
+  min-height: 600px;
+}
+
+.loading-backtest {
+  min-height: 480px;
+}
+
+.loading-context {
+  min-height: 890px;
+}
+
+@media (max-width: 900px) {
+  .loading-forecast {
+    min-height: 660px;
+  }
 }
 
 .site-footer {
@@ -736,6 +759,15 @@ tr.narrow-only {
 @media (max-width: 1240px) {
   .backtest-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .loading-backtest {
+    min-height: 820px;
+  }
+
+  /* Stacked under the text, the table keeps a readable width instead of spreading out. */
+  .backtest-grid .table-scroll {
+    max-width: 760px;
   }
 }
 
@@ -787,6 +819,21 @@ tr.narrow-only {
     gap: 2px;
   }
 
+  .loading-forecast {
+    min-height: 620px;
+  }
+
+  .loading-backtest {
+    min-height: 1000px;
+  }
+
+  .loading-context {
+    min-height: 1020px;
+  }
+}
+
+/* The full backtest table needs about 660 px; below that the day types stack per model. */
+@media (max-width: 760px) {
   .wide-only {
     display: none;
   }
@@ -896,6 +943,16 @@ tr.narrow-only {
   text-align: left;
 }
 
+/* Column names stay in view while the opened table scrolls. The shadow stands in for the
+   bottom border, which a sticky cell in a collapsed table does not keep. */
+.chart-data thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  box-shadow: inset 0 -1px 0 var(--color-ink);
+}
+
 .inline-note {
   font-size: var(--text-sm);
   color: var(--color-muted);
@@ -917,4 +974,30 @@ tr.narrow-only {
   .chart-data-toggle {
     min-height: 44px;
   }
+}
+
+/* A forecast computed with missing inputs: factual, set apart like the stale note. */
+.notice-warn {
+  border-left-color: var(--color-warn);
+  background: var(--color-warn-bg);
+  font-size: var(--text-sm);
+}
+
+.notice-warn ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.notice-warn p + p {
+  margin-top: 4px;
+}
+
+.day-single {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.day-single .muted {
+  margin-right: 6px;
+  font-weight: 400;
 }
