@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-11-13T15:57:46.410459157Z"
+exclude-newer = "2026-11-14T09:40:22.386294077Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -433,7 +433,7 @@ wheels = [
 
 [[package]]
 name = "grid-load-forecast"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
