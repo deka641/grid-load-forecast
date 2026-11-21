@@ -1,9 +1,11 @@
 """The OpenAPI document tells clients what the two forecast times mean."""
 
+from pydantic import BaseModel
+
 from gridload.api.models import ForecastRunInfo, LastForecast
 
 
-def _description(model: type, field: str) -> str:
+def _description(model: type[BaseModel], field: str) -> str:
     return str(model.model_json_schema()["properties"][field].get("description", ""))
 
 
