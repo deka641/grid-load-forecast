@@ -54,7 +54,15 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
     const chart = echarts.init(element, null, { renderer: 'canvas' })
     instance.current = chart
     setCompact(isCompact(element))
+    // The observer reports the size once right after observe(); a resize to the size the chart
+    // already has would only redraw it without animation and cut the draw-in short.
+    let size = { width: element.clientWidth, height: element.clientHeight }
     const observer = new ResizeObserver(() => {
+      const next = { width: element.clientWidth, height: element.clientHeight }
+      if (next.width === size.width && next.height === size.height) {
+        return
+      }
+      size = next
       chart.resize()
       setCompact(isCompact(element))
     })
@@ -78,14 +86,17 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
     const same = rendered.current?.build === build && rendered.current.key === key
     const motion = allowsMotion()
     // Only the very first render draws in; later ones would replay it on every change.
-    let animate = motion && rendered.current === null
+    const previous = rendered.current
+    let animate = motion && previous === null
     rendered.current = { build, key }
+    let drawn = false
     const render = () => {
       if (active) {
         instance.current?.setOption(build(readPalette(), { compact: narrow, motion, animate }), {
           notMerge: true,
         })
         animate = false
+        drawn = true
       }
     }
     // Canvas text uses the web font only once it has loaded; render again only then. A
@@ -99,6 +110,11 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
     }
     return () => {
       active = false
+      // A render still waiting for the font did not happen: the next run must still do it,
+      // including the draw-in when this was the first one.
+      if (!drawn) {
+        rendered.current = previous
+      }
     }
   }, [build, resolved, compact])
 

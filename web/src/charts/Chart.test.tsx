@@ -50,6 +50,11 @@ describe('Chart', () => {
     expect(init).toHaveBeenCalledWith(expect.any(HTMLDivElement), null, { renderer: 'canvas' })
     expect(instance.setOption).toHaveBeenCalledWith({ series: [] }, { notMerge: true })
 
+    // A resize only counts once the size differs from the one at init.
+    Object.defineProperty(screen.getByRole('img', { name: 'Test chart' }), 'clientWidth', {
+      configurable: true,
+      value: 640,
+    })
     act(() => {
       resizeCallback?.()
     })
