@@ -86,16 +86,6 @@ export function firstIndex(params: unknown): number {
   return list[0]?.dataIndex ?? 0
 }
 
-/** A #rrggbb colour with the given opacity; other notations are returned unchanged. */
-export function withAlpha(color: string, alpha: number): string {
-  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color)
-  if (!match) {
-    return color
-  }
-  const [r, g, b] = match.slice(1).map((hex) => parseInt(hex, 16))
-  return `rgba(${String(r)}, ${String(g)}, ${String(b)}, ${String(alpha)})`
-}
-
 function base(palette: Palette, layout: ChartLayout = DEFAULT_LAYOUT): EChartsCoreOption {
   return {
     animation: false,
@@ -221,26 +211,6 @@ function clockChangeMark(stamps: readonly string[], palette: Palette) {
   }
 }
 
-/** A faint fill under the model line that fades out towards the axis. */
-function modelArea(palette: Palette) {
-  return {
-    areaStyle: {
-      origin: 'start',
-      color: {
-        type: 'linear',
-        x: 0,
-        y: 0,
-        x2: 0,
-        y2: 1,
-        colorStops: [
-          { offset: 0, color: withAlpha(palette.model, 0.16) },
-          { offset: 1, color: withAlpha(palette.model, 0) },
-        ],
-      },
-    },
-  }
-}
-
 /** Hours of a delivery day are labelled by local wall clock; 02:00 repeats on 25-hour days. */
 export function forecastOption(
   points: readonly ForecastPoint[],
@@ -299,7 +269,6 @@ export function forecastOption(
             palette,
           )
         : {}),
-      ...(s.key === 'lightgbm' ? modelArea(palette) : {}),
     })),
   }
 }
