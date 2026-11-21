@@ -4,9 +4,10 @@ import asyncio
 import hashlib
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AsyncExitStack
 from pathlib import Path
+from urllib.parse import urlencode
 
 import anyio
 import duckdb
@@ -80,11 +81,15 @@ class DataService:
         # Build and settings that change a response without a new snapshot.
         self._variant = variant
 
-    def etag(self, snapshot: Snapshot, request: Request) -> str:
-        """Derive the entity tag from the snapshot file and the request."""
-        raw = "|".join(
-            (self._variant, *map(str, snapshot.key), request.url.path, request.url.query)
-        )
+    def etag(self, snapshot: Snapshot, path: str, params: Mapping[str, str]) -> str:
+        """Derive the entity tag from the snapshot file, the path and the parameters.
+
+        ``params`` are the validated parameters with their defaults applied, so
+        their order, unknown parameters and different spellings of the same
+        value give the same tag and share one cache entry.
+        """
+        query = urlencode(sorted(params.items()))
+        raw = "|".join((self._variant, *map(str, snapshot.key), path, query))
         return f'"{hashlib.sha256(raw.encode()).hexdigest()[:32]}"'
 
     async def _query(
@@ -127,18 +132,20 @@ class DataService:
         request: Request,
         build: Callable[[duckdb.DuckDBPyConnection], bytes],
         *,
+        params: Mapping[str, str],
         estimate: int = SMALL_BODY_BYTES,
         gated: bool = False,
     ) -> Response:
         """Answer a data request; the body only changes with the snapshot.
 
-        A matching If-None-Match is answered with 304 before any gate or query,
-        and a cached body is sent without them. ``estimate`` is the expected
-        body size, reserved in the byte budget.
+        ``params`` are the validated parameters the body depends on (see
+        :meth:`etag`). A matching If-None-Match is answered with 304 before any
+        gate or query, and a cached body is sent without them. ``estimate`` is
+        the expected body size, reserved in the byte budget.
         """
         snapshot = self.store.current()
         self.cache.select(snapshot.key)
-        tag = self.etag(snapshot, request)
+        tag = self.etag(snapshot, request.url.path, params)
         headers = {"ETag": tag, "Cache-Control": "no-cache"}
         if etag_matches(request.headers.get("if-none-match"), tag):
             return Response(status_code=304, headers=headers)

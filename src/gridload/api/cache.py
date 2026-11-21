@@ -6,8 +6,8 @@ from collections import OrderedDict
 class ResponseCache:
     """Serialized bodies of at least ``min_size`` bytes, at most ``capacity`` bytes in total.
 
-    The entity tag already covers the snapshot, the path, the query and the
-    build, so equal tags mean equal bodies. Entries belong to the snapshot
+    The entity tag already covers the snapshot, the path, the validated
+    parameters and the build, so equal tags mean equal bodies. Entries belong to the snapshot
     passed to :meth:`select`, which empties the cache when it changes; requests
     still running on an older snapshot neither read nor store bodies. The least
     recently used entries are evicted when a new body would exceed the
