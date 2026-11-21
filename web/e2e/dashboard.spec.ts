@@ -29,6 +29,7 @@ interface MockOptions {
   withPrice?: boolean
   forecastError?: { error: number; detail: string }
   onForecast?: () => void
+  degradedChecks?: string[]
 }
 
 async function expectNoSeriousAxe(page: Page) {
@@ -57,7 +58,10 @@ async function mockApi(page: Page, options: MockOptions = {}) {
           return json({ detail: options.forecastError.detail }, options.forecastError.error)
         }
         return json(
-          fixtures.forecastDay(url.searchParams.get('delivery_day') ?? fixtures.LATEST_DAY),
+          fixtures.forecastDay(
+            url.searchParams.get('delivery_day') ?? fixtures.LATEST_DAY,
+            options.degradedChecks,
+          ),
         )
       case '/api/v1/backtest/metrics':
         return json(fixtures.backtest())
@@ -342,4 +346,38 @@ test('offers a retry when the server is busy', async ({ browser }) => {
   await alert.getByRole('button', { name: 'Retry' }).click()
   await expect.poll(() => attempts, { timeout: 15_000 }).toBeGreaterThan(3)
   await context.close()
+})
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`explains a degraded forecast in ${scheme}`, async ({ browser }) => {
+    const context = await browser.newContext({
+      colorScheme: scheme,
+      viewport: { width: 1024, height: 900 },
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    const problems = watchProblems(page)
+    await mockApi(page, { degradedChecks: ['cutoff_hour_missing', 'lag_1d', 'lag_2d', 'x_new'] })
+    await open(page)
+    const notice = page.locator('.forecast-body .notice-warn')
+    await expect(notice).toContainText('Computed with incomplete recent load data.')
+    await expect(notice.locator('li')).toHaveText([
+      'the load of the last hour before the cutoff (09:00 to 10:00 on the day before)',
+      'for some hours, the load of the same hour one and two days earlier',
+      'other input data',
+    ])
+    await notice.screenshot({ path: join(SHOTS, `degraded-${scheme}-1024.png`) })
+    await expectNoSeriousAxe(page)
+    expect(await cspViolations(page)).toEqual([])
+    expect(problems).toEqual([])
+    await context.close()
+  })
+}
+
+test('shows no degraded notice for a complete forecast', async ({ browser }) => {
+  const page = await browser.newPage()
+  await mockApi(page)
+  await open(page)
+  await expect(page.locator('.notice-warn')).toHaveCount(0)
+  await page.close()
 })

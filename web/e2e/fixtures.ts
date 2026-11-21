@@ -101,7 +101,8 @@ export function forecastDays(): string[] {
   return days
 }
 
-export function forecastDay(day: string) {
+/** `degradedChecks` marks the model run as issued with these failed input checks. */
+export function forecastDay(day: string, degradedChecks: string[] = []) {
   const hasActual = day <= TODAY
   return {
     delivery_day: day,
@@ -111,6 +112,15 @@ export function forecastDay(day: string) {
         run_id: `fc-${day}`,
         issued_at: isoLocal(Date.parse(`${addDays(day, -1)}T11:00:00Z`)),
         created_at: isoLocal(Date.parse(`${addDays(day, -1)}T11:04:00Z`)),
+        degraded: degradedChecks.length > 0,
+        degraded_checks: degradedChecks,
+      },
+      baseline_week: {
+        run_id: `bl-${day}`,
+        issued_at: isoLocal(Date.parse(`${addDays(day, -1)}T11:00:00Z`)),
+        created_at: isoLocal(Date.parse(`${addDays(day, -1)}T11:04:00Z`)),
+        degraded: null,
+        degraded_checks: null,
       },
     },
     points: hoursOfDay(day).map((t) => {

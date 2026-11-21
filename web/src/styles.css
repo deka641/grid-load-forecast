@@ -918,3 +918,19 @@ tr.narrow-only {
     min-height: 44px;
   }
 }
+
+/* A forecast computed with missing inputs: factual, set apart like the stale note. */
+.notice-warn {
+  border-left-color: var(--color-warn);
+  background: var(--color-warn-bg);
+  font-size: var(--text-sm);
+}
+
+.notice-warn ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.notice-warn p + p {
+  margin-top: 4px;
+}

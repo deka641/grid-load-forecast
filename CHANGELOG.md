@@ -9,6 +9,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 ### Added
 
 - `/forecasts` and `/status` report whether a forecast was issued with incomplete inputs (`degraded`) and which input checks failed (`degraded_checks`), so a client can mark such a forecast instead of presenting it as complete. Both are `null` for baseline runs and for runs stored before the checks were recorded.
+- The dashboard marks a forecast that was computed with incomplete recent load data and names the missing inputs in plain words, so a reader knows it may be less accurate than the backtest suggests.
 
 ### Changed
 
