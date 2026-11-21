@@ -13,6 +13,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ### Changed
 
+- A trailing slash on an API path, such as `/api/v1/series/`, now returns 404 instead of a redirect.
 - Busy 503 responses of the API carry `Retry-After: 1`, so clients know when to retry.
 - The price chart shades the hours for which SMARD has not yet published prices and names the last published hour below the chart, so its early end no longer looks like a rendering fault. When prices turn negative, the zero line is drawn darker than the other grid lines. The price summary states once that each hourly price is the mean of four quarter hours.
 - With only one forecast day, the dashboard names the day as plain text instead of showing two buttons that can never be used.
@@ -38,7 +39,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 - One client can no longer crowd out others: the API allows each client address at most 16 data requests in progress, out of 64 in total, and answers further ones with the usual JSON 503. While one client held 100 parallel connections, a second client was answered 200 for all 406 of its requests in two runs, against 136 of 304 before. Locally all browsers on the host count as one client; behind another proxy all clients share one limit unless that proxy is trusted (see SECURITY.md).
 - The API takes the client address from `X-Forwarded-For` only on connections from the web container, at a fixed address on an internal network. A client cannot choose the address it is counted under by sending that header, and the API logs show the client address instead of Caddy's.
 - The API container has no network access beyond the web container: it no longer reaches the internet, and the pipeline and other containers no longer reach it.
-- One client can no longer take down or block the stack with connections: Caddy closes connections without a complete request header after 10 seconds, holds at most about 4,000 at a time, and keeps its connections to the API below uvicorn's limit, so `/health` and `/status` keep answering under 400 connections from one client. The web container has 256 MB instead of 128 MB, enough for 9,000 half-open connections from one client, which `make prod-check` now checks. A trailing slash returns 404 instead of a redirect to a host taken from the request.
+- One client can no longer take down or block the stack with connections: Caddy closes connections without a complete request header after 10 seconds, holds at most about 4,000 at a time, and keeps its connections to the API below uvicorn's limit, so `/health` and `/status` keep answering under 400 connections from one client. The web container has 256 MB instead of 128 MB, enough for 9,000 half-open connections from one client, which `make prod-check` now checks.
 - One client address holds at most two of the eight query slots, so a client keeping many medium-sized requests in flight no longer slows everyone else down: in our probe another client's forecast took 80 ms in the median instead of 2 s (11 ms without the load).
 - All containers have CPU limits, and every pipeline run is stopped after 3 hours, so a source that answers too slowly cannot stall the hourly updates.
 
