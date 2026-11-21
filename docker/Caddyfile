@@ -15,12 +15,7 @@
 	}
 }
 
-:8080 {
-	# gzip only: under `make loadtest` the zstd encoders took this container past its
-	# memory limit of then 128 MB, while gzip peaked at 56 MiB. Offering zstd would let any
-	# client that asks for it exhaust the limit with parallel large downloads.
-	encode gzip
-
+(security_headers) {
 	header {
 		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
 		X-Content-Type-Options "nosniff"
@@ -31,6 +26,15 @@
 		-Server
 		-Via
 	}
+}
+
+:8080 {
+	# gzip only: under `make loadtest` the zstd encoders took this container past its
+	# memory limit of then 128 MB, while gzip peaked at 56 MiB. Offering zstd would let any
+	# client that asks for it exhaust the limit with parallel large downloads.
+	encode gzip
+
+	import security_headers
 
 	# At most 192 + 16 + 16 connections to the API, below uvicorn's
 	# --limit-concurrency of 256: further requests wait here instead of being
@@ -72,5 +76,12 @@
 		header Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
+	}
+
+	# Errors that Caddy answers itself (a missing asset, a refused method, the
+	# API being down) carry the same headers as every other response.
+	handle_errors {
+		import security_headers
+		respond "{err.status_code} {err.status_text}"
 	}
 }
