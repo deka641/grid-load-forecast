@@ -32,6 +32,10 @@ interface MockOptions {
   degradedChecks?: string[]
   days?: string[]
   priceEnd?: number
+  /** Paths that answer 500. */
+  failing?: string[]
+  /** Data requests (all but status and series) wait for this. */
+  hold?: Promise<unknown>
 }
 
 async function expectNoSeriousAxe(page: Page) {
@@ -47,6 +51,12 @@ async function mockApi(page: Page, options: MockOptions = {}) {
     const url = new URL(route.request().url())
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+    if (options.failing?.includes(url.pathname)) {
+      return json({ detail: 'the snapshot could not be read' }, 500)
+    }
+    if (options.hold && !['/api/v1/status', '/api/v1/series'].includes(url.pathname)) {
+      await options.hold
+    }
     switch (url.pathname) {
       case '/api/v1/status':
         return json(options.status ?? fixtures.status())
@@ -126,7 +136,7 @@ async function hoverCharts(page: Page) {
 }
 
 for (const scheme of ['light', 'dark'] as const) {
-  for (const width of [1440, 1024, 768, 390]) {
+  for (const width of [1440, 1024, 768, 750, 700, 641, 390]) {
     test(`renders cleanly in ${scheme} at ${String(width)} px`, async ({ browser }) => {
       const context = await browser.newContext({
         colorScheme: scheme,
@@ -432,6 +442,68 @@ for (const scheme of ['light', 'dark'] as const) {
     await expectNoSeriousAxe(page)
     expect(await cspViolations(page)).toEqual([])
     expect(problems).toEqual([])
+    await context.close()
+  })
+}
+
+for (const width of [1440, 390]) {
+  test(`places Retry below the message in every notice at ${String(width)} px`, async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({ viewport: { width, height: 900 } })
+    const page = await context.newPage()
+    await mockApi(page, {
+      failing: ['/api/v1/forecasts', '/api/v1/backtest/metrics', '/api/v1/actuals'],
+    })
+    await page.goto('/')
+    const alerts = page.getByRole('alert')
+    // The client retries a 500 twice before it shows the error.
+    await expect(alerts).toHaveCount(3, { timeout: 20_000 })
+    for (const alert of await alerts.all()) {
+      const text = await alert.locator('p').boundingBox()
+      const button = await alert.getByRole('button', { name: 'Retry' }).boundingBox()
+      const box = await alert.boundingBox()
+      expect(text && button && box).toBeTruthy()
+      if (text && button && box) {
+        expect(button.y).toBeGreaterThanOrEqual(text.y + text.height)
+        // Left aligned with the message in every notice.
+        expect(Math.abs(button.x - text.x)).toBeLessThan(1)
+      }
+    }
+    await page.screenshot({ path: join(SHOTS, `errors-${String(width)}.png`), fullPage: true })
+    await expectNoSeriousAxe(page)
+    await context.close()
+  })
+}
+
+for (const width of [1440, 1024, 641, 390]) {
+  test(`reserves the section heights while loading at ${String(width)} px`, async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    let release: (value: undefined) => void = () => undefined
+    const hold = new Promise<undefined>((done) => {
+      release = done
+    })
+    await mockApi(page, { hold })
+    await page.goto('/')
+    await expect(page.getByText('Loading generation data')).toBeVisible()
+    const heights = () =>
+      page
+        .locator('main > .section')
+        .evaluateAll((list) => list.map((el) => Math.round(el.getBoundingClientRect().height)))
+    const loading = await heights()
+    await page.screenshot({ path: join(SHOTS, `loading-${String(width)}.png`), fullPage: true })
+    release(undefined)
+    await expect(page.locator('.chart-canvas canvas')).toHaveCount(4)
+    const loaded = await heights()
+    // Each section grows by less than a tenth of its final height once its data arrives.
+    loaded.forEach((height, i) => {
+      expect(height - (loading[i] ?? 0)).toBeLessThan(height * 0.1)
+      expect(loading[i] ?? 0).toBeLessThanOrEqual(height)
+    })
     await context.close()
   })
 }

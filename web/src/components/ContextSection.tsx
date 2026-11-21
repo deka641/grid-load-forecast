@@ -231,7 +231,7 @@ export function ContextSection({ today, priceNote }: { today: string; priceNote:
   } else if (catalog.isSuccess && genKeys.length === 0) {
     body = <p className="notice">This deployment serves no generation series.</p>
   } else {
-    body = <Loading what="generation data" />
+    body = <Loading what="generation data" reserve="context" />
   }
 
   return (

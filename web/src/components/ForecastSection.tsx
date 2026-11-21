@@ -227,7 +227,7 @@ export function ForecastSection() {
 
   let body
   if (forecast.isPending) {
-    body = <Loading what="forecast" />
+    body = <Loading what="forecast" reserve="forecast" />
   } else if (forecast.isError) {
     body = (
       <QueryProblem
