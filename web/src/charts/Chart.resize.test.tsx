@@ -96,4 +96,30 @@ describe('Chart resize', () => {
       animate: true,
     })
   })
+  it('draws with the fallback font when the web font does not arrive within a second', () => {
+    vi.useFakeTimers()
+    try {
+      width = 900
+      height = 380
+      const stalled = { status: 'loading', ready: new Promise<void>(() => undefined) }
+      Object.defineProperty(document, 'fonts', { value: stalled, configurable: true })
+      const build = vi.fn(() => ({}))
+      render(<Chart build={build} label="Stalled font" />)
+      act(() => {
+        vi.advanceTimersByTime(999)
+      })
+      expect(build).not.toHaveBeenCalled()
+      act(() => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(build).toHaveBeenCalledTimes(1)
+      expect(build).toHaveBeenLastCalledWith(expect.anything(), {
+        compact: false,
+        motion: true,
+        animate: true,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

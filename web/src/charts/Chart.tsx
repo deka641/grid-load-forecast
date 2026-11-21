@@ -25,6 +25,9 @@ export interface ChartProps {
 
 type Instance = ReturnType<typeof echarts.init>
 
+/** How long a render waits for the web font before it draws with the fallback font. */
+const FONT_WAIT_MS = 1000
+
 function isCompact(element: HTMLElement): boolean {
   return element.clientWidth > 0 && element.clientWidth < COMPACT_WIDTH
 }
@@ -102,14 +105,25 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
     // Canvas text uses the web font only once it has loaded; render again only then. A
     // draw-in waits for the font instead, since a second render would cut it short.
     const fontsPending = 'fonts' in document && document.fonts.status !== 'loaded'
-    if (!same && !(animate && fontsPending)) {
+    const deferred = !same && animate && fontsPending
+    if (!same && !deferred) {
       render()
     }
+    // A stalled font fetch must not leave the chart blank: after FONT_WAIT_MS it is drawn
+    // with the fallback font, and the font render follows when the font arrives.
+    let timer: ReturnType<typeof setTimeout> | undefined
     if (fontsPending) {
-      void document.fonts.ready.then(render)
+      if (deferred) {
+        timer = setTimeout(render, FONT_WAIT_MS)
+      }
+      void document.fonts.ready.then(() => {
+        clearTimeout(timer)
+        render()
+      })
     }
     return () => {
       active = false
+      clearTimeout(timer)
       // A render still waiting for the font did not happen: the next run must still do it,
       // including the draw-in when this was the first one.
       if (!drawn) {
