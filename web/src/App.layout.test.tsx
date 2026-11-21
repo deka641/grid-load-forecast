@@ -68,7 +68,7 @@ describe('Page layout', () => {
     expect(calls.filter((u) => u.pathname === '/api/v1/backtest/metrics')).toHaveLength(1)
   })
 
-  it('announces old data across the page and keeps the header line plain', async () => {
+  it('announces old data across the page and names its time only there', async () => {
     const base = fx.status()
     mockFetch(
       routes({
@@ -81,9 +81,12 @@ describe('Page layout', () => {
     const banner = (await screen.findByText(/more than 6 hours old/)).closest('p')
     expect(banner).toHaveClass('stale-banner')
     expect(container.querySelector('main')?.firstElementChild).toBe(banner)
-    expect(container.querySelector('.site-header .freshness')).toHaveTextContent(
-      /^Data up to 20 Nov 2026, \d\d:\d\d$/,
+    expect(banner).toHaveTextContent(
+      /^Data up to 20 Nov 2026, \d\d:\d\d \(more than 6 hours old\)$/,
     )
+    expect(screen.getAllByText(/Data up to/)).toHaveLength(1)
+    // Without a line of its own, the header lines the theme switch up with the title.
+    expect(container.querySelector('.freshness-group')).toBeNull()
   })
 
   it('composes the first start as the forecast section without a freshness line', async () => {
