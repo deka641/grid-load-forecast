@@ -36,14 +36,14 @@ CREATE TABLE load_runs (
     mode         VARCHAR NOT NULL,       -- backfill | incremental
     started_at   TIMESTAMPTZ NOT NULL,
     finished_at  TIMESTAMPTZ,
-    status       VARCHAR NOT NULL        -- running | ok | failed
+    status       VARCHAR NOT NULL        -- running | ok | partial | failed | aborted
 );
 
 CREATE TABLE load_log (
     run_id       VARCHAR NOT NULL,
     series_key   VARCHAR NOT NULL,
     chunk_ts     TIMESTAMPTZ,            -- NULL for index-level errors
-    status       VARCHAR NOT NULL,       -- loaded | unchanged | error
+    status       VARCHAR NOT NULL,       -- loaded | unchanged | error | warning
     rows_written INTEGER NOT NULL DEFAULT 0,
     message      VARCHAR,
     logged_at    TIMESTAMPTZ NOT NULL
@@ -76,7 +76,7 @@ CREATE TABLE backtest_runs (
 CREATE TABLE backtest_metrics (
     run_id       VARCHAR NOT NULL,
     model        VARCHAR NOT NULL,
-    scope        VARCHAR NOT NULL,       -- overall | hour | day_type
+    scope        VARCHAR NOT NULL,       -- overall | hour | day_type | overall_tso_hours
     scope_value  VARCHAR NOT NULL,
     mae          DOUBLE NOT NULL,
     mape         DOUBLE NOT NULL,
