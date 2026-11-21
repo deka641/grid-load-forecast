@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
+import { NO_DATA, NO_FORECAST } from './components/messages'
 import { mockFetch, renderApp } from './test/api'
 import type { Handler } from './test/api'
 import * as fx from './test/fixtures'
@@ -101,6 +102,35 @@ describe('One failure behind several sections', () => {
     )
     expect(await screen.findByText(/^Forecast peak for/)).toBeInTheDocument()
   })
+
+  it.each([
+    ['a 404', fail(404, 'none'), NO_FORECAST],
+    [
+      'the first-start 503',
+      fail(503, 'no data snapshot is available yet; the pipeline has not published one'),
+      NO_DATA,
+    ],
+  ])(
+    'keeps %s in its own section next to a failure shared by two others',
+    async (_name, forecast, text) => {
+      mockFetch(
+        routes({
+          '/api/v1/forecasts': forecast,
+          '/api/v1/backtest/metrics': fail(500),
+          '/api/v1/actuals': fail(500),
+        }),
+      )
+      renderApp()
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'Could not load the backtest and the generation data: the server answered with HTTP 500 (the snapshot could not be read).',
+        )
+      })
+      expect(screen.getAllByRole('alert')).toHaveLength(1)
+      expect(screen.getByRole('alert')).not.toHaveTextContent('forecast')
+      expect(screen.getByText(text)).toBeInTheDocument()
+    },
+  )
 
   it('does not merge data states such as 404 with a failure', async () => {
     mockFetch(
