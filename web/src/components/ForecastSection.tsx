@@ -47,20 +47,26 @@ function Headline({ forecast }: { forecast: ForecastDay }) {
  * forecast is scored only on the hours SMARD published, so the values have different bases;
  * the backtest section below names them.
  */
-function KeyFigures({ backtest }: { backtest: BacktestMetrics }) {
+function KeyFigures({ backtest }: { backtest: BacktestMetrics | null }) {
+  // While the backtest loads, an invisible copy holds the place of the band, so the chart
+  // does not move down when the values arrive.
+  const pending = backtest === null
   return (
-    <div className="key-figures">
+    <div
+      className={pending ? 'key-figures key-figures-pending' : 'key-figures'}
+      aria-hidden={pending ? true : undefined}
+    >
       <p className="key-figures-label">Backtest MAPE</p>
       <dl>
         {MODELS.map((m) => {
-          const metric = findMetric(backtest, m.key, 'overall', 'all')
+          const metric = backtest ? findMetric(backtest, m.key, 'overall', 'all') : undefined
           return (
             <div key={m.key} className={`key-figure key-${m.key}`}>
               <dt>
                 <span className={`row-key stroke-${m.key}`} aria-hidden="true" />
                 {m.short}
               </dt>
-              <dd>{metric ? formatPercent(metric.mape) : NOT_AVAILABLE}</dd>
+              <dd>{pending ? '\u00a0' : metric ? formatPercent(metric.mape) : NOT_AVAILABLE}</dd>
             </div>
           )
         })}
@@ -241,16 +247,28 @@ function ForecastView({ forecast }: { forecast: ForecastDay }) {
   return (
     <>
       <DegradedNotice forecast={forecast} />
-      {hours === 24 ? null : (
-        <p className="clock-change">
-          Clock change: this day has {String(hours)} hours
-          {hours === 25
-            ? ', so 02:00 appears twice, first in summer time (UTC+2), then in winter time (UTC+1)'
-            : ', 02:00 does not exist'}
-          .
-        </p>
-      )}
-      <Legend items={legendItems(hasActuals(points))} label="Lines in the forecast chart" />
+      {/* The legend and, on clock-change days, the note on the dashed line head the chart. */}
+      <div className="chart-head">
+        <Legend items={legendItems(hasActuals(points))} label="Lines in the forecast chart" />
+        {hours === 24 ? null : (
+          <p className="clock-change">
+            <svg
+              className="clock-change-key"
+              width="6"
+              height="14"
+              viewBox="0 0 6 14"
+              aria-hidden="true"
+            >
+              <line x1="3" y1="0" x2="3" y2="14" strokeDasharray="4 3" />
+            </svg>
+            Clock change: this day has {String(hours)} hours
+            {hours === 25
+              ? ', so 02:00 appears twice, first in summer time (UTC+2), then in winter time (UTC+1)'
+              : ', 02:00 does not exist'}
+            .
+          </p>
+        )}
+      </div>
       <Chart
         build={build}
         label={`Line chart of the grid load on ${dayShort(forecast.delivery_day)} in GW by local hour: actual, LightGBM model, baseline and SMARD forecast`}
@@ -301,7 +319,11 @@ export function ForecastSection() {
       {forecast.data && !forecast.isError ? (
         <div className="forecast-hero">
           <Headline forecast={forecast.data} />
-          {backtest.data ? <KeyFigures backtest={backtest.data} /> : null}
+          {backtest.data ? (
+            <KeyFigures backtest={backtest.data} />
+          ) : backtest.isPending ? (
+            <KeyFigures backtest={null} />
+          ) : null}
         </div>
       ) : null}
       <div className="forecast-controls">

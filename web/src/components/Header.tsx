@@ -32,7 +32,9 @@ function Mark() {
 }
 
 export function Header({ freshness }: { freshness: FreshnessState }) {
-  const { lastTs, fallback } = freshness
+  const { lastTs, fallback, stale } = freshness
+  // While the data is old, the band across the page names its time; the header does not repeat it.
+  const upTo = lastTs !== null && !stale ? dataUpTo(lastTs) : null
   return (
     <header className="site-header">
       <div className="site-title">
@@ -47,9 +49,9 @@ export function Header({ freshness }: { freshness: FreshnessState }) {
       </div>
       <div className="site-meta">
         {/* Without any line the group is left out, so the toggle lines up with the title. */}
-        {lastTs !== null || fallback ? (
+        {upTo !== null || fallback ? (
           <div className="freshness-group">
-            {lastTs === null ? null : <p className="freshness">{dataUpTo(lastTs)}</p>}
+            {upTo === null ? null : <p className="freshness">{upTo}</p>}
             {fallback ? <p className="freshness freshness-stale">{SNAPSHOT_FALLBACK}</p> : null}
           </div>
         ) : null}

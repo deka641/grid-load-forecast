@@ -38,7 +38,8 @@ export function ErrorNotice({ message, onRetry }: { message: string; onRetry: ()
 
 /**
  * Shared handling of a failed query: the first-start 503 and the given 404 text are data
- * states. A failure that the page already reports once for several sections shows nothing.
+ * states. A failure that the page already reports once for several sections shows one quiet
+ * line that points to that notice, so the section does not end at its title.
  */
 export function QueryProblem({
   what,
@@ -60,7 +61,7 @@ export function QueryProblem({
   }
   const reason = describeError(error)
   if (reason === shared) {
-    return null
+    return <p className="note shared-failure">Could not load {what}; see the notice above.</p>
   }
   return <ErrorNotice message={`Could not load ${what}: ${reason}.`} onRetry={onRetry} />
 }

@@ -1,5 +1,5 @@
 import { backtest, forecast } from '../test/fixtures'
-import { forecastOption, mapeByHourOption, priceOption, withAlpha } from './options'
+import { forecastOption, mapeByHourOption, priceOption } from './options'
 import type { ChartLayout } from './options'
 import type { Palette } from './palette'
 
@@ -31,7 +31,7 @@ interface Option {
   tooltip: { backgroundColor: string; borderColor: string; transitionDuration: number }
   series: {
     name: string
-    areaStyle?: { color: { colorStops: { color: string }[] } }
+    areaStyle?: unknown
     markLine?: { label: { align: string } }
     markArea?: { label: { position: unknown; verticalAlign?: string } }
   }[]
@@ -73,14 +73,10 @@ describe('chart layout', () => {
     expect(as(forecastOption(points, palette, narrow)).tooltip.transitionDuration).toBe(0)
   })
 
-  it('fills only under the model line, on calm grid lines, with a lifted tooltip', () => {
+  it('draws every forecast as a plain line, on calm grid lines, with a lifted tooltip', () => {
     const option = as(forecastOption(forecast('2026-11-20').points, palette, wide))
-    const filled = option.series.filter((s) => s.areaStyle !== undefined)
-    expect(filled.map((s) => s.name)).toEqual(['LightGBM model'])
-    expect(filled[0]?.areaStyle?.color.colorStops.map((c) => c.color)).toEqual([
-      'rgba(110, 164, 242, 0.16)',
-      'rgba(110, 164, 242, 0)',
-    ])
+    // No fill gives one forecast more weight than the actual load or reaches down to the axis.
+    expect(option.series.filter((s) => s.areaStyle !== undefined)).toEqual([])
     expect(option.yAxis.splitLine.lineStyle.color).toBe(palette.grid)
     expect(option.tooltip.backgroundColor).toBe(palette.tooltipBg)
     expect(option.tooltip.borderColor).toBe(palette.tooltipBorder)
@@ -103,10 +99,5 @@ describe('chart layout', () => {
     expect(full.grid.top).toBe(16)
     // Without a shaded span the compact chart keeps the usual top margin.
     expect(as(priceOption(hours, [1, 2, 3, 4], palette, narrow)).grid.top).toBe(16)
-  })
-
-  it('adds an opacity only to six-digit hex colours', () => {
-    expect(withAlpha('#1d5fbf', 0.5)).toBe('rgba(29, 95, 191, 0.5)')
-    expect(withAlpha('rgb(1, 2, 3)', 0.5)).toBe('rgb(1, 2, 3)')
   })
 })

@@ -433,6 +433,10 @@ a:hover {
   color: var(--color-model);
 }
 
+.key-figures-pending {
+  visibility: hidden;
+}
+
 .forecast-controls {
   display: flex;
   flex-wrap: wrap;
@@ -441,10 +445,31 @@ a:hover {
   margin-top: 20px;
 }
 
+/* Legend and clock-change note sit together directly above the chart frame. */
+.chart-head {
+  margin-top: 16px;
+}
+
+.chart-head .legend {
+  margin-top: 0;
+}
+
 .clock-change {
-  margin-top: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
   font-size: var(--text-sm);
   color: var(--color-muted);
+}
+
+/* The same dashed stroke as the line that marks the change in the chart. */
+.clock-change-key {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 0.25em;
+  stroke: var(--color-muted);
+  stroke-width: 1;
 }
 
 .day-selector {
@@ -870,14 +895,9 @@ tr.narrow-only {
   min-height: 890px;
 }
 
-/* Below 1100 px the key figures always sit under the headline, so the height of the
-   section does not depend on the length of the day name. */
-@media (max-width: 1100px) {
-  .forecast-hero {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
+/* The key figures wrap under the headline only where they do not fit beside it, below about
+   970 to 1010 px depending on the day name; the floor grows with them there. */
+@media (max-width: 1000px) {
   .loading-forecast {
     min-height: 740px;
   }
