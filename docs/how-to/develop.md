@@ -65,7 +65,7 @@ make loadtest     # parallel dashboard requests against the isolated stack
 
 The browser checks need Playwright's Chromium, installed once with `npx --prefix web playwright install chromium`.
 
-`make prod-check` first runs `make e2e`: the frontend build with its size budget, then the browser suite in `web/e2e` against that build, served on port 8471 with the production Content-Security-Policy and mocked API responses. Its 37 tests cover the 25 hour day of the autumn clock change, Berlin time in a browser set to another time zone, the degraded, stale, busy and first-start notices, unpublished and negative prices, a single forecast day, both themes at several widths and accessibility with axe. They took 1 min 47 s including the build on an Intel Core i7-14650HX, which is why they are not part of `make verify`.
+`make prod-check` first runs `make e2e`: the frontend build with its size budget, then the browser suite in `web/e2e` against that build, served on port 8471 with the production Content-Security-Policy and mocked API responses. Its tests cover the 25 hour day of the autumn clock change, Berlin time in a browser set to another time zone, the degraded, stale, busy and first-start notices, unpublished and negative prices, a single forecast day, both themes at several widths and accessibility with axe. They took 1 min 47 s including the build on an Intel Core i7-14650HX, which is why they are not part of `make verify`.
 
 `scripts/prod_check.sh` then builds the images, starts the stack as the project `grid-load-forecast-check` on port 8461 with a copy of `data/serving.duckdb` (the live stack on port 8460 and its volume are not touched), and checks:
 

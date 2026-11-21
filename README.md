@@ -36,7 +36,7 @@ Three containers: the pipeline and the API share one data volume, and the web se
 
 ## Quickstart
 
-Requirements: Docker with Compose v2, port 8460 free, memory for container limits totalling 2.6 GB, and disk space on the data volume (our full backfill on 21 November 2026 took 0.58 GB, and DuckDB may use up to 4 GB of temporary space during large operations).
+Requirements: Docker with Compose v2, port 8460 free, memory for container limits totalling 2.6 GB, and disk space on the data volume (a full backfill on 21 November 2026 took 0.58 GB, and DuckDB may use up to 4 GB of temporary space during large operations).
 
 ```bash
 git clone https://github.com/deka641/grid-load-forecast.git
@@ -44,7 +44,7 @@ cd grid-load-forecast
 docker compose up -d --build
 ```
 
-On the first start the pipeline loads the full history (our run on 21 November 2026: 75 minutes for 8,973 weekly chunks; the time depends on SMARD and the network), then issues the forecast if it is already past 12:00 in Germany (otherwise with the first hourly run after noon) and computes the backtest. Open [http://127.0.0.1:8460](http://127.0.0.1:8460). The [tutorial](docs/tutorials/run-locally.md) walks through it.
+On the first start the pipeline loads the full history (a run on 21 November 2026: 75 minutes for 8,973 weekly chunks; the time depends on SMARD and the network), then issues the forecast if it is already past 12:00 in Germany (otherwise with the first hourly run after noon) and computes the backtest. Open [http://127.0.0.1:8460](http://127.0.0.1:8460). The [tutorial](docs/tutorials/run-locally.md) walks through it.
 
 ## Development
 
