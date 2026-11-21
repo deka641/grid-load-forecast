@@ -24,11 +24,15 @@ ARG SUPERCRONIC_VERSION=v0.2.51
 ARG SUPERCRONIC_SHA256_amd64=cc232108374e8e2b537045f2d5eaa1229f619db314c3ba6a14d38b35dc0aa123
 ARG SUPERCRONIC_SHA256_arm64=4ae22576a78223d8ccdf5f3b3660a5cbb5288416bf0ca96afc4a36d195932b94
 # libgomp1: OpenMP runtime required by LightGBM. curl only for the supercronic download.
+# Exact Debian trixie versions, so a package change shows up as a diff. When a security
+# update supersedes a pinned version, the mirror drops it and the build fails: update the
+# pins as described in docs/how-to/develop.md.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 curl ca-certificates \
+    && apt-get install -y --no-install-recommends \
+         libgomp1=14.2.0-19 curl=8.14.1-2+deb13u7 ca-certificates=20250419+deb13u1 \
     # Security fix newer than the base image (CVE-2026-85091), exempt from the wait period.
     # Remove once the pinned base image digest includes the fix.
-    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+    && apt-get install -y --no-install-recommends --only-upgrade zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1 \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' zlib1g)" ge '1:1.3.dfsg+really1.3.1-1+deb13u1' \
     && case "${TARGETARCH}" in \
          amd64) sha="${SUPERCRONIC_SHA256_amd64}" ;; \
