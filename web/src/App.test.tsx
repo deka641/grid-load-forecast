@@ -380,11 +380,12 @@ describe('Dashboard states', () => {
   it('reports failing generation data and retries it', async () => {
     mockFetch(routes({ '/api/v1/actuals': fail(500), '/api/v1/backtest/metrics': fail(500) }))
     renderApp()
-    expect(await screen.findByText(/Could not load the generation data/)).toBeInTheDocument()
-    expect(await screen.findByText(/Could not load the backtest/)).toBeInTheDocument()
-    for (const button of screen.getAllByRole('button', { name: 'Retry' })) {
-      fireEvent.click(button)
-    }
+    // The same failure behind both sections is reported once.
+    expect(
+      await screen.findByText(/^Could not load the backtest and the generation data:/),
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
   })
 
   it('hides the price chart when prices are not served', async () => {

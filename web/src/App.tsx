@@ -2,6 +2,7 @@ import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 
+import { SharedFailureContext, useSharedFailure } from './api/failures'
 import { SNAPSHOT_QUERIES, useStatus } from './api/queries'
 import { BacktestSection } from './components/BacktestSection'
 import { ContextSection } from './components/ContextSection'
@@ -31,6 +32,7 @@ export function Dashboard() {
   const status = useStatus()
   useSnapshotRollover(status.data?.snapshot_created_at)
   const retryStatus = () => void status.refetch()
+  const shared = useSharedFailure()
 
   // Branch on data first: a failed background refetch keeps the last good status on screen.
   let content
@@ -51,14 +53,16 @@ export function Dashboard() {
     content = <Info>{NO_DATA}</Info>
   } else {
     content = (
-      <>
+      <SharedFailureContext value={shared?.reason ?? null}>
+        {/* One notice for a failure behind several sections, instead of one per section. */}
+        {shared ? <ErrorNotice message={shared.message} onRetry={shared.retry} /> : null}
         <ForecastSection />
         <BacktestSection />
         <ContextSection
           today={localDay(status.data.generated_at)}
           priceNote={status.data.price_note}
         />
-      </>
+      </SharedFailureContext>
     )
   }
 

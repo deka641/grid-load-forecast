@@ -1,4 +1,5 @@
 import { isApiError, isNoData } from '../api/client'
+import { useSharedReason } from '../api/failures'
 import { NO_DATA, describeError } from './messages'
 
 /**
@@ -35,7 +36,10 @@ export function ErrorNotice({ message, onRetry }: { message: string; onRetry: ()
   )
 }
 
-/** Shared handling of a failed query: the first-start 503 and the given 404 text are data states. */
+/**
+ * Shared handling of a failed query: the first-start 503 and the given 404 text are data
+ * states. A failure that the page already reports once for several sections shows nothing.
+ */
 export function QueryProblem({
   what,
   error,
@@ -47,13 +51,16 @@ export function QueryProblem({
   notFound?: string
   onRetry: () => void
 }) {
+  const shared = useSharedReason()
   if (isNoData(error)) {
     return <Info>{NO_DATA}</Info>
   }
   if (notFound !== undefined && isApiError(error, 404)) {
     return <Info>{notFound}</Info>
   }
-  return (
-    <ErrorNotice message={`Could not load ${what}: ${describeError(error)}.`} onRetry={onRetry} />
-  )
+  const reason = describeError(error)
+  if (reason === shared) {
+    return null
+  }
+  return <ErrorNotice message={`Could not load ${what}: ${reason}.`} onRetry={onRetry} />
 }

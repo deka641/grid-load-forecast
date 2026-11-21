@@ -465,8 +465,13 @@ for (const width of [1440, 390]) {
     })
     await page.goto('/')
     const alerts = page.getByRole('alert')
-    // The client retries a 500 twice before it shows the error.
-    await expect(alerts).toHaveCount(3, { timeout: 20_000 })
+    // The client retries a 500 twice before it shows the error. The same failure behind
+    // three sections is reported once, with one Retry.
+    await expect(alerts).toHaveCount(1, { timeout: 20_000 })
+    await expect(alerts).toContainText(
+      'Could not load the forecast, the backtest and the generation data: the server answered with HTTP 500',
+    )
+    await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(1)
     for (const alert of await alerts.all()) {
       const text = await alert.locator('p').boundingBox()
       const button = await alert.getByRole('button', { name: 'Retry' }).boundingBox()
