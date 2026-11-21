@@ -7,6 +7,7 @@ services:
     restart: "no"
     # Serve the copied data without contacting SMARD: only the healthcheck runs.
     command: ["sleep", "infinity"]
+    cpus: 0.5
     healthcheck:
       test: ["CMD", "true"]
       interval: 5s

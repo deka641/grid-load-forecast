@@ -37,6 +37,8 @@ services:
       - gridload-data:/data
     mem_limit: 2g
     memswap_limit: 2g
+    # The 365-day backtest peaked at 3.1 cores.
+    cpus: 4
     healthcheck:
       # Healthy while a run reports progress, or if the last ok or partial run is under
       # 26 h old and the newest load value under 12 h old.
@@ -67,6 +69,8 @@ services:
       - gridload-data:/data:ro
     mem_limit: 512m
     memswap_limit: 512m
+    # make loadtest peaked at 2.4 cores.
+    cpus: 3
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
       interval: 30s
@@ -103,6 +107,8 @@ services:
         hard: 4096
     mem_limit: 256m
     memswap_limit: 256m
+    # make loadtest peaked at 1.7 cores.
+    cpus: 2
     tmpfs:
       - /tmp:size=16m,noexec,nosuid
       - /config:size=4m,uid=10002,gid=10002
