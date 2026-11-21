@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test'
-import type { Page, Route } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import type { Server } from 'node:http'
 import { resolve } from 'node:path'
 
-import * as fixtures from './fixtures.ts'
+import { mockFixtureApi } from './mock.ts'
 import { serveDist } from './server.ts'
 
 /**
@@ -22,38 +22,6 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await new Promise((done) => server.close(done))
 })
-
-async function mockApi(page: Page) {
-  await page.route('**/api/v1/**', async (route: Route) => {
-    const url = new URL(route.request().url())
-    const json = (body: unknown) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
-    switch (url.pathname) {
-      case '/api/v1/status':
-        return json(fixtures.status())
-      case '/api/v1/series':
-        return json(fixtures.seriesCatalog(true))
-      case '/api/v1/forecasts/days':
-        return json({ days: fixtures.forecastDays(), limit: 400 })
-      case '/api/v1/forecasts':
-        return json(
-          fixtures.forecastDay(url.searchParams.get('delivery_day') ?? fixtures.LATEST_DAY),
-        )
-      case '/api/v1/backtest/metrics':
-        return json(fixtures.backtest())
-      case '/api/v1/actuals':
-        return json(
-          fixtures.actuals(
-            (url.searchParams.get('series') ?? '').split(','),
-            url.searchParams.get('start') ?? fixtures.TODAY,
-            url.searchParams.get('end') ?? fixtures.TODAY,
-          ),
-        )
-      default:
-        return route.fulfill({ status: 404, body: '{}' })
-    }
-  })
-}
 
 interface Sample {
   t: number
@@ -90,7 +58,7 @@ function sampleForecastCanvas() {
 
 async function inkOverTime(page: Page): Promise<Sample[]> {
   await page.addInitScript(sampleForecastCanvas)
-  await mockApi(page)
+  await mockFixtureApi(page)
   await page.goto(`http://127.0.0.1:${String(PORT)}/`)
   await expect(page.locator('.chart-forecast canvas')).toHaveCount(1)
   // The draw-in takes 700 ms; sample well past it.

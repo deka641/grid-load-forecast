@@ -47,20 +47,26 @@ function Headline({ forecast }: { forecast: ForecastDay }) {
  * forecast is scored only on the hours SMARD published, so the values have different bases;
  * the backtest section below names them.
  */
-function KeyFigures({ backtest }: { backtest: BacktestMetrics }) {
+function KeyFigures({ backtest }: { backtest: BacktestMetrics | null }) {
+  // While the backtest loads, an invisible copy holds the place of the band, so the chart
+  // does not move down when the values arrive.
+  const pending = backtest === null
   return (
-    <div className="key-figures">
+    <div
+      className={pending ? 'key-figures key-figures-pending' : 'key-figures'}
+      aria-hidden={pending ? true : undefined}
+    >
       <p className="key-figures-label">Backtest MAPE</p>
       <dl>
         {MODELS.map((m) => {
-          const metric = findMetric(backtest, m.key, 'overall', 'all')
+          const metric = backtest ? findMetric(backtest, m.key, 'overall', 'all') : undefined
           return (
             <div key={m.key} className={`key-figure key-${m.key}`}>
               <dt>
                 <span className={`row-key stroke-${m.key}`} aria-hidden="true" />
                 {m.short}
               </dt>
-              <dd>{metric ? formatPercent(metric.mape) : NOT_AVAILABLE}</dd>
+              <dd>{pending ? '\u00a0' : metric ? formatPercent(metric.mape) : NOT_AVAILABLE}</dd>
             </div>
           )
         })}
@@ -301,7 +307,11 @@ export function ForecastSection() {
       {forecast.data && !forecast.isError ? (
         <div className="forecast-hero">
           <Headline forecast={forecast.data} />
-          {backtest.data ? <KeyFigures backtest={backtest.data} /> : null}
+          {backtest.data ? (
+            <KeyFigures backtest={backtest.data} />
+          ) : backtest.isPending ? (
+            <KeyFigures backtest={null} />
+          ) : null}
         </div>
       ) : null}
       <div className="forecast-controls">

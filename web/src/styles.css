@@ -433,6 +433,10 @@ a:hover {
   color: var(--color-model);
 }
 
+.key-figures-pending {
+  visibility: hidden;
+}
+
 .forecast-controls {
   display: flex;
   flex-wrap: wrap;
@@ -870,14 +874,9 @@ tr.narrow-only {
   min-height: 890px;
 }
 
-/* Below 1100 px the key figures always sit under the headline, so the height of the
-   section does not depend on the length of the day name. */
-@media (max-width: 1100px) {
-  .forecast-hero {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
+/* The key figures wrap under the headline only where they do not fit beside it; for the
+   usual headline length that is below about 1000 px, where the floor grows with them. */
+@media (max-width: 1000px) {
   .loading-forecast {
     min-height: 740px;
   }
