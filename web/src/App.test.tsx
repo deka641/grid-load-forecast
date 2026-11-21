@@ -37,7 +37,9 @@ function routes(overrides: Record<string, Handler> = {}): Record<string, Handler
   }
 }
 
-const headline = () => screen.findByText(/^Forecast peak for/)
+// The headline sets its figure apart, so the sentence is the text of the whole paragraph.
+const headline = async () =>
+  (await screen.findByText(/^Forecast peak for/)).closest('p') as HTMLElement
 
 describe('Dashboard with data', () => {
   it('shows the headline, freshness, backtest, context and footer', async () => {
@@ -170,7 +172,11 @@ describe('Dashboard states', () => {
       }),
     )
     renderApp()
-    expect(await screen.findByText(NO_DATA)).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        (_, element) => element?.className === 'empty-state' && element.textContent === NO_DATA,
+      ),
+    ).toBeInTheDocument()
     expect(calls.map((u) => u.pathname)).toEqual(['/api/v1/status'])
     expect(screen.getByText('Last pipeline run: none yet')).toBeInTheDocument()
   })
@@ -380,11 +386,12 @@ describe('Dashboard states', () => {
   it('reports failing generation data and retries it', async () => {
     mockFetch(routes({ '/api/v1/actuals': fail(500), '/api/v1/backtest/metrics': fail(500) }))
     renderApp()
-    expect(await screen.findByText(/Could not load the generation data/)).toBeInTheDocument()
-    expect(await screen.findByText(/Could not load the backtest/)).toBeInTheDocument()
-    for (const button of screen.getAllByRole('button', { name: 'Retry' })) {
-      fireEvent.click(button)
-    }
+    // The same failure behind both sections is reported once.
+    expect(
+      await screen.findByText(/^Could not load the backtest and the generation data:/),
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
   })
 
   it('hides the price chart when prices are not served', async () => {

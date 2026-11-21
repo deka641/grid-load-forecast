@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 import * as fixtures from './fixtures.ts'
-import { serveDist } from './server.ts'
+import { CSP, serveDist } from './server.ts'
 
 const PORT = 8471
 const DIST = resolve(import.meta.dirname, '..', 'dist')
@@ -465,8 +465,13 @@ for (const width of [1440, 390]) {
     })
     await page.goto('/')
     const alerts = page.getByRole('alert')
-    // The client retries a 500 twice before it shows the error.
-    await expect(alerts).toHaveCount(3, { timeout: 20_000 })
+    // The client retries a 500 twice before it shows the error. The same failure behind
+    // three sections is reported once, with one Retry.
+    await expect(alerts).toHaveCount(1, { timeout: 20_000 })
+    await expect(alerts).toContainText(
+      'Could not load the forecast, the backtest and the generation data: the server answered with HTTP 500',
+    )
+    await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(1)
     for (const alert of await alerts.all()) {
       const text = await alert.locator('p').boundingBox()
       const button = await alert.getByRole('button', { name: 'Retry' }).boundingBox()
@@ -512,6 +517,78 @@ for (const width of [1440, 1024, 641, 390]) {
       expect(height - (loading[i] ?? 0)).toBeLessThan(height * 0.1)
       expect(loading[i] ?? 0).toBeLessThanOrEqual(height)
     })
+    await context.close()
+  })
+}
+
+test('serves the page and its favicon under the production CSP without inline code', async ({
+  request,
+}) => {
+  const page = await request.get('/')
+  expect(page.status()).toBe(200)
+  expect(page.headers()['content-security-policy']).toBe(CSP)
+  const html = await page.text()
+  expect(html).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />')
+  expect(html).toMatch(
+    /<meta\s+name="description"\s+content="Day-ahead forecast of the German grid load/,
+  )
+  expect(html.match(/<meta name="theme-color"/g)).toHaveLength(2)
+  // style-src 'self' and script-src 'self' block inline styles and inline scripts.
+  expect(html).not.toMatch(/<style|\sstyle=/)
+  expect(html).not.toMatch(/<script(?![^>]*\ssrc=)[^>]*>/)
+
+  const icon = await request.get('/favicon.svg')
+  expect(icon.status()).toBe(200)
+  expect(icon.headers()['content-type']).toBe('image/svg+xml')
+  expect(icon.headers()['content-security-policy']).toBe(CSP)
+  const svg = await icon.text()
+  expect(svg).toMatch(/^<svg /)
+  expect(svg).not.toMatch(/<style|\sstyle=|<script/)
+})
+
+/** WCAG contrast of two computed colours, after resolving transparency against the page. */
+function controlContrasts(page: Page) {
+  return page.evaluate(() => {
+    const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).map(Number)
+    const lum = (value: string) => {
+      const [r = 0, g = 0, b = 0] = rgb(value).map((c) => {
+        const s = c / 255
+        return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+      })
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    const ratio = (a: string, b: string) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x)
+      return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05)
+    }
+    const page = getComputedStyle(document.body).backgroundColor
+    const selector =
+      '.button:not(:disabled), .day-select select, .theme-option span, .chart-data-toggle'
+    return [...document.querySelectorAll(selector)].map((el) => {
+      const style = getComputedStyle(el)
+      const fill = style.backgroundColor
+      return {
+        control: el.textContent.trim(),
+        againstFill: ratio(style.borderTopColor, fill),
+        againstPage: ratio(style.borderTopColor, page),
+      }
+    })
+  })
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`gives every control a border of at least 3:1 in ${scheme}`, async ({ browser }) => {
+    const context = await browser.newContext({ colorScheme: scheme })
+    const page = await context.newPage()
+    await mockApi(page)
+    await open(page)
+    const contrasts = await controlContrasts(page)
+    expect(contrasts.length).toBeGreaterThan(8)
+    for (const c of contrasts) {
+      // The checked theme option is filled with ink; its edge is the fill against the page.
+      expect(Math.max(c.againstFill, c.againstPage), c.control).toBeGreaterThanOrEqual(3)
+      expect(c.againstPage, c.control).toBeGreaterThanOrEqual(3)
+    }
     await context.close()
   })
 }

@@ -6,6 +6,21 @@ import { dayShort, hourLabels, localDay, offsetChange, offsetLabel, wallClock } 
 import type { EChartsCoreOption } from './echarts'
 import type { Palette } from './palette'
 
+/** How a chart is drawn beyond its data: its width class and whether it may animate. */
+export interface ChartLayout {
+  /** A narrow chart, about phone width, which needs sparser ticks and other label places. */
+  compact: boolean
+  /** The user allows motion (prefers-reduced-motion is not set). */
+  motion: boolean
+  /** Draw the lines in; only the first render of a chart with motion allowed. */
+  animate: boolean
+}
+
+export const DEFAULT_LAYOUT: ChartLayout = { compact: false, motion: false, animate: false }
+
+/** Charts narrower than this many pixels use the compact layout. */
+export const COMPACT_WIDTH = 520
+
 export type LinePattern = 'solid' | 'dashed' | 'dashdot'
 
 export interface LineStyleSpec {
@@ -71,7 +86,17 @@ export function firstIndex(params: unknown): number {
   return list[0]?.dataIndex ?? 0
 }
 
-function base(palette: Palette): EChartsCoreOption {
+/** A #rrggbb colour with the given opacity; other notations are returned unchanged. */
+export function withAlpha(color: string, alpha: number): string {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color)
+  if (!match) {
+    return color
+  }
+  const [r, g, b] = match.slice(1).map((hex) => parseInt(hex, 16))
+  return `rgba(${String(r)}, ${String(g)}, ${String(b)}, ${String(alpha)})`
+}
+
+function base(palette: Palette, layout: ChartLayout = DEFAULT_LAYOUT): EChartsCoreOption {
   return {
     animation: false,
     textStyle: { fontFamily: palette.fontFamily, color: palette.muted, fontSize: 12 },
@@ -80,10 +105,13 @@ function base(palette: Palette): EChartsCoreOption {
       trigger: 'axis',
       renderMode: 'html',
       className: 'chart-tooltip',
-      backgroundColor: palette.surface,
-      borderColor: palette.rule,
+      // Set off from the chart surface by its own background, a visible border and a shadow.
+      backgroundColor: palette.tooltipBg,
+      borderColor: palette.tooltipBorder,
       borderWidth: 1,
       padding: [8, 10],
+      extraCssText: 'box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28); border-radius: 4px;',
+      transitionDuration: layout.motion ? 0.2 : 0,
       textStyle: { color: palette.ink, fontFamily: palette.fontFamily, fontSize: 13 },
       axisPointer: { type: 'line', lineStyle: { color: palette.muted, width: 1 } },
       confine: true,
@@ -102,7 +130,7 @@ function valueAxis(palette: Palette, unit: string, extra: Record<string, unknown
     axisLine: { show: false },
     axisTick: { show: false },
     axisLabel: { color: palette.muted },
-    splitLine: { lineStyle: { color: palette.rule, width: 1 } },
+    splitLine: { lineStyle: { color: palette.grid, width: 1 } },
     ...extra,
   }
 }
@@ -155,9 +183,12 @@ export const FORECAST_SERIES: readonly { key: ForecastKey | 'actual'; label: str
   ...MODELS.map((m) => ({ key: m.key, label: m.label })),
 ]
 
-/** Every third wall-clock hour. The repeated 02:00 of a 25-hour day is never a tick. */
-export function forecastTick(ts: string): boolean {
-  return Number(wallClock(ts).slice(0, 2)) % 3 === 0
+/**
+ * Every third wall-clock hour, or every sixth on a compact chart, where three-hour labels
+ * collide on clock-change days. The repeated 02:00 of a 25-hour day is never a tick.
+ */
+export function forecastTick(ts: string, every = 3): boolean {
+  return Number(wallClock(ts).slice(0, 2)) % every === 0
 }
 
 /** A dashed vertical line where the clock changes, labelled with the offsets on both sides. */
@@ -174,10 +205,12 @@ function clockChangeMark(stamps: readonly string[], palette: Palette) {
       symbol: 'none',
       animation: false,
       lineStyle: { color: palette.muted, width: 1, type: [4, 3] },
+      // Starts at the line and runs to the right, away from the unit name at the top left.
       label: {
         show: true,
         position: 'end',
         distance: 3,
+        align: 'left',
         color: palette.muted,
         fontFamily: palette.fontFamily,
         fontSize: 11,
@@ -188,9 +221,33 @@ function clockChangeMark(stamps: readonly string[], palette: Palette) {
   }
 }
 
+/** A faint fill under the model line that fades out towards the axis. */
+function modelArea(palette: Palette) {
+  return {
+    areaStyle: {
+      origin: 'start',
+      color: {
+        type: 'linear',
+        x: 0,
+        y: 0,
+        x2: 0,
+        y2: 1,
+        colorStops: [
+          { offset: 0, color: withAlpha(palette.model, 0.16) },
+          { offset: 1, color: withAlpha(palette.model, 0) },
+        ],
+      },
+    },
+  }
+}
+
 /** Hours of a delivery day are labelled by local wall clock; 02:00 repeats on 25-hour days. */
-export function forecastOption(points: readonly ForecastPoint[], palette: Palette) {
-  const option = base(palette)
+export function forecastOption(
+  points: readonly ForecastPoint[],
+  palette: Palette,
+  layout: ChartLayout = DEFAULT_LAYOUT,
+) {
+  const option = base(palette, layout)
   // Draw order: forecasts underneath, the actual on top.
   const z: Record<ForecastKey | 'actual', number> = {
     baseline_week: 1,
@@ -200,6 +257,10 @@ export function forecastOption(points: readonly ForecastPoint[], palette: Palett
   }
   return {
     ...option,
+    // The one moment of motion on the page: the lines of the newest forecast draw in.
+    animation: layout.animate,
+    animationDuration: 700,
+    animationEasing: 'cubicOut' as const,
     tooltip: {
       ...(option.tooltip as object),
       formatter: (params: unknown) => {
@@ -221,7 +282,7 @@ export function forecastOption(points: readonly ForecastPoint[], palette: Palett
     xAxis: categoryAxis(
       palette,
       hourLabels(points.map((p) => p.ts)),
-      points.map((p) => forecastTick(p.ts)),
+      points.map((p) => forecastTick(p.ts, layout.compact ? 6 : 3)),
     ),
     yAxis: valueAxis(palette, 'GW'),
     series: FORECAST_SERIES.map((s, i) => ({
@@ -238,6 +299,7 @@ export function forecastOption(points: readonly ForecastPoint[], palette: Palett
             palette,
           )
         : {}),
+      ...(s.key === 'lightgbm' ? modelArea(palette) : {}),
     })),
   }
 }
@@ -388,8 +450,9 @@ export function priceOption(
   stamps: readonly string[],
   values: (number | null)[],
   palette: Palette,
+  layout: ChartLayout = DEFAULT_LAYOUT,
 ) {
-  const option = base(palette)
+  const option = base(palette, layout)
   const span = unpublishedSpan(stamps, values)
   const unpublished =
     span !== null
@@ -398,10 +461,19 @@ export function priceOption(
             silent: true,
             itemStyle: { color: palette.rule, opacity: 0.5 },
             // Anchored at the right edge of the plot and growing to the left, so the label
-            // stays inside the chart however narrow the shaded span is.
+            // stays inside the chart however narrow the shaded span is. On a compact chart
+            // the span is only a few pixels wide, so the label moves above the plot, where
+            // it cannot cover the prices.
             label: {
               show: true,
-              position: 'insideTopRight',
+              ...(layout.compact
+                ? {
+                    position: ['100%', 0],
+                    align: 'right',
+                    verticalAlign: 'bottom',
+                    offset: [0, -3],
+                  }
+                : { position: 'insideTopRight' }),
               distance: 4,
               color: palette.muted,
               backgroundColor: palette.surface,
@@ -427,8 +499,10 @@ export function priceOption(
         },
       }
     : {}
+  const grid = option.grid as Record<string, unknown>
   return {
     ...option,
+    grid: span !== null && layout.compact ? { ...grid, top: 30 } : grid,
     tooltip: {
       ...(option.tooltip as object),
       formatter: (params: unknown) => {

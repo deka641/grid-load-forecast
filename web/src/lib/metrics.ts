@@ -66,15 +66,30 @@ export function forecastPeak(points: readonly ForecastPoint[]): Peak | null {
   return peak
 }
 
-export function headline(deliveryDay: string, points: readonly ForecastPoint[]): string {
+export interface HeadlineParts {
+  /** The sentence up to the colon, or the whole sentence when there is no figure. */
+  lead: string
+  /** The peak value and its hour, or null without a model forecast. */
+  figure: string | null
+}
+
+export function headlineParts(
+  deliveryDay: string,
+  points: readonly ForecastPoint[],
+): HeadlineParts {
   const peak = forecastPeak(points)
   const day = dayLong(deliveryDay)
   if (peak === null) {
-    return `No model forecast for ${day}`
+    return { lead: `No model forecast for ${day}`, figure: null }
   }
   // A repeated hour (02:00 on the autumn clock-change day) is named with its offset.
   const at = hourLabels(points.map((p) => p.ts))[points.findIndex((p) => p.ts === peak.ts)] ?? ''
-  return `Forecast peak for ${day}: ${formatGW(peak.value)} at ${at}`
+  return { lead: `Forecast peak for ${day}:`, figure: `${formatGW(peak.value)} at ${at}` }
+}
+
+export function headline(deliveryDay: string, points: readonly ForecastPoint[]): string {
+  const { lead, figure } = headlineParts(deliveryDay, points)
+  return figure === null ? lead : `${lead} ${figure}`
 }
 
 export function findMetric(

@@ -4,7 +4,7 @@ import type { SeriesCatalog } from '../api/client'
 import { useActuals, useSeries } from '../api/queries'
 import { Chart } from '../charts/LazyChart'
 import { mixOption, priceOption, unpublishedSpan } from '../charts/options'
-import type { TimeSeries } from '../charts/options'
+import type { ChartLayout, TimeSeries } from '../charts/options'
 import { GENERATION, generationColor } from '../charts/palette'
 import type { Palette } from '../charts/palette'
 import { NOT_AVAILABLE } from '../lib/format'
@@ -141,7 +141,7 @@ function ContextCharts({
     [aligned, series],
   )
   const buildPrice = useCallback(
-    (palette: Palette) => priceOption(aligned.stamps, prices, palette),
+    (palette: Palette, layout: ChartLayout) => priceOption(aligned.stamps, prices, palette, layout),
     [aligned, prices],
   )
   const range = `${dayPlain(start)} to ${dayPlain(end)}`

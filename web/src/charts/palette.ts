@@ -2,7 +2,10 @@ export interface Palette {
   ink: string
   muted: string
   rule: string
+  grid: string
   surface: string
+  tooltipBg: string
+  tooltipBorder: string
   model: string
   baseline: string
   tso: string
@@ -42,7 +45,10 @@ export function readPalette(root: HTMLElement = document.documentElement): Palet
     ink: read('--color-ink'),
     muted: read('--color-muted'),
     rule: read('--color-rule'),
+    grid: read('--color-grid'),
     surface: read('--color-surface'),
+    tooltipBg: read('--color-tooltip-bg'),
+    tooltipBorder: read('--color-tooltip-border'),
     model: read('--color-model'),
     baseline: read('--color-baseline'),
     tso: read('--color-tso'),

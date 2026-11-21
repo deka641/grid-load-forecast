@@ -1,60 +1,58 @@
-import type { Status } from '../api/client'
-import { dataAgeSeconds } from '../lib/days'
+import type { FreshnessState } from '../lib/freshness'
 import { dateTimeBerlin } from '../lib/time'
-import { useNow } from '../lib/useNow'
 import { ThemeToggle } from './ThemeToggle'
 import { SNAPSHOT_FALLBACK } from './messages'
 
-export const STALE_AFTER_SECONDS = 6 * 3600
+/** last_ts is the start of the newest quarter hour; the data covers its end. */
+function dataUpTo(lastTs: string): string {
+  return `Data up to ${dateTimeBerlin(lastTs, 15)}`
+}
 
-export function Freshness({
-  status,
-  fetchedAt,
-}: {
-  status: Status | undefined
-  fetchedAt: number
-}) {
-  const now = useNow(60_000)
-  if (!status) {
+/** Shown across the page while the data is old, so that it is not missed in the header. */
+export function StaleNotice({ freshness }: { freshness: FreshnessState }) {
+  if (!freshness.stale || freshness.lastTs === null) {
     return null
   }
-  const load = status.series.find((s) => s.key === 'load')
-  const fallback =
-    status.initialised && status.snapshot_error ? (
-      <p className="freshness freshness-stale">{SNAPSHOT_FALLBACK}</p>
-    ) : null
-  if (!load?.last_ts) {
-    return fallback
-  }
-  const stale =
-    load.age_seconds !== null &&
-    dataAgeSeconds(load.age_seconds, fetchedAt, now) > STALE_AFTER_SECONDS
   return (
-    <>
-      <p className={stale ? 'freshness freshness-stale' : 'freshness'}>
-        {/* last_ts is the start of the newest quarter hour; the data covers its end. */}
-        Data up to {dateTimeBerlin(load.last_ts, 15)}
-        {stale ? <strong className="stale-note"> (more than 6 hours old)</strong> : null}
-      </p>
-      {fallback}
-    </>
+    <p className="freshness freshness-stale stale-banner">
+      {dataUpTo(freshness.lastTs)}
+      <strong className="stale-note"> (more than 6 hours old)</strong>
+    </p>
   )
 }
 
-export function Header({ status, fetchedAt }: { status: Status | undefined; fetchedAt: number }) {
+/** A load curve over a day, the mark of the page and its favicon. */
+function Mark() {
+  return (
+    <svg className="site-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <rect width="32" height="32" rx="6" />
+      <path d="M5 21.5 C8 23 10 22.5 12 18 S15 10.5 17.5 11.5 S20.5 13.5 22.5 9.5 S25.5 12 27 17" />
+    </svg>
+  )
+}
+
+export function Header({ freshness }: { freshness: FreshnessState }) {
+  const { lastTs, fallback } = freshness
   return (
     <header className="site-header">
       <div className="site-title">
-        <h1>German grid load: day-ahead forecast</h1>
+        <h1>
+          <Mark />
+          German grid load: day-ahead forecast
+        </h1>
         <p className="lede">
           A day-ahead forecast of the German grid load from public SMARD data, compared with the
           forecast published there.
         </p>
       </div>
       <div className="site-meta">
-        <div className="freshness-group">
-          <Freshness status={status} fetchedAt={fetchedAt} />
-        </div>
+        {/* Without any line the group is left out, so the toggle lines up with the title. */}
+        {lastTs !== null || fallback ? (
+          <div className="freshness-group">
+            {lastTs === null ? null : <p className="freshness">{dataUpTo(lastTs)}</p>}
+            {fallback ? <p className="freshness freshness-stale">{SNAPSHOT_FALLBACK}</p> : null}
+          </div>
+        ) : null}
         <ThemeToggle />
       </div>
     </header>

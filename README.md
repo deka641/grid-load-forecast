@@ -2,7 +2,7 @@
 
 Day-ahead forecast of the German grid load from public SMARD data, with a validated data pipeline, a reproducible backtest, a read-only API and a dashboard.
 
-![Dashboard with the forecast for the next delivery day, backtest accuracy and the generation mix of the past week](docs/assets/dashboard.png)
+![Dashboard with the day-ahead forecast, backtest accuracy and the generation mix of the past week](docs/assets/dashboard.png)
 
 ## What it does
 

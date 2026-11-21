@@ -1,8 +1,10 @@
 import { isApiError } from '../api/client'
 import { dayShort } from '../lib/time'
 
-export const NO_DATA =
-  'No data yet. The pipeline loads the full history on its first start; check back later.'
+export const NO_DATA_TITLE = 'No data yet.'
+export const NO_DATA_BODY =
+  'The pipeline loads the full history on its first start; check back later.'
+export const NO_DATA = `${NO_DATA_TITLE} ${NO_DATA_BODY}`
 export const SNAPSHOT_FALLBACK =
   'A newer data snapshot could not be read; showing the previous one.'
 export const NO_FORECAST =
