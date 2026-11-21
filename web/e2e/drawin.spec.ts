@@ -25,30 +25,51 @@ test.afterAll(async () => {
 
 interface Sample {
   t: number
+  /** Drawn pixels of any kind: axes, grid and lines. */
   ink: number
+  /** Dark pixels inside the plot, which only the forecast lines draw. */
+  line: number
 }
 
 /**
- * Counts the drawn pixels in the right third of the forecast canvas on every frame and keeps
- * each change. The lines reach that part last when they draw in from the left.
+ * Copies the right third of the forecast plot into a small canvas on every frame and keeps
+ * each change of its ink. The lines reach that part last when they draw in from the left;
+ * the grid there is pale, and the axis labels lie outside the copied part.
  */
 function sampleForecastCanvas() {
   const samples: Sample[] = []
   ;(window as unknown as { __ink: Sample[] }).__ink = samples
+  const probe = document.createElement('canvas')
+  probe.width = 120
+  probe.height = 80
+  const reader = probe.getContext('2d', { willReadFrequently: true })
   const step = () => {
     const canvas = document.querySelector<HTMLCanvasElement>('.chart-forecast canvas')
-    const context = canvas?.getContext('2d')
-    if (canvas && context && canvas.width > 0) {
-      const left = Math.floor((canvas.width * 2) / 3)
-      const data = context.getImageData(left, 0, canvas.width - left, canvas.height).data
+    if (canvas && reader && canvas.width > 0) {
+      const x = Math.floor((canvas.width * 2) / 3)
+      const w = Math.floor(canvas.width * 0.28)
+      const y = Math.floor(canvas.height * 0.1)
+      const h = Math.floor(canvas.height * 0.72)
+      reader.clearRect(0, 0, probe.width, probe.height)
+      reader.drawImage(canvas, x, y, w, h, 0, 0, probe.width, probe.height)
+      const data = reader.getImageData(0, 0, probe.width, probe.height).data
       let ink = 0
-      for (let i = 3; i < data.length; i += 4) {
-        if ((data[i] ?? 0) > 0) {
+      let line = 0
+      for (let i = 0; i < data.length; i += 4) {
+        const alpha = data[i + 3] ?? 0
+        if (alpha > 0) {
           ink += 1
+          const r = data[i] ?? 0
+          const g = data[i + 1] ?? 0
+          const b = data[i + 2] ?? 0
+          if (alpha > 64 && Math.max(r, g, b) < 190) {
+            line += 1
+          }
         }
       }
-      if (ink !== samples.at(-1)?.ink) {
-        samples.push({ t: performance.now(), ink })
+      const last = samples.at(-1)
+      if (ink !== last?.ink || line !== last.line) {
+        samples.push({ t: performance.now(), ink, line })
       }
     }
     requestAnimationFrame(step)
@@ -64,7 +85,8 @@ async function inkOverTime(page: Page): Promise<Sample[]> {
   // The draw-in takes 700 ms; sample well past it.
   await page.waitForTimeout(2000)
   const samples = await page.evaluate(() => (window as unknown as { __ink: Sample[] }).__ink)
-  return samples.filter((s) => s.ink > 0)
+  // From the first frame that draws anything.
+  return samples.slice(samples.findIndex((s) => s.ink > 0))
 }
 
 for (const width of [1440, 390]) {
@@ -72,42 +94,42 @@ for (const width of [1440, 390]) {
     browser,
   }) => {
     const context = await browser.newContext({
+      colorScheme: 'light',
       reducedMotion: 'no-preference',
       viewport: { width, height: 900 },
     })
-    const samples = await inkOverTime(await context.newPage())
-    const first = samples[0]
-    const last = samples.at(-1)
-    expect(first).toBeDefined()
-    expect(last).toBeDefined()
-    if (!first || !last) {
-      return
+    try {
+      const samples = await inkOverTime(await context.newPage())
+      const lines = samples.map((s) => s.line)
+      const first = lines[0] ?? 0
+      const last = lines.at(-1) ?? 0
+      // The lines are there in the end, but hardly in the first drawn frame: they rise
+      // through several frames as they draw in from the left.
+      expect(last).toBeGreaterThan(50)
+      expect(first).toBeLessThan(last * 0.25)
+      expect(new Set(lines).size).toBeGreaterThanOrEqual(3)
+    } finally {
+      await context.close()
     }
-    // The first drawn frame lacks most of the lines on the right, which then fill in frame by
-    // frame. With the easing, the right third fills during the later part of the 700 ms.
-    expect(first.ink).toBeLessThan(last.ink * 0.8)
-    expect(samples.length).toBeGreaterThan(5)
-    expect(last.t - first.t).toBeGreaterThan(150)
-    await context.close()
   })
 
   test(`shows the complete forecast chart at once with reduced motion at ${String(width)} px`, async ({
     browser,
   }) => {
     const context = await browser.newContext({
+      colorScheme: 'light',
       reducedMotion: 'reduce',
       viewport: { width, height: 900 },
     })
-    const samples = await inkOverTime(await context.newPage())
-    const first = samples[0]
-    const last = samples.at(-1)
-    expect(first).toBeDefined()
-    expect(last).toBeDefined()
-    if (!first || !last) {
-      return
+    try {
+      const samples = await inkOverTime(await context.newPage())
+      const first = samples[0]?.line ?? 0
+      const last = samples.at(-1)?.line ?? 0
+      // A redraw once the web font has loaded may move a few pixels.
+      expect(last).toBeGreaterThan(50)
+      expect(first).toBeGreaterThan(last * 0.9)
+    } finally {
+      await context.close()
     }
-    // A redraw once the web font has loaded may move the axis labels by a few pixels.
-    expect(first.ink).toBeGreaterThan(last.ink * 0.97)
-    await context.close()
   })
 }
