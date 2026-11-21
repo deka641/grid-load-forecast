@@ -14,3 +14,5 @@ The image build computes the build id as a hash of `src/`, `pyproject.toml` and 
 ## Compose
 
 `compose.yaml` sets the project name `grid-load-forecast`, binds the dashboard to `127.0.0.1:8460`, and defines healthchecks, memory limits (pipeline 2 GB, api 512 MB, web 128 MB) and `restart: unless-stopped`. Container logs rotate at 10 MB with three files kept. For local work, copy `compose.override.example.yaml` to `compose.override.yaml` (git-ignored): containers then do not restart on their own and the dashboard is only reachable from this machine. Settings such as `GRIDLOAD_INCLUDE_PRICES` go into a `.env` file next to the compose file; `.env.example` lists them.
+
+The API and the web container share an internal network with the fixed subnet `10.46.60.0/29`; the web container has `10.46.60.2`, the API `10.46.60.3`, and the API trusts `X-Forwarded-For` only from `10.46.60.2` (`FORWARDED_ALLOW_IPS`). If that subnet is already in use on the host, Compose cannot create the network: change the subnet, both addresses and `FORWARDED_ALLOW_IPS` in `compose.yaml` together. [Architecture](../explanation/architecture.md#network) explains the layout.

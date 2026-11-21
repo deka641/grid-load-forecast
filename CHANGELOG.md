@@ -23,6 +23,13 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 - Values that SMARD withdraws from a recent week of a series other than the grid load no longer fail the run and, after 26 hours, mark the pipeline container unhealthy while load data and forecasts are fine. The run is now `partial` and the error is still shown in `gridload status`; withdrawals in the grid load still fail the run.
 - Publishing the snapshot removes files left by an earlier crashed or failed publish, writes the snapshot completely into its file before it replaces `serving.duckdb`, and leaves no temporary files behind when it fails.
 
+### Security
+
+- One client can no longer crowd out others: the API allows each client address at most 16 data requests in progress, out of 64 in total, and answers further ones with the usual JSON 503. While one client held 100 parallel connections, a second client was answered 200 for all 406 of its requests in two runs, against 136 of 304 before. Locally all browsers on the host count as one client; behind another proxy all clients share one limit unless that proxy is trusted (see SECURITY.md).
+- The API takes the client address from `X-Forwarded-For` only on connections from the web container, at a fixed address on an internal network. A client cannot choose the address it is counted under by sending that header, and the API logs show the client address instead of Caddy's.
+- The API container has no network access beyond the web container: it no longer reaches the internet, and the pipeline and other containers no longer reach it.
+- Busy 503 responses carry `Retry-After: 1`.
+
 ## [0.1.0] - 2026-11-20
 
 ### Added
