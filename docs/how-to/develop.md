@@ -23,6 +23,15 @@ The fast gate runs ruff, ESLint and Prettier, mypy in strict mode and `tsc`, a c
 
 New package versions are only resolved once they are at least seven days old (`exclude-newer` in `pyproject.toml`, `min-release-age` in `web/.npmrc`), and npm does not run install scripts of dependencies. Dependabot proposes updates weekly with the same seven-day cooldown. Every new dependency needs a reason: purpose, maintenance and licence.
 
+The Python image pins its base images by digest, which Dependabot updates, and the Debian packages it installs (`libgomp1`, `curl`, `ca-certificates`, `zlib1g`) by exact version in `docker/python.Dockerfile`, which nobody updates for you. The Debian mirror keeps only the current version of a package: a security update replaces the old version in `trixie-security`, and a point release replaces it in `trixie`. From then on `apt-get install` cannot find the pinned version and the image build fails with `Version '...' for '...' was not found`. If a new base image already ships a newer version than a pin, the build fails with a downgrade error instead. That is intended: a package changes only through a visible commit, never silently between two builds. To update the pins, query the candidate versions in the base image the Dockerfile pins:
+
+```bash
+docker run --rm python:3.15-slim-trixie@sha256:<digest from the Dockerfile> \
+    sh -c 'apt-get update -qq && apt-cache policy libgomp1 curl ca-certificates zlib1g'
+```
+
+Take each `Candidate` and put it into the Dockerfile. Once the base image itself contains the pinned `zlib1g` version, remove the separate `--only-upgrade` step for it. Do the same whenever Dependabot moves the base image digest, then build the image and run `make prod-check`.
+
 ## Work with real data locally
 
 ```bash
