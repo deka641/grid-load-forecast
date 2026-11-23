@@ -62,9 +62,9 @@ uv run --isolated --no-project --with scikit-learn \
     python scripts/crosscheck_metrics.py data/backtest_rows.csv reports/backtest.json
 ```
 
-The first command writes `reports/backtest.json` and `reports/backtest.md`. Without `--last-day` the window ends with the last complete day of the warehouse, so every figure moves with the data. The option rejects a day that is not in the past, after the last complete day, or too early to leave training data. The second command recomputes every metric with scikit-learn in a separate environment and fails on any mismatch.
+The first command writes `reports/backtest.json` and `reports/backtest.md`. Without `--last-day` the window ends with the last complete day of the warehouse, so every figure moves with the data. The option rejects a day that is not in the past, after the last complete day, or too early to leave training data. The second command recomputes every MAE and MAPE with scikit-learn and the error distribution (bias, 95th percentile, largest error, share of hours above 5 %) with the Python standard library, in a separate environment, and fails on any mismatch.
 
-Both reports record a SHA-256 fingerprint of the hourly load and SMARD forecast values up to the last delivery day, and how many of those hours SMARD corrected after they were first loaded. SMARD still corrects values later, so a warehouse loaded at another time can give slightly different figures. If the fingerprint matches the committed one, the input data are the same; if it differs, the data differ and so may the figures.
+Both reports record a SHA-256 fingerprint of the hourly load and SMARD forecast values up to the last delivery day and the number of hours it covers. Compare `inputs.sha256` in your `reports/backtest.json` with the committed one. SMARD still corrects values later, so a warehouse loaded at another time can give slightly different figures. If the fingerprint matches, the input data are the same; if it differs, the data differ and so may the figures.
 
 ## Release checks
 
