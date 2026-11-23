@@ -220,20 +220,17 @@ def run_and_store_backtest(
     *,
     days: int = 365,
     now: datetime | None = None,
-    last_day: date | None = None,
     progress: Callable[[date], None] | None = None,
 ) -> BacktestResult | None:
-    """Backtest up to ``last_day`` (default: the last complete day) and store run and metrics.
+    """Backtest up to the last complete day and store run and metrics.
 
     Returns None and stores nothing if there is no complete day or no hour could
-    be scored. Raises ValueError if ``last_day`` is given and not valid (see
-    :func:`resolve_last_day`).
+    be scored.
     """
     load = load_history(con, "load")
-    if last_complete_day(load) is None:
+    last_day = last_complete_day(load)
+    if last_day is None:
         return None
-    today = (now or datetime.now(UTC)).astimezone(tz.BERLIN).date()
-    last_day = resolve_last_day(load, last_day, today)
     result = run_backtest(
         load,
         load_history(con, "load_forecast_tso"),

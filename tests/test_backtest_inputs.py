@@ -9,11 +9,9 @@ import duckdb
 import numpy as np
 import pytest
 
-from gridload import cli
 from gridload.config import Settings
 from gridload.forecast import service
 from gridload.forecast.features import History
-from gridload.pipeline import jobs
 from tests import synthetic
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -121,21 +119,3 @@ def test_backtest_script_last_day_and_fingerprint(
     assert not (tmp_path / "c").exists()
     with pytest.raises(SystemExit):
         main([*args, "--last-day", "20.04.2025"], today=today)
-
-
-def test_cli_backtest_last_day(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    _warehouse_file(tmp_path)
-    settings = Settings(data_dir=tmp_path)
-    assert jobs.backtest(settings, days=7, last_day=date(2025, 4, 20)).startswith(
-        "backtest 2025-04-14 to 2025-04-20"
-    )
-    assert jobs.backtest(settings, days=7, last_day=date(2025, 5, 3)).startswith(
-        "error: --last-day 2025-05-03 is after the last complete day"
-    )
-    monkeypatch.setenv("GRIDLOAD_DATA_DIR", str(tmp_path))
-    assert cli.main(["backtest", "--days", "7", "--last-day", "2099-01-01"]) == 1
-    assert "not in the past" in capsys.readouterr().out
-    with pytest.raises(SystemExit):
-        cli.main(["backtest", "--last-day", "tomorrow"])
