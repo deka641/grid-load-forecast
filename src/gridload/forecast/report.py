@@ -100,13 +100,11 @@ def to_markdown(result: BacktestResult) -> str:
             "| Largest absolute error (MWh) | Hours with error above 5 % |",
             "|---|---:|---:|---:|---:|",
         ]
-        for model in models:
-            if model in stats:
-                e = stats[model]
-                lines.append(
-                    f"| {LABELS[model]} | {e.bias:+,.0f} | {e.p95_abs:,.0f} | {e.max_abs:,.0f} "
-                    f"| {e.share_above_5_percent:.1f} % |"
-                )
+        for model, e in ((k, stats[k]) for k in models if k in stats):
+            lines.append(
+                f"| {LABELS[model]} | {e.bias:+,.0f} | {e.p95_abs:,.0f} | {e.max_abs:,.0f} "
+                f"| {e.share_above_5_percent:.1f} % |"
+            )
         lines += [
             "",
             "Bias is the mean of forecast minus actual; a positive value means the forecast "
