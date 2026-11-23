@@ -173,7 +173,7 @@ def status(settings: Settings) -> dict[str, Any]:
 
 
 def healthcheck(settings: Settings) -> bool:
-    return heartbeat.is_healthy(heartbeat.read(settings.heartbeat_path), datetime.now(UTC))
+    return heartbeat.check(settings.heartbeat_path)
 
 
 def _iso(value: datetime | None) -> str | None:
