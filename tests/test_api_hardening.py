@@ -189,7 +189,7 @@ async def assert_free_slots(gate: Any, count: int) -> None:
         gate.release()
 
 
-def http_scope(path: str, query: str = "") -> dict[str, Any]:
+def http_scope(path: str, query: str = "", client: str = "127.0.0.1") -> dict[str, Any]:
     return {
         "type": "http",
         "asgi": {"version": "3.0"},
@@ -201,7 +201,7 @@ def http_scope(path: str, query: str = "") -> dict[str, Any]:
         "query_string": query.encode(),
         "root_path": "",
         "headers": [(b"host", b"api")],
-        "client": ("127.0.0.1", 1),
+        "client": (client, 1),
         "server": ("api", 80),
     }
 
@@ -227,8 +227,10 @@ class RawClient:
             await self.readable.wait()
         self.messages.append(message)
 
-    async def call(self, app: FastAPI, path: str, query: str = "") -> None:
-        await app(http_scope(path, query), self.receive, self.send)  # type: ignore[arg-type]
+    async def call(
+        self, app: FastAPI, path: str, query: str = "", client: str = "127.0.0.1"
+    ) -> None:
+        await app(http_scope(path, query, client), self.receive, self.send)  # type: ignore[arg-type]
 
     @property
     def status(self) -> int:
