@@ -47,7 +47,6 @@
   "first_day": "2025-11-20",
   "inputs": {
     "hours": 208344,
-    "revised_hours": 11,
     "sha256": "af82bedd8f459064d2196e74e239ff608783703f425f7fc5b2a9b713ab84d6fc"
   },
   "last_day": "2026-11-19",
