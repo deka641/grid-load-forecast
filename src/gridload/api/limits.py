@@ -82,8 +82,9 @@ SMALL_BODY_BYTES = 64 * 1024
 # Bodies of at least CACHE_MIN_BYTES are kept for the current snapshot, at most
 # CACHE_BYTES in total, least recently used out first. A repeated large request
 # is then answered from memory without a gate or a query slot; sending it still
-# counts against BYTE_BUDGET and PER_CLIENT_BYTES. 1 MiB is about 20,000 points, well below the
-# heavy threshold; one year of all series hourly needs about 6.6 MB of it.
+# counts against BYTE_BUDGET and PER_CLIENT_BYTES. 1 MiB is about 20,000 points,
+# well below the heavy threshold; one year of all series hourly needs about 6.6 MB
+# of it.
 CACHE_BYTES = 32 * 2**20
 CACHE_MIN_BYTES = 2**20
 # All limits are per process; compose runs a single uvicorn worker. uvicorn's own
