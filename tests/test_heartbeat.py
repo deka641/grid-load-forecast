@@ -1,14 +1,13 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from gridload.pipeline import heartbeat
 from gridload.pipeline.heartbeat import Heartbeat, is_healthy
-
-NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+from tests.fake_smard import FIXTURE_NOW
 
 
 def iso(delta: timedelta) -> str:
-    return (NOW - delta).isoformat()
+    return (FIXTURE_NOW - delta).isoformat()
 
 
 def test_round_trip(tmp_path: Path) -> None:
@@ -35,26 +34,28 @@ def test_missing_or_corrupt_file_reads_as_none(tmp_path: Path) -> None:
 
 def test_health_rules() -> None:
     fresh = iso(timedelta(hours=2))
-    assert not is_healthy(None, NOW)
-    assert is_healthy(Heartbeat("running", iso(timedelta(minutes=5))), NOW)
-    assert not is_healthy(Heartbeat("running", iso(timedelta(minutes=30))), NOW)
+    assert not is_healthy(None, FIXTURE_NOW)
+    assert is_healthy(Heartbeat("running", iso(timedelta(minutes=5))), FIXTURE_NOW)
+    assert not is_healthy(Heartbeat("running", iso(timedelta(minutes=30))), FIXTURE_NOW)
     assert is_healthy(
-        Heartbeat("idle", iso(timedelta()), iso(timedelta(hours=25)), "ok", fresh), NOW
+        Heartbeat("idle", iso(timedelta()), iso(timedelta(hours=25)), "ok", fresh), FIXTURE_NOW
     )
     assert not is_healthy(
-        Heartbeat("idle", iso(timedelta()), iso(timedelta(hours=27)), "ok", fresh), NOW
+        Heartbeat("idle", iso(timedelta()), iso(timedelta(hours=27)), "ok", fresh), FIXTURE_NOW
     )
-    assert not is_healthy(Heartbeat("idle", iso(timedelta()), None, "failed", fresh), NOW)
+    assert not is_healthy(Heartbeat("idle", iso(timedelta()), None, "failed", fresh), FIXTURE_NOW)
     # Every run succeeds, but the source stopped publishing new values.
     stale_data = Heartbeat(
         "idle", iso(timedelta()), iso(timedelta(hours=1)), "ok", iso(timedelta(hours=13))
     )
-    assert not is_healthy(stale_data, NOW)
-    assert not is_healthy(Heartbeat("idle", iso(timedelta()), iso(timedelta(hours=1)), "ok"), NOW)
+    assert not is_healthy(stale_data, FIXTURE_NOW)
+    assert not is_healthy(
+        Heartbeat("idle", iso(timedelta()), iso(timedelta(hours=1)), "ok"), FIXTURE_NOW
+    )
     stale_run_recent_success = Heartbeat(
         "running", iso(timedelta(hours=2)), iso(timedelta(hours=3)), None, fresh
     )
-    assert is_healthy(stale_run_recent_success, NOW)
+    assert is_healthy(stale_run_recent_success, FIXTURE_NOW)
 
 
 def test_now_iso_is_utc() -> None:
