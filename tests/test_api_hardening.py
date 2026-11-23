@@ -399,7 +399,10 @@ def test_a_body_larger_than_its_estimate_must_fit_the_budget(
     query = f"series={ALL_KEYS}&start=2025-03-01&end=2025-03-31"
     size = len(make_client(settings).get(f"/api/v1/actuals?{query}").content)
     monkeypatch.setattr(app_module, "BYTES_PER_POINT", 1)
-    # The estimate (11,160 bytes) fits, the real body does not.
+    # With the patched estimate (11,160 bytes) a budget of exactly the body size
+    # passes, so a refusal one byte below can only come from the real body.
+    fits = make_client(settings, limits=Limits(byte_budget=size)).get(f"/api/v1/actuals?{query}")
+    assert fits.status_code == 200
     client = make_client(settings, limits=Limits(byte_budget=size - 1))
     response = client.get(f"/api/v1/actuals?{query}")
     assert response.status_code == 503
