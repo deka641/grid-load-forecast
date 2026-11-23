@@ -143,7 +143,9 @@ function PriceStats({
         ? ` over ${String(s.hours)} of ${String(s.hours + missing)} hours, negative in ${String(s.negativeHours)} of them.`
         : `, negative in ${String(s.negativeHours)} of ${String(s.hours)} hours.`}{' '}
       A single negative quarter hour can be hidden in its hourly mean.
-      {missing > 0 ? ` SMARD has published no prices for ${sourceText}.` : ''}
+      {missing > 0
+        ? ` SMARD has published no prices for ${sourceText}; the chart shades these hours lighter.`
+        : ''}
       {last !== undefined
         ? ` The last published price is for ${hourText(last, true)}; the shaded part of the chart has no prices yet.`
         : pending !== undefined

@@ -1,5 +1,6 @@
 import { backtest, forecast } from '../test/fixtures'
 import {
+  DEFAULT_LAYOUT,
   escapeHtml,
   firstIndex,
   forecastOption,
@@ -44,7 +45,11 @@ interface Series {
   z?: number
   markLine?: { data: unknown[]; label: { formatter: string }; lineStyle: { color: string } }
   markArea?: {
-    data: { xAxis: string; label?: { formatter: string }; itemStyle?: { opacity: number } }[][]
+    data: {
+      xAxis: string
+      label?: { formatter: string; show?: boolean }
+      itemStyle?: { opacity: number }
+    }[][]
     label: { formatter: string }
   }
 }
@@ -249,6 +254,12 @@ describe('price gaps', () => {
     expect(areas(area)).toEqual([['2', '5', 'No price published by SMARD']])
     // Lighter than the shading of hours not yet published.
     expect(area?.data[0]?.[0]?.itemStyle?.opacity).toBeLessThan(0.5)
+    // Labelled in the chart where the span can hold the text; the summary names it always.
+    expect(area?.data[0]?.[0]?.label?.show).toBe(true)
+    const compact = built(
+      priceOption(hours, values, palette, { ...DEFAULT_LAYOUT, compact: true }, '2026-11-21'),
+    ).series[0]?.markArea
+    expect(compact?.data[0]?.[0]?.label?.show).toBe(false)
   })
 
   it('labels a missing end of the range as a source gap once its day is due', () => {

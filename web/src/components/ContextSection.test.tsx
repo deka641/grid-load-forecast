@@ -105,7 +105,7 @@ describe('Price summary', () => {
       'Hourly prices (each the mean of four quarter hours) from -10.00 to 30.00 EUR/MWh, ' +
         'average 10.00 EUR/MWh over 2 of 4 hours, negative in 1 of them. A single negative ' +
         'quarter hour can be hidden in its hourly mean. SMARD has published no prices for ' +
-        'Thu 19 Nov, 23:00 to Fri 20 Nov, 00:00 (UTC+1).',
+        'Thu 19 Nov, 23:00 to Fri 20 Nov, 00:00 (UTC+1); the chart shades these hours lighter.',
     )
     expect(summary).not.toHaveTextContent('shaded part')
   })
@@ -124,7 +124,7 @@ describe('Price summary', () => {
       'average 10.00 EUR/MWh over 2 of 4 hours, negative in 1 of them.',
     )
     expect(summary).toHaveTextContent(
-      'SMARD has published no prices for Sat 21 Nov, 00:00 to Sat 21 Nov, 01:00 (UTC+1).',
+      'SMARD has published no prices for Sat 21 Nov, 00:00 to Sat 21 Nov, 01:00 (UTC+1); the chart shades these hours lighter.',
     )
     expect(summary).not.toHaveTextContent('last published price')
   })
@@ -143,7 +143,7 @@ describe('Price summary', () => {
       'average 20.00 EUR/MWh over 2 of 27 hours, negative in 0 of them.',
     )
     expect(summary).toHaveTextContent(
-      'SMARD has published no prices for Sun 25 Oct, 00:00 (UTC+2) to Sun 25 Oct, 23:00 (UTC+1).',
+      'SMARD has published no prices for Sun 25 Oct, 00:00 (UTC+2) to Sun 25 Oct, 23:00 (UTC+1); the chart shades these hours lighter.',
     )
   })
 
