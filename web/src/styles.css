@@ -53,7 +53,6 @@
   --color-skeleton: color-mix(in srgb, var(--color-ink) 7%, transparent);
   --shadow-1: 0 1px 2px rgb(16 24 40 / 0.04), 0 2px 8px rgb(16 24 40 / 0.06);
   --hero-glow: color-mix(in srgb, var(--color-model) 7%, transparent);
-  --page-tint: var(--color-bg);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -79,7 +78,6 @@
     --color-surface-2: #1a2738;
     --shadow-1: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px rgb(0 0 0 / 0.35);
     --hero-glow: color-mix(in srgb, var(--color-model) 10%, transparent);
-    --page-tint: #121c2a;
   }
 }
 
@@ -105,7 +103,6 @@
   --color-surface-2: #1a2738;
   --shadow-1: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px rgb(0 0 0 / 0.35);
   --hero-glow: color-mix(in srgb, var(--color-model) 10%, transparent);
-  --page-tint: #121c2a;
 }
 
 *,
@@ -121,9 +118,7 @@ html {
 
 body {
   margin: 0;
-  /* Dark: a slightly lighter band behind the header fades into the page colour. */
-  background: linear-gradient(180deg, var(--page-tint) 0, var(--color-bg) 520px) no-repeat
-    var(--color-bg);
+  background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-body);
   font-size: var(--text-md);
@@ -378,8 +373,7 @@ a:hover {
   color: var(--color-muted);
 }
 
-/* Headline and key figures form one block: the peak on the left, the backtest on the right.
-   A soft glow in the model colour sits behind the figure. */
+/* Headline and key figures form one block: the peak on the left, the backtest on the right. */
 .forecast-hero {
   display: flex;
   flex-wrap: wrap;
@@ -387,19 +381,27 @@ a:hover {
   justify-content: space-between;
   gap: 20px 48px;
   margin-top: 8px;
-  position: relative;
+}
+
+/* A soft glow in the model colour behind the peak figure, fading out on every side. It hangs
+   from the small label above the hero rather than from the hero itself, so the background of
+   the headline and key figures stays a plain colour that contrast checkers can read. */
+.section:has(> .forecast-hero) {
   isolation: isolate;
 }
 
-/* The glow fades out on every side, wider than the figure and behind it. */
-.forecast-hero::before {
+.section-title.eyebrow:has(+ .forecast-hero) {
+  position: relative;
+}
+
+.section-title.eyebrow:has(+ .forecast-hero)::after {
   content: '';
   position: absolute;
   z-index: -1;
-  top: -30%;
-  bottom: -30%;
+  top: -40px;
   left: calc(-1 * var(--gutter));
   width: min(900px, 80%);
+  height: 260px;
   background: radial-gradient(closest-side, var(--hero-glow), transparent);
   pointer-events: none;
 }
