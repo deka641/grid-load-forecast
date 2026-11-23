@@ -271,8 +271,16 @@ function clockChangeMark(stamps: readonly string[], palette: Palette) {
   }
 }
 
-/** The value axis in GW from and to whole multiples of 5 GW, so the ticks fall on 40, 45, 50. */
-function roundedGwRange(points: readonly ForecastPoint[]) {
+/** At most this many 5 GW steps on the value axis; a wider range lets ECharts pick the step. */
+const MAX_GW_STEPS = 20
+
+/**
+ * The value axis in GW from and to whole multiples of 5 GW, so the ticks fall on 40, 45, 50.
+ * The fixed 5 GW step applies only while it gives at most MAX_GW_STEPS ticks.
+ */
+export function roundedGwRange(
+  points: readonly ForecastPoint[],
+): { min: number; max: number; interval?: number } | null {
   const values = points.flatMap((p) =>
     FORECAST_SERIES.map((s) => p[s.key]).filter((v): v is number => v !== null),
   )
@@ -281,7 +289,8 @@ function roundedGwRange(points: readonly ForecastPoint[]) {
   }
   const min = Math.floor(Math.min(...values) / 5000) * 5
   const max = Math.ceil(Math.max(...values) / 5000) * 5
-  return { min, max: max > min ? max : min + 5 }
+  const top = max > min ? max : min + 5
+  return (top - min) / 5 > MAX_GW_STEPS ? { min, max: top } : { min, max: top, interval: 5 }
 }
 
 /**
@@ -366,7 +375,7 @@ export function forecastOption(
       hourLabels(points.map((p) => p.ts)),
       points.map((p) => forecastTick(p.ts, layout.compact ? 6 : 3)),
     ),
-    yAxis: valueAxis(palette, 'GW', range === null ? {} : { ...range, interval: 5 }),
+    yAxis: valueAxis(palette, 'GW', range ?? {}),
     series: FORECAST_SERIES.map((s, i) => ({
       ...lineSeries(
         s.label,

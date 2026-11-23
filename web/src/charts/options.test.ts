@@ -8,6 +8,7 @@ import {
   mapeByHourOption,
   mixOption,
   priceOption,
+  roundedGwRange,
   stepEnds,
   tooltipHtml,
   tooltipPosition,
@@ -293,5 +294,42 @@ describe('tooltipPosition', () => {
     }
     expect(tooltipPosition([140, 50], narrow)).toEqual([100, 8])
     expect(tooltipPosition([160, 50], narrow)).toEqual([0, 8])
+  })
+})
+
+describe('forecast axis and peak edge cases', () => {
+  interface Marked {
+    series: { name: string; markPoint?: { data: { coord: [string, number] }[] } }[]
+  }
+  const peakCoord = (points: ReturnType<typeof forecast>['points']) =>
+    (forecastOption(points, palette) as unknown as Marked).series.find((s) => s.markPoint)
+      ?.markPoint?.data[0]?.coord
+
+  it('drops the fixed 5 GW step when it would give more than 20 ticks', () => {
+    const points = forecast('2026-11-20').points.map((p, i) => ({
+      ...p,
+      lightgbm: i === 5 ? 160_000 : p.lightgbm,
+    }))
+    const range = roundedGwRange(points)
+    expect(range?.max).toBe(160)
+    expect(range?.interval).toBeUndefined()
+    expect(roundedGwRange(forecast('2026-11-20').points)?.interval).toBe(5)
+  })
+
+  it('marks the first of two equal peak hours, as the headline names it', () => {
+    const points = forecast('2026-11-20').points.map((p, i) => ({
+      ...p,
+      lightgbm: i === 8 || i === 15 ? 90_000 : p.lightgbm,
+    }))
+    expect(peakCoord(points)).toEqual(['8', 90])
+  })
+
+  it('marks the repeated 02:00 hour of the 25-hour day by its own index', () => {
+    const points = forecast('2026-10-25').points.map((p, i) => ({
+      ...p,
+      lightgbm: i === 3 ? 99_900 : p.lightgbm,
+    }))
+    expect(points).toHaveLength(25)
+    expect(peakCoord(points)).toEqual(['3', 99.9])
   })
 })
