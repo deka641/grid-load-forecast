@@ -25,6 +25,7 @@ def to_json(result: BacktestResult) -> str:
         "last_day": result.last_day.isoformat(),
         "config": result.config,
         "skipped_days": [d.isoformat() for d in result.skipped_days],
+        "inputs": result.inputs,
         "metrics": [
             {
                 "model": m.model,
@@ -117,6 +118,13 @@ def to_markdown(result: BacktestResult) -> str:
         "- Hours are local time. The 02:00 row includes both 02:00 hours of the autumn "
         "clock-change day; the spring clock-change day has no 02:00 hour.",
     ]
+    if result.inputs:
+        lines.append(
+            f"- Input data: SHA-256 `{result.inputs['sha256']}` over {result.inputs['hours']} "
+            "hourly values of grid load and the SMARD forecast up to the last delivery day "
+            f"(canonical form in `service.input_fingerprint`); {result.inputs['revised_hours']} "
+            "of these hours contain a value that SMARD corrected after it was first loaded."
+        )
     if result.skipped_days:
         lines.append(f"- Days without actual values, not scored: {len(result.skipped_days)}.")
     return "\n".join(lines) + "\n"

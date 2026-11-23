@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from datetime import time as clock_time
 from pathlib import Path
 from typing import Any
@@ -277,12 +277,15 @@ def _forecast_step(con: duckdb.DuckDBPyConnection, current: datetime) -> None:
     log.info("forecast issued for delivery day %s%s", day, note)
 
 
-def backtest(settings: Settings, *, days: int) -> str:
+def backtest(settings: Settings, *, days: int, last_day: date | None = None) -> str:
     """Run and store a backtest, then republish the snapshot. Returns a summary line."""
     if days < 7:
         return "error: --days must be at least 7"
     with connect(settings.warehouse_path) as con:
-        result = service.run_and_store_backtest(con, days=days)
+        try:
+            result = service.run_and_store_backtest(con, days=days, last_day=last_day)
+        except ValueError as exc:
+            return f"error: {exc}"
         if result is None:
             return "error: no complete day of load data"
         con.execute("CHECKPOINT")

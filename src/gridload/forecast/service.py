@@ -1,5 +1,6 @@
 """Warehouse access for the forecast: load history, issue forecasts, store backtests."""
 
+import hashlib
 import json
 import uuid
 from collections.abc import Callable
@@ -12,7 +13,7 @@ import polars as pl
 
 from gridload import timezones as tz
 from gridload.forecast import calendar as cal
-from gridload.forecast.backtest import BacktestResult, run_backtest
+from gridload.forecast.backtest import MIN_TRAINING_DAYS, BacktestResult, run_backtest
 from gridload.forecast.features import History, baseline_week, feature_gaps
 from gridload.forecast.model import (
     BASELINE_NAME,
@@ -52,6 +53,63 @@ def last_complete_day(history: History) -> date | None:
             return day
         day -= timedelta(days=1)
     return None
+
+
+def resolve_last_day(load: History, requested: date | None, today: date) -> date:
+    """Last delivery day of a backtest: ``requested`` if valid, else the last complete day.
+
+    Raises ValueError if there is no complete day, or if ``requested`` is not before
+    ``today``, later than the last complete day of load data, or so early that the
+    backtest would have no training data.
+    """
+    last = last_complete_day(load)
+    if last is None:
+        raise ValueError("no complete day of load data")
+    if requested is None:
+        return last
+    if requested >= today:
+        raise ValueError(f"--last-day {requested} is not in the past")
+    if requested > last:
+        raise ValueError(f"--last-day {requested} is after the last complete day {last}")
+    earliest = training_start(load) + MIN_TRAINING_DAYS
+    if requested < earliest:
+        raise ValueError(f"--last-day {requested} leaves no training data; use {earliest} or later")
+    return requested
+
+
+FINGERPRINT_SERIES = ("load", "load_forecast_tso")
+
+
+def input_fingerprint(series: dict[str, History], last_day: date) -> tuple[str, int]:
+    """SHA-256 over the hourly values of ``FINGERPRINT_SERIES`` up to the end of ``last_day``.
+
+    Canonical form: one line per hour, ``<series>,<start of hour in epoch ms>,<value with
+    three decimals>`` and a newline, series in the order of ``FINGERPRINT_SERIES``, hours
+    ascending. Returns the hex digest and the number of hours hashed.
+    """
+    end_ms = int(tz.day_hours(last_day)[-1].timestamp() * 1000) + 3_600_000
+    digest = hashlib.sha256()
+    count = 0
+    for key in FINGERPRINT_SERIES:
+        history = series[key]
+        for ts_ms, value in zip(history.ts.tolist(), history.values.tolist(), strict=True):
+            if ts_ms >= end_ms:
+                break
+            digest.update(f"{key},{ts_ms},{value:.3f}\n".encode())
+            count += 1
+    return digest.hexdigest(), count
+
+
+def revised_hours(con: duckdb.DuckDBPyConnection, last_day: date) -> int:
+    """Hours of ``FINGERPRINT_SERIES`` up to the end of ``last_day`` with a revised quarter hour."""
+    end = tz.day_hours(last_day)[-1] + timedelta(hours=1)
+    row = con.execute(
+        "SELECT count(DISTINCT (series_key, time_bucket(INTERVAL 1 HOUR, ts_utc))) "
+        "FROM observations WHERE resolution = 'quarterhour' AND revision > 0 "
+        "AND series_key IN (SELECT unnest(?::VARCHAR[])) AND ts_utc < ?",
+        [list(FINGERPRINT_SERIES), end],
+    ).fetchone()
+    return int(row[0]) if row else 0
 
 
 def due_delivery_day(con: duckdb.DuckDBPyConnection, now: datetime) -> date | None:
@@ -162,17 +220,20 @@ def run_and_store_backtest(
     *,
     days: int = 365,
     now: datetime | None = None,
+    last_day: date | None = None,
     progress: Callable[[date], None] | None = None,
 ) -> BacktestResult | None:
-    """Backtest up to the last complete day and store run and metrics.
+    """Backtest up to ``last_day`` (default: the last complete day) and store run and metrics.
 
     Returns None and stores nothing if there is no complete day or no hour could
-    be scored.
+    be scored. Raises ValueError if ``last_day`` is given and not valid (see
+    :func:`resolve_last_day`).
     """
     load = load_history(con, "load")
-    last_day = last_complete_day(load)
-    if last_day is None:
+    if last_complete_day(load) is None:
         return None
+    today = (now or datetime.now(UTC)).astimezone(tz.BERLIN).date()
+    last_day = resolve_last_day(load, last_day, today)
     result = run_backtest(
         load,
         load_history(con, "load_forecast_tso"),

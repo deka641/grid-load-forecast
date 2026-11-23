@@ -4,7 +4,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from gridload import __version__
 from gridload.config import Settings
@@ -17,6 +17,10 @@ def _date(value: str) -> datetime:
         return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"expected YYYY-MM-DD, got {value!r}") from exc
+
+
+def _day(value: str) -> date:
+    return _date(value).date()
 
 
 def _non_negative(value: str) -> int:
@@ -56,6 +60,11 @@ def _parser() -> argparse.ArgumentParser:
 
     backtest = sub.add_parser("backtest", help="run the rolling-origin backtest and store it")
     backtest.add_argument("--days", type=int, default=365, help="evaluation days (default 365)")
+    backtest.add_argument(
+        "--last-day",
+        type=_day,
+        help="last delivery day, YYYY-MM-DD (default: the last complete day of load data)",
+    )
     sub.add_parser("status", help="print the status of the published snapshot as JSON")
     sub.add_parser("healthcheck", help="exit 0 if the pipeline is healthy")
     return parser
@@ -73,7 +82,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "healthcheck":
         return 0 if jobs.healthcheck(settings) else 1
     if args.command == "backtest":
-        stored = jobs.backtest(settings, days=args.days)
+        stored = jobs.backtest(settings, days=args.days, last_day=args.last_day)
         print(stored)
         return 0 if stored.startswith("backtest") else 1
     try:

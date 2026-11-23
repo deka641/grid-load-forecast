@@ -56,6 +56,8 @@ class BacktestResult:
     rows: list[dict[str, object]] = field(default_factory=list)
     metrics: list[Metric] = field(default_factory=list)
     skipped_days: list[date] = field(default_factory=list)
+    # Identifies the input data (set by the caller, see ``service.input_fingerprint``).
+    inputs: dict[str, object] = field(default_factory=dict)
 
 
 def mae(actual: np.ndarray, predicted: np.ndarray) -> float:
