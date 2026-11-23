@@ -19,7 +19,14 @@ from fastapi.testclient import TestClient
 
 from gridload.api import app as app_module
 from gridload.api import queries
-from gridload.api.app import BYTES_PER_POINT, CHUNK_BYTES, HEAVY_MAX_WAITING, Limits, create_app
+from gridload.api.app import create_app
+from gridload.api.limits import (
+    BYTES_PER_POINT,
+    CHUNK_BYTES,
+    HEAVY_MAX_WAITING,
+    MAX_INFLIGHT,
+    Limits,
+)
 from gridload.api.models import Actuals, ForecastDay
 from gridload.api.store import NEWEST_UNOPENABLE
 from gridload.config import Settings
@@ -411,8 +418,8 @@ def test_health_and_status_answer_while_heavy_requests_wait(
     # All requests come from one client address; lift its limits to reach the heavy queue.
     limits = Limits(
         heavy_wait=2.0,
-        per_client_inflight=app_module.MAX_INFLIGHT,
-        per_client_queries=app_module.MAX_INFLIGHT,
+        per_client_inflight=MAX_INFLIGHT,
+        per_client_queries=MAX_INFLIGHT,
     )
     app = create_app(settings, limits=limits)
     gate = app.state.heavy_gate
