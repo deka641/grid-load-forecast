@@ -141,9 +141,12 @@ def to_markdown(result: BacktestResult) -> str:
         "",
         "## Notes",
         "",
-        "- The SMARD grid load forecast (filter 411) is scored with the values SMARD publishes "
-        "today. SMARD does not state when each value was published or whether it was revised, "
-        "so this comparison may favour that forecast.",
+        "- Two effects of the data point in opposite directions. The model's inputs are the "
+        "load values as stored today, including corrections SMARD made later, which a forecast "
+        "at 12:00 on the day before would not have had; this favours the model. The SMARD grid "
+        "load forecast (filter 411) is scored with the values SMARD publishes today, without its "
+        "publication time; this may favour SMARD. Neither effect is quantified, so the gap "
+        "between the model and SMARD is an estimate, not a measured advantage.",
         "- MAE is in MWh per hour (equal to the mean absolute error in MW). MAPE is the mean "
         "absolute percentage error over all scored hours.",
         "- Hours are local time. The 02:00 row includes both 02:00 hours of the autumn "
