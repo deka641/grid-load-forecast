@@ -5,7 +5,7 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
-from gridload.forecast.backtest import BacktestResult, Metric
+from gridload.forecast.backtest import BacktestResult, Metric, error_summary
 
 LABELS = {
     "lightgbm": "LightGBM model",
@@ -25,6 +25,17 @@ def to_json(result: BacktestResult) -> str:
         "last_day": result.last_day.isoformat(),
         "config": result.config,
         "skipped_days": [d.isoformat() for d in result.skipped_days],
+        "inputs": result.inputs,
+        "error_distribution": {
+            model: {
+                "bias_mwh": round(x.bias, 1),
+                "p95_abs_error_mwh": round(x.p95_abs, 1),
+                "max_abs_error_mwh": round(x.max_abs, 1),
+                "hours_above_5_percent": round(x.share_above_5_percent, 2),
+                "n": x.n,
+            }
+            for model, x in error_summary(result.rows).items()
+        },
         "metrics": [
             {
                 "model": m.model,
@@ -79,6 +90,27 @@ def to_markdown(result: BacktestResult) -> str:
             f"On the {tso.n} hours that also have a SMARD forecast, the MAPE is: {parts}, "
             f"{LABELS['tso']} {tso.mape:.2f} %.",
         ]
+    stats = error_summary(result.rows)
+    if stats:
+        lines += [
+            "",
+            "## Error distribution",
+            "",
+            "| Forecast | Bias (MWh per hour) | 95th percentile of absolute error (MWh) "
+            "| Largest absolute error (MWh) | Hours with error above 5 % |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for model, e in ((k, stats[k]) for k in models if k in stats):
+            lines.append(
+                f"| {LABELS[model]} | {e.bias:+,.0f} | {e.p95_abs:,.0f} | {e.max_abs:,.0f} "
+                f"| {e.share_above_5_percent:.1f} % |"
+            )
+        lines += [
+            "",
+            "Bias is the mean of forecast minus actual; a positive value means the forecast "
+            "is too high on average. The error above 5 % is the absolute percentage error of "
+            "an hour. Each forecast is scored on the same hours as in the overall table.",
+        ]
     lines += [
         "",
         "## By day type (MAPE)",
@@ -109,14 +141,23 @@ def to_markdown(result: BacktestResult) -> str:
         "",
         "## Notes",
         "",
-        "- The SMARD grid load forecast (filter 411) is scored with the values SMARD publishes "
-        "today. SMARD does not state when each value was published or whether it was revised, "
-        "so this comparison may favour that forecast.",
+        "- Two effects of the data point in opposite directions. The model's inputs are the "
+        "load values as stored today, including corrections SMARD made later, which a forecast "
+        "at 12:00 on the day before would not have had; this favours the model. The SMARD grid "
+        "load forecast (filter 411) is scored with the values SMARD publishes today, without its "
+        "publication time; this may favour SMARD. Neither effect is quantified, so the gap "
+        "between the model and SMARD is an estimate, not a measured advantage.",
         "- MAE is in MWh per hour (equal to the mean absolute error in MW). MAPE is the mean "
         "absolute percentage error over all scored hours.",
         "- Hours are local time. The 02:00 row includes both 02:00 hours of the autumn "
         "clock-change day; the spring clock-change day has no 02:00 hour.",
     ]
+    if result.inputs:
+        lines.append(
+            f"- Input data: SHA-256 `{result.inputs['sha256']}` over {result.inputs['hours']} "
+            "hourly values of grid load and the SMARD forecast up to the last delivery day "
+            "(canonical form in `service.input_fingerprint`)."
+        )
     if result.skipped_days:
         lines.append(f"- Days without actual values, not scored: {len(result.skipped_days)}.")
     return "\n".join(lines) + "\n"

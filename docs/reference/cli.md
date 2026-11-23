@@ -17,7 +17,7 @@ All commands that write need exclusive access to the warehouse. While the hourly
 
 | Script | Purpose |
 |---|---|
-| `scripts/backtest.py` | Backtest on the local warehouse, writes `reports/backtest.json` and `reports/backtest.md` |
+| `scripts/backtest.py [--days N] [--last-day YYYY-MM-DD]` | Backtest on the local warehouse, writes `reports/backtest.json` and `reports/backtest.md` with a fingerprint of the input data |
 | `scripts/crosscheck_metrics.py` | Recomputes every reported metric with scikit-learn in a separate environment |
 | `scripts/record_fixtures.py` | Records the SMARD responses used as test fixtures |
 | `scripts/smoke.py` | Live check against SMARD (`make smoke`) |

@@ -14,6 +14,16 @@ Each delivery day is forecast at 12:00 Europe/Berlin on the previous day, using 
 
 On the 8760 hours that also have a SMARD forecast, the MAPE is: LightGBM model 3.04 %, Baseline (same hour last week) 5.30 %, SMARD grid load forecast 3.92 %.
 
+## Error distribution
+
+| Forecast | Bias (MWh per hour) | 95th percentile of absolute error (MWh) | Largest absolute error (MWh) | Hours with error above 5 % |
+|---|---:|---:|---:|---:|
+| LightGBM model | +35 | 4,134 | 11,310 | 18.3 % |
+| Baseline (same hour last week) | +3 | 7,531 | 30,293 | 40.2 % |
+| SMARD grid load forecast | +201 | 5,531 | 11,261 | 29.7 % |
+
+Bias is the mean of forecast minus actual; a positive value means the forecast is too high on average. The error above 5 % is the absolute percentage error of an hour. Each forecast is scored on the same hours as in the overall table.
+
 ## By day type (MAPE)
 
 | Day type | LightGBM model | Baseline (same hour last week) | SMARD grid load forecast |
@@ -53,6 +63,7 @@ On the 8760 hours that also have a SMARD forecast, the MAPE is: LightGBM model 3
 
 ## Notes
 
-- The SMARD grid load forecast (filter 411) is scored with the values SMARD publishes today. SMARD does not state when each value was published or whether it was revised, so this comparison may favour that forecast.
+- Two effects of the data point in opposite directions. The model's inputs are the load values as stored today, including corrections SMARD made later, which a forecast at 12:00 on the day before would not have had; this favours the model. The SMARD grid load forecast (filter 411) is scored with the values SMARD publishes today, without its publication time; this may favour SMARD. Neither effect is quantified, so the gap between the model and SMARD is an estimate, not a measured advantage.
 - MAE is in MWh per hour (equal to the mean absolute error in MW). MAPE is the mean absolute percentage error over all scored hours.
 - Hours are local time. The 02:00 row includes both 02:00 hours of the autumn clock-change day; the spring clock-change day has no 02:00 hour.
+- Input data: SHA-256 `af82bedd8f459064d2196e74e239ff608783703f425f7fc5b2a9b713ab84d6fc` over 208344 hourly values of grid load and the SMARD forecast up to the last delivery day (canonical form in `service.input_fingerprint`).

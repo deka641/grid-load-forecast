@@ -47,13 +47,24 @@ npm --prefix web run dev                             # proxies /api to port 8000
 
 ## Reproduce the backtest report
 
+The committed report was computed on the full history since 2015 up to the delivery day 2026-11-19. A warehouse loaded with `--since` trains the model on less history and gives other figures. Get a full warehouse in one of two ways:
+
 ```bash
-uv run python scripts/backtest.py
+GRIDLOAD_DATA_DIR=data uv run gridload backfill      # full history; the first backfill of the stack took 75 minutes
+docker compose cp pipeline:/data/warehouse.duckdb data/warehouse.duckdb   # or copy it from the stack while no run is active
+```
+
+Then run the backtest for the same window and cross-check it:
+
+```bash
+uv run python scripts/backtest.py --last-day 2026-11-19
 uv run --isolated --no-project --with scikit-learn \
     python scripts/crosscheck_metrics.py data/backtest_rows.csv reports/backtest.json
 ```
 
-The first command writes `reports/backtest.json` and `reports/backtest.md`. The second recomputes every metric with scikit-learn in a separate environment and fails on any mismatch.
+The first command writes `reports/backtest.json` and `reports/backtest.md`. Without `--last-day` the window ends with the last complete day of the warehouse, so every figure moves with the data. The option rejects a day that is not in the past, after the last complete day, or too early to leave training data. The second command recomputes every MAE and MAPE with scikit-learn and the error distribution (bias, 95th percentile, largest error, share of hours above 5 %) with the Python standard library, in a separate environment, and fails on any mismatch.
+
+Both reports record a SHA-256 fingerprint of the hourly load and SMARD forecast values up to the last delivery day and the number of hours it covers. Compare `inputs.sha256` in your `reports/backtest.json` with the committed one. SMARD still corrects values later, so a warehouse loaded at another time can give slightly different figures. If the fingerprint matches, the input data are the same; if it differs, the data differ and so may the figures.
 
 ## Release checks
 

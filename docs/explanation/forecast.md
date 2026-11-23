@@ -14,7 +14,7 @@ SMARD publishes load values with a delay of one to two hours. A feature may ther
 
 The features per target hour are:
 
-- calendar: local hour, weekday, month, day of year, day type, nationwide public holidays (package `holidays`), bridge days, and the number of hours of the delivery day;
+- calendar: local hour, weekday, month, day of year, day type, nationwide public holidays (package `holidays`), bridge days, and the number of hours of the delivery day. Public holidays of single states are not modelled: a day such as Corpus Christi, a holiday in six states, is treated as an ordinary workday;
 - lagged load at the same local hour 1, 2, 7 and 14 days earlier (the 1-day lag exists only for hours that ended before the cutoff, so it is empty from 10:00 onward);
 - the mean load of the last 24 and 168 hours before the cutoff, and the newest known hourly value.
 
@@ -28,21 +28,26 @@ The model is LightGBM with an L1 objective, 600 boosting rounds and a fixed seed
 
 The baseline repeats the load of the same local hour seven days earlier. It is simple, needs no training and captures the weekly pattern, which makes it the reference any model has to beat.
 
-The third line is the grid load forecast that SMARD publishes (filter 411). It is a useful outside reference, with one limitation: SMARD does not state when each value was published or whether it was revised later, so the comparison may favour it.
+The third line is the grid load forecast that SMARD publishes (filter 411). It is a useful outside reference, with one limitation: SMARD does not state when each value was published or whether it was revised later, so scoring it on today's values may favour it, while the model's inputs include later load corrections, which favours the model; neither effect is quantified.
 
 ## Backtest
 
-`scripts/backtest.py` replays the production procedure for each of the 365 days ending with the last complete day of load data. For each delivery day it issues the forecast as of 12:00 on the previous day. The model is retrained every seven days on all hours up to the end of the day before the origin day (an expanding window with a hard cutoff). LightGBM runs deterministically with a fixed seed, so the same data gives the same report.
+`scripts/backtest.py` replays the production procedure for each of the 365 days ending with `--last-day`, or with the last complete day of load data if that option is not given. For each delivery day it issues the forecast as of 12:00 on the previous day. The model is retrained every seven days on all hours up to the end of the day before the origin day (an expanding window with a hard cutoff). LightGBM runs deterministically with a fixed seed, so the same data gives the same report. The report records a SHA-256 fingerprint of the hourly load and SMARD forecast values up to the last delivery day, so a rerun shows whether it used the same data.
 
 The errors are measured against the actual hourly load:
 
 - MAE, the mean absolute error in MWh per hour (equal to MW on average);
-- MAPE, the mean absolute percentage error.
+- MAPE, the mean absolute percentage error;
+- the bias (mean of forecast minus actual), the 95th percentile and the largest value of the absolute error, and the share of hours with an absolute percentage error above 5 %.
 
 The model and the baseline are scored on every hour that has an actual value and both predictions. The SMARD forecast is scored on the subset of those hours where SMARD publishes a value, and on that subset the two other forecasts are scored again, so all three can be compared on equal terms. Results are reported overall, per local hour and per day type (workdays, Saturdays, Sundays and holidays).
 
-Two checks guard the method. A leak test corrupts every value that was not yet known at an origin and confirms that features and forecasts stay identical, for the production path and for the backtest over several origins with retraining. A cross-check recomputes every reported metric with scikit-learn in a separate environment (`scripts/crosscheck_metrics.py`).
+Two checks guard the method. A leak test corrupts every value that was not yet known at an origin and confirms that features and forecasts stay identical, for the production path and for the backtest over several origins with retraining. A cross-check recomputes every reported MAE and MAPE with scikit-learn, and the bias, 95th percentile, largest error and share of hours above 5 % with the Python standard library, in a separate environment (`scripts/crosscheck_metrics.py`).
 
-The replay uses the load values as they are stored today, including corrections SMARD made after the original publication; the warehouse keeps the newest value and a revision counter, not earlier versions. The leak test covers values not yet published at an origin, not later corrections.
+The replay uses the load values as they are stored today, including corrections SMARD made after the original publication; the warehouse keeps the newest value and a revision counter, not earlier versions. The leak test covers values not yet published at an origin, not later corrections. Two effects therefore point in opposite directions. The model's inputs include corrections that a forecast at 12:00 on the day before would not have had; this favours the model. The SMARD forecast is scored with the values SMARD publishes now, without its publication time; this may favour SMARD. Neither effect is quantified, so the gap between the model and SMARD in the report is an estimate, not a measured advantage.
+
+### How to read these figures
+
+The figures in this section are from the committed [backtest report](../reference/backtest.md) (delivery days 2025-11-20 to 2026-11-19). On average the model misses an hour by about 1.6 GW (MAE 1,611 MWh per hour); in 5 % of the hours the miss is 4.1 GW or more, the largest was 11.3 GW, and 18.3 % of the hours miss by more than 5 % of the load. The bias is small: +35 MWh per hour, so the forecast is slightly too high on average. The error is larger at midday (MAPE 3.32 % to 4.14 % from 11:00 to 16:00, against 2.35 % to 3.26 % in the other hours) and on Sundays and holidays (3.50 %, against 2.91 % on workdays and 3.16 % on Saturdays). Public holidays of single states are not modelled, so such days are forecast as ordinary workdays. Because the model uses no weather data, a change in the weather after the cutoff is not anticipated. With a miss of 4.1 GW or more in one hour in twenty and no weather input, the forecast is suited to benchmarking and plausibility checks of one's own or the TSO forecast, and not, without one's own weather-based model, to nominations or reserve sizing. This is a conclusion from the reported figures, not a measured result.
 
 Only values produced by `scripts/backtest.py` are quoted in this documentation and in the README. The dashboard shows the backtest that the pipeline recomputes every week, so its period and values move on from the committed report over time.

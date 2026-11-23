@@ -1,6 +1,6 @@
 # grid-load-forecast
 
-Day-ahead forecast of the German grid load from public SMARD data, with a validated data pipeline, a reproducible backtest, a read-only API and a dashboard.
+Day-ahead forecast of the German grid load from public SMARD data, with a validated data pipeline, a backtest that records a fingerprint of its input data so a rerun can be checked against it, a read-only API and a dashboard.
 
 ![Dashboard with the day-ahead forecast, backtest accuracy and the generation mix of the past week](docs/assets/dashboard.png)
 
@@ -14,15 +14,21 @@ The dashboard compares the forecast with the actual load, with a naive baseline 
 
 ## How good the forecast is
 
-From the backtest over the delivery days 2025-11-20 to 2026-11-19 (8760 hours, each day forecast as of 12:00 the day before, model retrained weekly), produced by `scripts/backtest.py`:
+From the backtest over the delivery days 2025-11-20 to 2026-11-19 (8760 hours, each day forecast as of 12:00 the day before, model retrained weekly), produced by `scripts/backtest.py --last-day 2026-11-19`:
 
-| Forecast | MAE (MWh per hour) | MAPE |
-|---|---:|---:|
-| LightGBM model | 1,611 | 3.04 % |
-| Baseline (same hour last week) | 2,814 | 5.30 % |
-| SMARD grid load forecast | 2,075 | 3.92 % |
+| Forecast | MAE (MWh per hour) | MAPE | Bias (MWh per hour) | 95th percentile of absolute error (MWh) | Hours with error above 5 % |
+|---|---:|---:|---:|---:|---:|
+| LightGBM model | 1,611 | 3.04 % | +35 | 4,134 | 18.3 % |
+| Baseline (same hour last week) | 2,814 | 5.30 % | +3 | 7,531 | 40.2 % |
+| SMARD grid load forecast | 2,075 | 3.92 % | +201 | 5,531 | 29.7 % |
 
-All values are scored as they are stored today: later corrections to load values are included, and the SMARD forecast is scored with the values SMARD publishes now, without its publication time, so the comparison may favour it. The full report with results per hour and per day type is in [reports/backtest.md](reports/backtest.md), the method in [Forecast and backtest method](docs/explanation/forecast.md). All 86 metrics in `reports/backtest.json` match a recomputation with scikit-learn in a separate environment (`scripts/crosscheck_metrics.py`).
+Bias is the mean of forecast minus actual, so a positive value means the forecast is too high on average.
+
+Two effects of the data point in opposite directions. The model's inputs are the load values as stored today, including corrections SMARD made later, which a forecast at 12:00 on the day before would not have had; this favours the model. The SMARD forecast is scored with the values SMARD publishes now, without its publication time; this may favour SMARD. Neither effect is quantified, so the gap of 0.9 percentage points in MAPE between the model and SMARD is an estimate, not a measured advantage.
+
+How to read these figures: on average the model misses an hour by about 1.6 GW, in 5 % of the hours by 4.1 GW or more (11.3 GW at most), and in 18.3 % of the hours by more than 5 % of the load. The error is larger at midday (MAPE 3.32 % to 4.14 % from 11:00 to 16:00, against 2.35 % to 3.26 % in the other hours) and on Sundays and holidays (3.50 %, against 2.91 % on workdays). The calendar knows nationwide public holidays only, so a holiday in some states, such as Corpus Christi, is forecast as an ordinary workday. The model uses no weather data, so a change in the weather after the cutoff is not anticipated. With a miss of 4.1 GW or more in one hour in twenty and no weather input, the forecast is suited to benchmarking and plausibility checks of one's own or the TSO forecast, and not, without one's own weather-based model, to nominations or reserve sizing. This is a conclusion from these figures, not a measured result.
+
+The full report with results per hour and per day type is in [reports/backtest.md](reports/backtest.md), the method in [Forecast and backtest method](docs/explanation/forecast.md). All 86 metrics and the three error distributions in `reports/backtest.json` match a recomputation in a separate environment, with scikit-learn for MAE and MAPE and the Python standard library for the rest (`scripts/crosscheck_metrics.py`).
 
 ## Architecture
 
