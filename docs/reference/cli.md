@@ -7,7 +7,7 @@ The `gridload` command is installed with the package (`uv run gridload ...` loca
 | `gridload run` | The scheduled job: load data, issue the forecast when due, refresh a stale backtest, publish the snapshot |
 | `gridload ingest [--series KEY ...] [--refetch-weeks N] [--accept-withdrawals]` | Load missing chunks, chunks stored while still open, and the newest N weeks again (default 4); optionally accept values SMARD removed, in completed weeks and in the open week beyond a short tail at its end ([procedure](../how-to/operate.md#accept-values-that-smard-removed)) |
 | `gridload backfill [--since YYYY-MM-DD] [--series KEY ...]` | Load the history, optionally from a start day |
-| `gridload backtest [--days N]` | Run and store the backtest over the last N days (default 365) and republish the snapshot |
+| `gridload backtest [--days N] [--last-day YYYY-MM-DD]` | Run and store the backtest over the N days (default 365) ending with the given day (default: the last complete day of load data) and republish the snapshot |
 | `gridload status` | Print the state of the published snapshot as JSON: recent runs, coverage per series, errors of the last run |
 | `gridload healthcheck` | Exit 0 if the pipeline is healthy (used by the container healthcheck) |
 
@@ -17,7 +17,7 @@ All commands that write need exclusive access to the warehouse. While the hourly
 
 | Script | Purpose |
 |---|---|
-| `scripts/backtest.py` | Backtest on the local warehouse, writes `reports/backtest.json` and `reports/backtest.md` |
+| `scripts/backtest.py [--days N] [--last-day YYYY-MM-DD]` | Backtest on the local warehouse, writes `reports/backtest.json` and `reports/backtest.md` with a fingerprint of the input data |
 | `scripts/crosscheck_metrics.py` | Recomputes every reported metric with scikit-learn in a separate environment |
 | `scripts/record_fixtures.py` | Records the SMARD responses used as test fixtures |
 | `scripts/smoke.py` | Live check against SMARD (`make smoke`) |
