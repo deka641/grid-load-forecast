@@ -28,7 +28,7 @@ The model is LightGBM with an L1 objective, 600 boosting rounds and a fixed seed
 
 The baseline repeats the load of the same local hour seven days earlier. It is simple, needs no training and captures the weekly pattern, which makes it the reference any model has to beat.
 
-The third line is the grid load forecast that SMARD publishes (filter 411). It is a useful outside reference, with one limitation: SMARD does not state when each value was published or whether it was revised later, so the comparison may favour it.
+The third line is the grid load forecast that SMARD publishes (filter 411). It is a useful outside reference, with one limitation: SMARD does not state when each value was published or whether it was revised later, so scoring it on today's values may favour it, while the model's inputs include later load corrections, which favours the model; neither effect is quantified.
 
 ## Backtest
 
