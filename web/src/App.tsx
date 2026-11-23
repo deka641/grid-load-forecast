@@ -60,7 +60,7 @@ export function Dashboard() {
     content = status.isError ? (
       <QueryProblem what="the status" error={status.error} onRetry={retryStatus} />
     ) : (
-      <Loading what="status" />
+      <Loading what="status" reserve="page" />
     )
   } else if (!status.data.initialised && status.data.snapshot_error) {
     content = (

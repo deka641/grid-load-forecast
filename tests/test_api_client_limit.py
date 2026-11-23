@@ -10,8 +10,8 @@ import pytest
 from starlette.types import Receive, Scope, Send
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from gridload.api.app import Limits, create_app
-from gridload.api.limits import RETRY_AFTER_SECONDS, InflightLimit, client_key
+from gridload.api.app import create_app
+from gridload.api.limits import RETRY_AFTER_SECONDS, InflightLimit, Limits, client_key
 from gridload.config import Settings
 from gridload.pipeline.db import migrate
 from tests.test_api import add_run, publish

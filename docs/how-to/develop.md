@@ -83,7 +83,7 @@ The browser checks need Playwright's Chromium, installed once with `npx --prefix
 - the images with Trivy: critical vulnerabilities with a fix fail the check, high ones are listed;
 - that all three services become healthy;
 - that the API logs the client address Caddy saw, not the web container's address and not a forged `X-Forwarded-For`;
-- the security and cache headers, gzip compression of the hashed assets a 404 for a missing asset, and the security headers without a `Server` header on the error responses Caddy answers itself;
+- the security and cache headers, gzip compression of the hashed assets, a 404 for a missing asset, and the security headers without a `Server` header on the error responses Caddy answers itself;
 - that the snapshot is initialised, the main endpoints answer 200 and the range limit answers 422;
 - that `/health` and `/status` answer 200 for one client while another holds 400 connections, and that the web container survives 9,000 half-open connections (`scripts/loadtest_abuse.py`);
 - the real-data dashboard in the browser (`web/live`): light and dark theme at 1440 and 390 px, no console errors or warnings, no Content-Security-Policy violations, no sideways scrolling and no serious or critical axe findings.

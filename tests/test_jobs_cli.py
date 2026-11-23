@@ -1,5 +1,8 @@
 import functools
 import json
+import os
+import subprocess
+import sys
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -404,3 +407,62 @@ def test_withdrawal_in_a_generation_series_keeps_the_pipeline_healthy(
     report = jobs.status(settings)
     assert report["runs"][0]["status"] == "partial"
     assert any(e["series"] == "gen_solar" for e in report["errors_last_run"])
+
+
+def test_healthcheck_reads_the_heartbeat_file(settings: Settings) -> None:
+    now = datetime.now(UTC)
+
+    def beat(success_age: timedelta, data_age: timedelta) -> None:
+        stamp = (now - success_age).isoformat()
+        newest = (now - data_age).isoformat()
+        heartbeat.write(
+            settings.heartbeat_path, heartbeat.Heartbeat("idle", stamp, stamp, "ok", newest)
+        )
+
+    assert not jobs.healthcheck(settings)
+    beat(timedelta(hours=1), timedelta(hours=1))
+    assert jobs.healthcheck(settings)
+    beat(timedelta(hours=27), timedelta(hours=1))
+    assert not jobs.healthcheck(settings)
+    beat(timedelta(hours=1), timedelta(hours=13))
+    assert not jobs.healthcheck(settings)
+
+
+def test_cli_healthcheck_does_not_import_the_pipeline_stack(tmp_path: Path) -> None:
+    script = (
+        "import sys\n"
+        "from gridload import cli\n"
+        "code = cli.main(['healthcheck'])\n"
+        "heavy = ('gridload.pipeline.jobs', 'gridload.forecast', 'duckdb', 'numpy', 'polars',"
+        " 'lightgbm', 'httpx2')\n"
+        "print(code, sorted(m for m in sys.modules if m.split('.')[0] in heavy or m in heavy))\n"
+    )
+    env = {**os.environ, "GRIDLOAD_DATA_DIR": str(tmp_path)}
+    done = subprocess.run(  # noqa: S603  # fixed interpreter and script
+        [sys.executable, "-c", script], env=env, capture_output=True, text=True, check=True
+    )
+    assert done.stdout.strip() == "1 []"
+
+
+def test_load_uses_the_wall_clock(
+    settings: Settings, fake: FakeSmard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(jobs, "Ingestor", Ingestor)
+    load = next(s for s in CATALOG if s.key == "load")
+    # Closed chunks only, so the run does not depend on how old the fixtures are.
+    chunks = recorded_chunks(load)[:-1]
+    assert len(chunks) > 1
+    fake.use_index(load, chunks)
+    before = datetime.now(UTC)
+    result = jobs.load(
+        settings, mode="backfill", keys=["load"], client_factory=lambda _s: fake.client()
+    )
+    after = datetime.now(UTC)
+    assert result.status == "ok"
+    run = jobs.status(settings)["runs"][0]
+    assert before <= datetime.fromisoformat(run["started_at"]) <= after
+    assert before <= datetime.fromisoformat(run["finished_at"]) <= after
+    beat = heartbeat.read(settings.heartbeat_path)
+    assert beat is not None
+    assert beat.last_success is not None
+    assert before <= datetime.fromisoformat(beat.last_success) <= after
