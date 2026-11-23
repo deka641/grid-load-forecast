@@ -93,3 +93,16 @@ describe('Backtest table box', () => {
     expect(loading.parentElement).toHaveClass('loading-backtest')
   })
 })
+
+describe('Backtest caveats', () => {
+  it('names the bias in either direction', async () => {
+    serve()
+    renderApp()
+    const note = await screen.findByText(/^The SMARD forecast is scored on its values/)
+    expect(note).toHaveTextContent('may include revisions made after 12:00 on the day before.')
+    expect(note).toHaveTextContent(
+      'The model is scored with the load values as stored today, including later corrections ' +
+        'it would not have had at the cutoff, which can favour the model.',
+    )
+  })
+})
