@@ -404,3 +404,22 @@ def test_withdrawal_in_a_generation_series_keeps_the_pipeline_healthy(
     report = jobs.status(settings)
     assert report["runs"][0]["status"] == "partial"
     assert any(e["series"] == "gen_solar" for e in report["errors_last_run"])
+
+
+def test_healthcheck_reads_the_heartbeat_file(settings: Settings) -> None:
+    now = datetime.now(UTC)
+
+    def beat(success_age: timedelta, data_age: timedelta) -> None:
+        stamp = (now - success_age).isoformat()
+        newest = (now - data_age).isoformat()
+        heartbeat.write(
+            settings.heartbeat_path, heartbeat.Heartbeat("idle", stamp, stamp, "ok", newest)
+        )
+
+    assert not jobs.healthcheck(settings)
+    beat(timedelta(hours=1), timedelta(hours=1))
+    assert jobs.healthcheck(settings)
+    beat(timedelta(hours=27), timedelta(hours=1))
+    assert not jobs.healthcheck(settings)
+    beat(timedelta(hours=1), timedelta(hours=13))
+    assert not jobs.healthcheck(settings)
