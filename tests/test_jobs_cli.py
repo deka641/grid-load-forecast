@@ -423,3 +423,27 @@ def test_healthcheck_reads_the_heartbeat_file(settings: Settings) -> None:
     assert not jobs.healthcheck(settings)
     beat(timedelta(hours=1), timedelta(hours=13))
     assert not jobs.healthcheck(settings)
+
+
+def test_load_uses_the_wall_clock(
+    settings: Settings, fake: FakeSmard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(jobs, "Ingestor", Ingestor)
+    load = next(s for s in CATALOG if s.key == "load")
+    # Closed chunks only, so the run does not depend on how old the fixtures are.
+    chunks = recorded_chunks(load)[:-1]
+    assert len(chunks) > 1
+    fake.use_index(load, chunks)
+    before = datetime.now(UTC)
+    result = jobs.load(
+        settings, mode="backfill", keys=["load"], client_factory=lambda _s: fake.client()
+    )
+    after = datetime.now(UTC)
+    assert result.status == "ok"
+    run = jobs.status(settings)["runs"][0]
+    assert before <= datetime.fromisoformat(run["started_at"]) <= after
+    assert before <= datetime.fromisoformat(run["finished_at"]) <= after
+    beat = heartbeat.read(settings.heartbeat_path)
+    assert beat is not None
+    assert beat.last_success is not None
+    assert before <= datetime.fromisoformat(beat.last_success) <= after
