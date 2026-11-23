@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 from gridload import __version__
 from gridload.config import Settings
-from gridload.pipeline import jobs
+from gridload.pipeline import heartbeat
 from gridload.series import select
 
 
@@ -67,11 +67,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     # One line per HTTP request would bury the run summary.
     logging.getLogger("httpx2").setLevel(logging.WARNING)
     settings = Settings.from_env()
+    if args.command == "healthcheck":
+        return 0 if heartbeat.check(settings.heartbeat_path) else 1
+    # Imported here: the container health check runs the command above every
+    # minute and needs neither the database nor the forecast stack.
+    from gridload.pipeline import jobs  # noqa: PLC0415
+
     if args.command == "status":
         print(jobs.dumps(jobs.status(settings)))
         return 0
-    if args.command == "healthcheck":
-        return 0 if jobs.healthcheck(settings) else 1
     if args.command == "backtest":
         stored = jobs.backtest(settings, days=args.days)
         print(stored)

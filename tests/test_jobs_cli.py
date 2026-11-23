@@ -1,5 +1,8 @@
 import functools
 import json
+import os
+import subprocess
+import sys
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -423,6 +426,22 @@ def test_healthcheck_reads_the_heartbeat_file(settings: Settings) -> None:
     assert not jobs.healthcheck(settings)
     beat(timedelta(hours=1), timedelta(hours=13))
     assert not jobs.healthcheck(settings)
+
+
+def test_cli_healthcheck_does_not_import_the_pipeline_stack(tmp_path: Path) -> None:
+    script = (
+        "import sys\n"
+        "from gridload import cli\n"
+        "code = cli.main(['healthcheck'])\n"
+        "heavy = ('gridload.pipeline.jobs', 'gridload.forecast', 'duckdb', 'numpy', 'polars',"
+        " 'lightgbm', 'httpx2')\n"
+        "print(code, sorted(m for m in sys.modules if m.split('.')[0] in heavy or m in heavy))\n"
+    )
+    env = {**os.environ, "GRIDLOAD_DATA_DIR": str(tmp_path)}
+    done = subprocess.run(  # noqa: S603  # fixed interpreter and script
+        [sys.executable, "-c", script], env=env, capture_output=True, text=True, check=True
+    )
+    assert done.stdout.strip() == "1 []"
 
 
 def test_load_uses_the_wall_clock(
