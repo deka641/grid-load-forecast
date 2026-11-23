@@ -32,6 +32,7 @@ interface MockOptions {
   degradedChecks?: string[]
   days?: string[]
   priceEnd?: number
+  priceGap?: readonly [number, number]
   /** Paths that answer 500. */
   failing?: string[]
   /** Data requests (all but status and series) wait for this. */
@@ -84,6 +85,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
             url.searchParams.get('start') ?? fixtures.TODAY,
             url.searchParams.get('end') ?? fixtures.TODAY,
             options.priceEnd,
+            options.priceGap,
           ),
         )
       default:
@@ -423,7 +425,7 @@ for (const [scheme, width] of [
   ['light', 390],
   ['dark', 390],
 ] as const) {
-  test(`marks unpublished prices and negative prices in ${scheme} at ${String(width)} px`, async ({
+  test(`marks missing prices and negative prices in ${scheme} at ${String(width)} px`, async ({
     browser,
   }) => {
     const context = await browser.newContext({
@@ -434,12 +436,14 @@ for (const [scheme, width] of [
     })
     const page = await context.newPage()
     const problems = watchProblems(page)
-    // Prices end with 19 November, while generation runs into 20 November.
+    // Prices end with 19 November, while generation runs into 20 November. The prices of
+    // 20 November were due on 19 November, so the missing hours are a gap in the source.
     await mockApi(page, { priceEnd: Date.parse('2026-11-19T22:00:00Z') })
     await open(page)
     await expect(page.locator('.chart-stats')).toContainText(
-      'The last published price is for Thu 19 Nov, 23:00 (UTC+1)',
+      'SMARD has published no prices from Fri 20 Nov, 00:00 to 14:00 (UTC+1); the chart shades these hours lighter.',
     )
+    await expect(page.locator('.chart-stats')).not.toContainText('last published price')
     await expect(page.locator('.chart-stats')).toContainText(
       'Hourly prices (each the mean of four quarter hours) from',
     )
@@ -450,6 +454,73 @@ for (const [scheme, width] of [
     await expectNoSeriousAxe(page)
     expect(await cspViolations(page)).toEqual([])
     expect(problems).toEqual([])
+    await context.close()
+  })
+}
+
+for (const [scheme, width] of [
+  ['light', 1440],
+  ['dark', 390],
+] as const) {
+  test(`marks a price gap inside the range in ${scheme} at ${String(width)} px`, async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      colorScheme: scheme,
+      viewport: { width, height: 900 },
+      deviceScaleFactor: width < 600 ? 2 : 1,
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    const problems = watchProblems(page)
+    // No prices for 16 and 17 November; those of today run to its end, past generation.
+    await mockApi(page, {
+      priceGap: [Date.parse('2026-11-15T23:00:00Z'), Date.parse('2026-11-17T22:00:00Z')],
+    })
+    await open(page)
+    const stats = page.locator('.chart-stats')
+    await expect(stats).toContainText(
+      'SMARD has published no prices from Mon 16 Nov, 00:00 to Wed 18 Nov, 00:00 (UTC+1); the chart shades these hours lighter.',
+    )
+    await expect(stats).toContainText('over 120 of 168 hours')
+    await expect(stats).not.toContainText('no prices yet')
+    const chart = page.locator('.chart-price')
+    await chart.scrollIntoViewIfNeeded()
+    await chart.screenshot({ path: join(SHOTS, `price-gap-${scheme}-${String(width)}.png`) })
+    await expectNoSeriousAxe(page)
+    expect(await cspViolations(page)).toEqual([])
+    expect(problems).toEqual([])
+    await context.close()
+  })
+}
+
+for (const width of [1440, 390]) {
+  test(`names delivery days without a forecast at ${String(width)} px`, async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    await mockApi(page, { days: ['2026-11-21', '2026-11-19', '2026-11-18'] })
+    await open(page)
+    const note = page.getByText('No forecast was issued for Fri 20 Nov 2026.')
+    await expect(note).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Previous day' })).toHaveAccessibleDescription(
+      'No forecast was issued for Fri 20 Nov 2026.',
+    )
+    // Beside the controls where the row has room, below them otherwise; never over them.
+    const selector = await page.locator('.day-selector').boundingBox()
+    const box = await note.boundingBox()
+    const beside = (box?.x ?? 0) >= (selector?.x ?? 0) + (selector?.width ?? 0)
+    const below = (box?.y ?? 0) >= (selector?.y ?? 0) + (selector?.height ?? 0)
+    expect(beside || below).toBe(true)
+    await page
+      .locator('.forecast-controls')
+      .screenshot({ path: join(SHOTS, `skipped-days-${String(width)}.png`) })
+    await page.getByRole('button', { name: 'Previous day' }).click()
+    await expect(page.getByLabel('Delivery day')).toHaveValue('2026-11-19')
+    await expect(note).toHaveCount(0)
+    await expectNoSeriousAxe(page)
     await context.close()
   })
 }

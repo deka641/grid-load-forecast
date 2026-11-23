@@ -1107,7 +1107,7 @@ tr.narrow-only {
   }
 
   .loading-backtest {
-    min-height: 820px;
+    min-height: 860px;
   }
 
   /* Stacked under the text, the table keeps a readable width instead of spreading out. */
@@ -1203,7 +1203,7 @@ tr.narrow-only {
   }
 
   .loading-backtest {
-    min-height: 1000px;
+    min-height: 1060px;
   }
 
   .loading-context {

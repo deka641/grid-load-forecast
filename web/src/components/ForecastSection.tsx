@@ -10,7 +10,7 @@ import { NOT_AVAILABLE, formatGW, formatPercent } from '../lib/format'
 import { MODELS, dayErrors, findMetric, hasActuals, headlineParts } from '../lib/metrics'
 import { neighbours } from '../lib/days'
 import { missingInputs } from '../lib/degraded'
-import { dayShort, offsetLabel, wallClock } from '../lib/time'
+import { addDays, dayShort, offsetLabel, wallClock } from '../lib/time'
 import { Legend } from './Legend'
 import { Loading, QueryProblem } from './Notice'
 import { NO_FORECAST, noForecastFor } from './messages'
@@ -75,6 +75,35 @@ function KeyFigures({ backtest }: { backtest: BacktestMetrics | null }) {
   )
 }
 
+const SKIPPED_NOTE_ID = 'skipped-days-note'
+
+/**
+ * The days between the shown day and the previous listed one, which got no forecast: a day
+ * is forecast only by runs on the day before, so a day missed while the pipeline was down
+ * is never forecast later. Calendar days, so a clock change does not matter.
+ */
+function skippedDaysNote(older: string | undefined, current: string): string | null {
+  if (older === undefined) {
+    return null
+  }
+  const first = addDays(older, 1)
+  const last = addDays(current, -1)
+  if (first > last) {
+    return null
+  }
+  let count = 1
+  while (addDays(first, count) <= last) {
+    count += 1
+  }
+  const days =
+    count === 1
+      ? dayShort(first)
+      : count === 2
+        ? `${dayShort(first)} and ${dayShort(last)}`
+        : `the ${String(count)} days from ${dayShort(first)} to ${dayShort(last)}`
+  return `No forecast was issued for ${days}.`
+}
+
 function DaySelector({
   days,
   current,
@@ -85,6 +114,7 @@ function DaySelector({
   onSelect: (day: string) => void
 }) {
   const { older, newer } = neighbours(days, current)
+  const skipped = skippedDaysNote(older, current)
   const options = days.includes(current) ? days : [current, ...days]
   // With a single day there is nothing to choose: plain text instead of dead controls.
   if (options.length < 2) {
@@ -95,51 +125,59 @@ function DaySelector({
     )
   }
   return (
-    <div className="day-selector">
-      <button
-        type="button"
-        className="button"
-        disabled={older === undefined}
-        onClick={
-          older === undefined
-            ? undefined
-            : () => {
-                onSelect(older)
-              }
-        }
-      >
-        Previous day
-      </button>
-      <label className="day-select">
-        <span className="visually-hidden">Delivery day</span>
-        <select
-          value={current}
-          onChange={(event) => {
-            onSelect(event.target.value)
-          }}
+    <>
+      <div className="day-selector">
+        <button
+          type="button"
+          className="button"
+          disabled={older === undefined}
+          aria-describedby={skipped === null ? undefined : SKIPPED_NOTE_ID}
+          onClick={
+            older === undefined
+              ? undefined
+              : () => {
+                  onSelect(older)
+                }
+          }
         >
-          {options.map((day) => (
-            <option key={day} value={day}>
-              {dayShort(day)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button
-        type="button"
-        className="button"
-        disabled={newer === undefined}
-        onClick={
-          newer === undefined
-            ? undefined
-            : () => {
-                onSelect(newer)
-              }
-        }
-      >
-        Next day
-      </button>
-    </div>
+          Previous day
+        </button>
+        <label className="day-select">
+          <span className="visually-hidden">Delivery day</span>
+          <select
+            value={current}
+            onChange={(event) => {
+              onSelect(event.target.value)
+            }}
+          >
+            {options.map((day) => (
+              <option key={day} value={day}>
+                {dayShort(day)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="button"
+          disabled={newer === undefined}
+          onClick={
+            newer === undefined
+              ? undefined
+              : () => {
+                  onSelect(newer)
+                }
+          }
+        >
+          Next day
+        </button>
+      </div>
+      {skipped === null ? null : (
+        <p id={SKIPPED_NOTE_ID} className="inline-note">
+          {skipped}
+        </p>
+      )}
+    </>
   )
 }
 

@@ -115,4 +115,45 @@ describe('Day selector', () => {
     expect(screen.getByRole('button', { name: 'Previous day' })).toBeEnabled()
     expect(screen.getByLabelText('Delivery day')).toHaveValue('2026-11-21')
   })
+
+  it('says nothing about skipped days when the previous day is the day before', async () => {
+    serve(fx.forecast('2026-11-21', false), ['2026-11-21', '2026-11-20'])
+    renderApp()
+    await screen.findByText(/^Forecast peak for/)
+    expect(screen.queryByText(/^No forecast was issued/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Previous day' })).not.toHaveAttribute(
+      'aria-describedby',
+    )
+  })
+
+  it.each([
+    [['2026-11-24', '2026-11-22', '2026-11-21'], 'No forecast was issued for Mon 23 Nov 2026.'],
+    [
+      ['2026-11-24', '2026-11-21'],
+      'No forecast was issued for Sun 22 Nov 2026 and Mon 23 Nov 2026.',
+    ],
+    [
+      ['2026-11-24', '2026-11-19'],
+      'No forecast was issued for the 4 days from Fri 20 Nov 2026 to Mon 23 Nov 2026.',
+    ],
+  ])('names the days without a forecast before the shown day (%j)', async (days, text) => {
+    serve(fx.forecast('2026-11-24', false), days)
+    renderApp()
+    await screen.findByText(/^Forecast peak for/)
+    expect(screen.getByText(/^No forecast was issued/)).toHaveTextContent(text)
+    // The note describes the button that skips the gap, and the controls stay as they were.
+    const previous = screen.getByRole('button', { name: 'Previous day' })
+    expect(previous).toHaveAccessibleDescription(text)
+    expect(previous).toBeEnabled()
+    expect(screen.getByLabelText('Delivery day')).toHaveValue('2026-11-24')
+  })
+
+  it('counts calendar days across a clock change', async () => {
+    serve(fx.forecast('2026-10-27', false), ['2026-10-27', '2026-10-24'])
+    renderApp()
+    await screen.findByText(/^Forecast peak for/)
+    expect(screen.getByText(/^No forecast was issued/)).toHaveTextContent(
+      'No forecast was issued for Sun 25 Oct 2026 and Mon 26 Oct 2026.',
+    )
+  })
 })
