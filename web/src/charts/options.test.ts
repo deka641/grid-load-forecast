@@ -10,6 +10,7 @@ import {
   priceOption,
   stepEnds,
   tooltipHtml,
+  tooltipPosition,
   unpublishedSpan,
 } from './options'
 import type { Palette } from './palette'
@@ -222,5 +223,75 @@ describe('tooltip markup', () => {
     expect(html).toContain('tt-tso')
     expect(html).not.toContain('style=')
     expect(firstIndex([])).toBe(0)
+  })
+})
+
+describe('forecast chart finish', () => {
+  interface Finish {
+    yAxis: { min?: number; max?: number; interval?: number }
+    xAxis: { axisPointer: { label: { formatter: (p: { value: string }) => string } } }
+    series: {
+      name: string
+      animationDelay: number
+      markPoint?: { silent: boolean; data: { coord: [string, number] }[] }
+    }[]
+  }
+
+  it('marks the peak of the model line that the headline names, and nothing else', () => {
+    const points = forecast('2026-11-20').points
+    const option = forecastOption(points, palette) as unknown as Finish
+    const marked = option.series.filter((s) => s.markPoint !== undefined)
+    expect(marked.map((s) => s.name)).toEqual(['LightGBM model'])
+    const peak = Math.max(...points.map((p) => p.lightgbm ?? -Infinity))
+    const index = points.findIndex((p) => p.lightgbm === peak)
+    expect(marked[0]?.markPoint?.data).toEqual([{ coord: [String(index), peak / 1000] }])
+    expect(marked[0]?.markPoint?.silent).toBe(true)
+  })
+
+  it('rounds the value axis to whole 5 GW steps around all lines', () => {
+    const points = forecast('2026-11-20').points
+    const option = forecastOption(points, palette) as unknown as Finish
+    const values = points.flatMap((p) =>
+      [p.actual, p.lightgbm, p.baseline_week, p.tso].filter((v): v is number => v !== null),
+    )
+    const { min, max, interval } = option.yAxis
+    expect(interval).toBe(5)
+    expect((min ?? NaN) % 5).toBe(0)
+    expect((max ?? NaN) % 5).toBe(0)
+    expect(min).toBeLessThanOrEqual(Math.min(...values) / 1000)
+    expect(max).toBeGreaterThanOrEqual(Math.max(...values) / 1000)
+  })
+
+  it('draws the lines in one after another, the actual last', () => {
+    const option = forecastOption(forecast('2026-11-20').points, palette) as unknown as Finish
+    const delay = Object.fromEntries(option.series.map((s) => [s.name, s.animationDelay]))
+    expect(delay['Baseline (same hour last week)']).toBe(0)
+    expect(delay.Actual).toBeGreaterThan(delay['LightGBM model'] ?? Infinity)
+  })
+
+  it('names the hovered hour in the axis pointer badge, not its index', () => {
+    const option = forecastOption(forecast('2026-11-20').points, palette) as unknown as Finish
+    expect(option.xAxis.axisPointer.label.formatter({ value: '17' })).toBe('17:00')
+  })
+})
+
+describe('tooltipPosition', () => {
+  const size = {
+    contentSize: [200, 120] as [number, number],
+    viewSize: [1000, 380] as [number, number],
+  }
+
+  it('sits at the top, on the side away from the cursor', () => {
+    expect(tooltipPosition([300, 200], size)).toEqual([316, 8])
+    expect(tooltipPosition([700, 200], size)).toEqual([484, 8])
+  })
+
+  it('stays inside the chart', () => {
+    const narrow = {
+      contentSize: [200, 120] as [number, number],
+      viewSize: [300, 300] as [number, number],
+    }
+    expect(tooltipPosition([140, 50], narrow)).toEqual([100, 8])
+    expect(tooltipPosition([160, 50], narrow)).toEqual([0, 8])
   })
 })
