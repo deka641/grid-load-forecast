@@ -19,7 +19,14 @@ from fastapi.testclient import TestClient
 
 from gridload.api import app as app_module
 from gridload.api import queries
-from gridload.api.app import BYTES_PER_POINT, CHUNK_BYTES, HEAVY_MAX_WAITING, Limits, create_app
+from gridload.api.app import create_app
+from gridload.api.limits import (
+    BYTES_PER_POINT,
+    CHUNK_BYTES,
+    HEAVY_MAX_WAITING,
+    MAX_INFLIGHT,
+    Limits,
+)
 from gridload.api.models import Actuals, ForecastDay
 from gridload.api.store import NEWEST_UNOPENABLE
 from gridload.config import Settings
@@ -392,7 +399,10 @@ def test_a_body_larger_than_its_estimate_must_fit_the_budget(
     query = f"series={ALL_KEYS}&start=2025-03-01&end=2025-03-31"
     size = len(make_client(settings).get(f"/api/v1/actuals?{query}").content)
     monkeypatch.setattr(app_module, "BYTES_PER_POINT", 1)
-    # The estimate (11,160 bytes) fits, the real body does not.
+    # With the patched estimate (11,160 bytes) a budget of exactly the body size
+    # passes, so a refusal one byte below can only come from the real body.
+    fits = make_client(settings, limits=Limits(byte_budget=size)).get(f"/api/v1/actuals?{query}")
+    assert fits.status_code == 200
     client = make_client(settings, limits=Limits(byte_budget=size - 1))
     response = client.get(f"/api/v1/actuals?{query}")
     assert response.status_code == 503
@@ -411,8 +421,8 @@ def test_health_and_status_answer_while_heavy_requests_wait(
     # All requests come from one client address; lift its limits to reach the heavy queue.
     limits = Limits(
         heavy_wait=2.0,
-        per_client_inflight=app_module.MAX_INFLIGHT,
-        per_client_queries=app_module.MAX_INFLIGHT,
+        per_client_inflight=MAX_INFLIGHT,
+        per_client_queries=MAX_INFLIGHT,
     )
     app = create_app(settings, limits=limits)
     gate = app.state.heavy_gate
