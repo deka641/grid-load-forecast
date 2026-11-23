@@ -23,3 +23,6 @@ All commands that write need exclusive access to the warehouse. While the hourly
 | `scripts/smoke.py` | Live check against SMARD (`make smoke`) |
 | `scripts/loadtest.py` | Load test against an isolated stack (`make loadtest`) |
 | `scripts/export_openapi.py` | Writes `openapi.json` (`make openapi`) |
+| `scripts/prod_check.sh` | Production-like build and checks on an isolated stack on port 8461 (`make prod-check`) |
+| `scripts/loadtest_abuse.py` | Abusive clients against the prod-check stack, run by `scripts/prod_check.sh` from containers on its network; modes `halfopen` (unfinished request headers held open), `flood` (keep-alive connections requesting without pause) and `probe` (what an ordinary visitor sees meanwhile) |
+| `scripts/check_style.py`, `scripts/check_coverage.py`, `scripts/check_bundle_size.py` | Gate helpers called by `make verify`: no emojis or em and en dashes in text files, per-directory coverage, gzip size budget of the frontend |

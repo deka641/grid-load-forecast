@@ -10,7 +10,7 @@ The warehouse (`warehouse.duckdb`) is created by versioned SQL migrations in `sr
 | `raw_chunks` | Latest verbatim response per weekly chunk (zlib-compressed JSON), time of the last fetch (also for unchanged responses) and SHA-256 | `series_key, resolution, chunk_ts` |
 | `observations` | Cleaned quarter-hour values with `updated_at` and a `revision` counter that increases on every correction | `series_key, resolution, ts_utc` |
 | `load_runs` | One row per pipeline run: mode, start, end, status (`running`, `ok`, `partial`, `failed`, `aborted`) | `run_id` |
-| `load_log` | One row per chunk and run: status (`loaded`, `unchanged`, `error`, plus `warning` for a gap in a week that ended within seven days), values written, message (source gaps, removed values, error text) | none |
+| `load_log` | One or more rows per chunk and run: the load result (`loaded`, `unchanged` or `error`) and, for a gap in a week that ended within seven days, an additional `warning` row; values written, message (source gaps, removed values, error text) | none |
 | `forecast_runs` | One row per issued forecast and model: origin (`issued_at`, 12:00 on the day before delivery), local delivery day, time the pipeline computed it (`created_at`), details as JSON (cutoff, training rows, parameter hash, `degraded` and the `degraded_checks` that triggered it) | `run_id` |
 | `forecasts` | Hourly forecast values in MWh per hour | `run_id, target_ts_utc` |
 | `backtest_runs` | One row per stored backtest: evaluation period and configuration as JSON | `run_id` |
