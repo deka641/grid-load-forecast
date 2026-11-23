@@ -63,5 +63,10 @@ def is_healthy(
     )
 
 
+def check(path: Path) -> bool:
+    """Whether the heartbeat at ``path`` reports a healthy pipeline now."""
+    return is_healthy(read(path), datetime.now(UTC))
+
+
 def now_iso() -> str:
     return datetime.now(UTC).isoformat()

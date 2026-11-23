@@ -5,7 +5,7 @@ This project forecasts the German grid load for the next delivery day from publi
 Where to start:
 
 - To see it running, follow [Run the stack locally](tutorials/run-locally.md).
-- To understand how good the forecast is and why the numbers can be trusted, read [Forecast and backtest method](explanation/forecast.md) and the [backtest report](reference/backtest.md).
+- To understand how good the forecast is, how its accuracy is measured and what limits the figures have, read [Forecast and backtest method](explanation/forecast.md) and the [backtest report](reference/backtest.md).
 - To understand the moving parts, read [Architecture](explanation/architecture.md) and [Data source](explanation/data-source.md).
 - For day-to-day tasks, see [Operate the pipeline](how-to/operate.md) and [Develop and verify changes](how-to/develop.md).
 - For exact definitions, see the [data model](reference/data-model.md), the [HTTP API](reference/api.md), the [configuration](reference/configuration.md) and the [command line](reference/cli.md).

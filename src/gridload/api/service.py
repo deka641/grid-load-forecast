@@ -75,7 +75,7 @@ class DataService:
         self.heavy = Gate(HEAVY_CONCURRENCY, limits.heavy_wait, HEAVY_MAX_WAITING)
         self.query = Gate(QUERY_CONCURRENCY, limits.query_wait, QUERY_MAX_WAITING)
         self.client_queries = ClientGate(limits.per_client_queries)
-        self.budget = ByteBudget(limits.byte_budget)
+        self.budget = ByteBudget(limits.byte_budget, limits.per_client_bytes)
         self.cache = ResponseCache(limits.cache_bytes, limits.cache_min_bytes)
         self._limits = limits
         # Build and settings that change a response without a new snapshot.
@@ -146,7 +146,9 @@ class DataService:
         ``params`` are the validated parameters the body depends on (see
         :meth:`etag`). A matching If-None-Match is answered with 304 before any
         gate or query, and a cached body is sent without them. ``estimate`` is
-        the expected body size, reserved in the byte budget.
+        the expected body size, reserved in the byte budget and in the client's
+        share of it while the query waits and runs; the body is reserved until
+        it is handed to the server or the client is dropped.
         """
         snapshot = self.store.current()
         self.cache.select(snapshot.key)
@@ -162,18 +164,19 @@ class DataService:
             with self.store.cursor(snapshot) as (cur, _created):
                 return build(cur)
 
+        key = client_key(request.scope)
         body = cached()
         if body is None:
-            self.budget.reserve(estimate)
+            reserved = self.budget.reserve(estimate, key)
             try:
                 body = await self._query(request, run, cached, gated=gated)
             finally:
-                self.budget.release(estimate)
+                reserved.release()
             if body is None:
                 # The client is gone; nobody reads this.
                 return Response(status_code=499)
             self.cache.put(snapshot.key, tag, body)
-        size = len(body)
-        # The estimate may have been low: the real size must fit as well.
-        self.budget.reserve(size)
-        return ChunkedResponse(body, headers, lambda: self.budget.release(size), self._limits)
+        # The estimate may have been low: the real size must fit as well, in the
+        # budget and in the client's share of it.
+        held = self.budget.reserve(len(body), key)
+        return ChunkedResponse(body, headers, held.release, self._limits)

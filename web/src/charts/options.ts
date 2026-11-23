@@ -1,5 +1,5 @@
 import type { BacktestMetrics, ForecastPoint } from '../api/client'
-import { MODELS, mapeByHour } from '../lib/metrics'
+import { MODELS, forecastPeak, mapeByHour } from '../lib/metrics'
 import type { ForecastKey } from '../lib/metrics'
 import { NOT_AVAILABLE } from '../lib/format'
 import {
@@ -41,7 +41,7 @@ export interface LineStyleSpec {
 /** Line styles shared by every forecast chart and its legend. */
 export const LINE_STYLES: Record<ForecastKey | 'actual', LineStyleSpec> = {
   actual: { color: (p) => p.actual, width: 3, pattern: 'solid' },
-  lightgbm: { color: (p) => p.model, width: 2, pattern: 'solid' },
+  lightgbm: { color: (p) => p.model, width: 2.5, pattern: 'solid' },
   baseline_week: { color: (p) => p.baseline, width: 2, pattern: 'dashed' },
   tso: { color: (p) => p.tso, width: 2, pattern: 'dashdot' },
 }
@@ -95,6 +95,27 @@ export function firstIndex(params: unknown): number {
   return list[0]?.dataIndex ?? 0
 }
 
+/** Gap between the cursor and the tooltip, and between the tooltip and the top of the chart. */
+const TOOLTIP_GAP = 16
+const TOOLTIP_TOP = 8
+
+interface TooltipSize {
+  contentSize: [number, number]
+  viewSize: [number, number]
+}
+
+/**
+ * The tooltip sits at the top of the chart on the side away from the cursor, so it does not
+ * cover the lines next to the hour being read.
+ */
+export function tooltipPosition(point: [number, number], size: TooltipSize): [number, number] {
+  const [x] = point
+  const [width] = size.contentSize
+  const [view] = size.viewSize
+  const left = x > view / 2 ? x - width - TOOLTIP_GAP : x + TOOLTIP_GAP
+  return [Math.max(0, Math.min(left, view - width)), TOOLTIP_TOP]
+}
+
 function base(palette: Palette, layout: ChartLayout = DEFAULT_LAYOUT): EChartsCoreOption {
   return {
     animation: false,
@@ -112,7 +133,14 @@ function base(palette: Palette, layout: ChartLayout = DEFAULT_LAYOUT): EChartsCo
       extraCssText: 'box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28); border-radius: 4px;',
       transitionDuration: layout.motion ? 0.2 : 0,
       textStyle: { color: palette.ink, fontFamily: palette.fontFamily, fontSize: 13 },
-      axisPointer: { type: 'line', lineStyle: { color: palette.muted, width: 1 } },
+      axisPointer: { type: 'line', lineStyle: { color: palette.ink, width: 1, type: 'solid' } },
+      position: (
+        point: [number, number],
+        _params: unknown,
+        _dom: unknown,
+        _rect: unknown,
+        size: TooltipSize,
+      ) => tooltipPosition(point, size),
       confine: true,
     },
   }
@@ -128,25 +156,49 @@ function valueAxis(palette: Palette, unit: string, extra: Record<string, unknown
     scale: true,
     axisLine: { show: false },
     axisTick: { show: false },
-    axisLabel: { color: palette.muted },
-    splitLine: { lineStyle: { color: palette.grid, width: 1 } },
+    axisLabel: { color: palette.muted, fontWeight: 500 },
+    // Dotted grid lines stay behind the data.
+    splitLine: { lineStyle: { color: palette.grid, width: 1, type: [2, 4] } },
     ...extra,
   }
 }
 
-/** Categories are indexes, so repeated labels such as the doubled 02:00 stay distinct. */
-function categoryAxis(palette: Palette, labels: readonly string[], shown: readonly boolean[]) {
+/**
+ * Categories are indexes, so repeated labels such as the doubled 02:00 stay distinct. The
+ * axis pointer names the hovered category in a badge on the axis, from `pointerLabels`.
+ */
+function categoryAxis(
+  palette: Palette,
+  labels: readonly string[],
+  shown: readonly boolean[],
+  pointerLabels: readonly string[] = labels,
+) {
   return {
     type: 'category',
     boundaryGap: false,
     data: labels.map((_, i) => String(i)),
-    axisLine: { lineStyle: { color: palette.muted } },
+    axisLine: { lineStyle: { color: palette.rule, width: 1 } },
     axisTick: { show: false },
     axisLabel: {
       color: palette.muted,
+      fontWeight: 500,
       interval: (index: number) => shown[index] === true,
       formatter: (value: string) => labels[Number(value)] ?? '',
       hideOverlap: true,
+    },
+    axisPointer: {
+      label: {
+        show: true,
+        formatter: (params: { value: unknown }) => pointerLabels[Number(params.value)] ?? '',
+        backgroundColor: palette.ink,
+        color: palette.surface,
+        fontFamily: palette.fontFamily,
+        fontSize: 12,
+        fontWeight: 600,
+        padding: [3, 6],
+        borderRadius: 3,
+        margin: 4,
+      },
     },
     splitLine: { show: false },
   }
@@ -167,7 +219,15 @@ function lineSeries(
     symbol: 'none',
     connectNulls: false,
     z,
-    lineStyle: { color: spec.color(palette), width: spec.width, type: dash(spec.pattern) },
+    // Round ends on solid lines; patterned lines keep butt ends, which would otherwise close
+    // the short gaps of their dash pattern.
+    lineStyle: {
+      color: spec.color(palette),
+      width: spec.width,
+      type: dash(spec.pattern),
+      cap: spec.pattern === 'solid' ? 'round' : 'butt',
+      join: 'round',
+    },
     itemStyle: { color: spec.color(palette) },
     emphasis: { disabled: true },
   }
@@ -220,6 +280,63 @@ function clockChangeMark(stamps: readonly string[], palette: Palette) {
   }
 }
 
+/** At most this many 5 GW steps on the value axis; a wider range lets ECharts pick the step. */
+const MAX_GW_STEPS = 20
+
+/**
+ * The value axis in GW from and to whole multiples of 5 GW, so the ticks fall on 40, 45, 50.
+ * The fixed 5 GW step applies only while it gives at most MAX_GW_STEPS ticks.
+ */
+export function roundedGwRange(
+  points: readonly ForecastPoint[],
+): { min: number; max: number; interval?: number } | null {
+  const values = points.flatMap((p) =>
+    FORECAST_SERIES.map((s) => p[s.key]).filter((v): v is number => v !== null),
+  )
+  if (values.length === 0) {
+    return null
+  }
+  const min = Math.floor(Math.min(...values) / 5000) * 5
+  const max = Math.ceil(Math.max(...values) / 5000) * 5
+  const top = max > min ? max : min + 5
+  return (top - min) / 5 > MAX_GW_STEPS ? { min, max: top } : { min, max: top, interval: 5 }
+}
+
+/**
+ * The model peak that the headline names, marked by a dot on the model line. It adds no
+ * value of its own, so it carries no label.
+ */
+function peakMark(points: readonly ForecastPoint[], palette: Palette, delay: number) {
+  const peak = forecastPeak(points)
+  const index = peak === null ? -1 : points.findIndex((p) => p.ts === peak.ts)
+  if (peak === null || index < 0) {
+    return {}
+  }
+  const x = String(index)
+  const y = peak.value / 1000
+  return {
+    markPoint: {
+      silent: true,
+      symbol: 'circle',
+      symbolSize: 11,
+      label: { show: false },
+      itemStyle: { color: palette.model, borderColor: palette.surface, borderWidth: 2 },
+      animationDelay: delay,
+      data: [{ coord: [x, y] }],
+    },
+  }
+}
+
+/** Order in which the lines draw in: forecasts first, the model last of them, then the actual. */
+const DRAW_ORDER: Record<ForecastKey | 'actual', number> = {
+  baseline_week: 0,
+  tso: 1,
+  lightgbm: 2,
+  actual: 3,
+}
+const DRAW_STAGGER_MS = 120
+const DRAW_DURATION_MS = 900
+
 /** Hours of a delivery day are labelled by local wall clock; 02:00 repeats on 25-hour days. */
 export function forecastOption(
   points: readonly ForecastPoint[],
@@ -234,11 +351,15 @@ export function forecastOption(
     lightgbm: 3,
     actual: 4,
   }
+  const range = roundedGwRange(points)
   return {
     ...option,
-    // The one moment of motion on the page: the lines of the newest forecast draw in.
+    // Room above the highest line, so the peak never touches the top of the frame.
+    grid: { ...(option.grid as object), top: 28 },
+    // The one moment of motion on the page: the lines of the newest forecast draw in, one
+    // after another.
     animation: layout.animate,
-    animationDuration: 700,
+    animationDuration: DRAW_DURATION_MS,
     animationEasing: 'cubicOut' as const,
     tooltip: {
       ...(option.tooltip as object),
@@ -263,7 +384,7 @@ export function forecastOption(
       hourLabels(points.map((p) => p.ts)),
       points.map((p) => forecastTick(p.ts, layout.compact ? 6 : 3)),
     ),
-    yAxis: valueAxis(palette, 'GW'),
+    yAxis: valueAxis(palette, 'GW', range ?? {}),
     series: FORECAST_SERIES.map((s, i) => ({
       ...lineSeries(
         s.label,
@@ -272,11 +393,15 @@ export function forecastOption(
         palette,
         z[s.key],
       ),
+      animationDelay: DRAW_ORDER[s.key] * DRAW_STAGGER_MS,
       ...(i === 0
         ? clockChangeMark(
             points.map((p) => p.ts),
             palette,
           )
+        : {}),
+      ...(s.key === 'lightgbm'
+        ? peakMark(points, palette, DRAW_ORDER.lightgbm * DRAW_STAGGER_MS + DRAW_DURATION_MS)
         : {}),
     })),
   }
@@ -332,6 +457,7 @@ function timeAxis(palette: Palette, stamps: readonly string[]) {
     palette,
     stamps.map((ts) => dayShort(localDay(ts), false)),
     stamps.map((ts) => wallClock(ts) === '00:00'),
+    stamps.map((ts) => `${dayShort(localDay(ts), false)}, ${wallClock(ts)}`),
   )
 }
 
