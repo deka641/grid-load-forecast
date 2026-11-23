@@ -5,7 +5,7 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
-from gridload.forecast.backtest import BacktestResult, Metric
+from gridload.forecast.backtest import BacktestResult, Metric, error_summary
 
 LABELS = {
     "lightgbm": "LightGBM model",
@@ -26,6 +26,16 @@ def to_json(result: BacktestResult) -> str:
         "config": result.config,
         "skipped_days": [d.isoformat() for d in result.skipped_days],
         "inputs": result.inputs,
+        "error_distribution": {
+            model: {
+                "bias_mwh": round(x.bias, 1),
+                "p95_abs_error_mwh": round(x.p95_abs, 1),
+                "max_abs_error_mwh": round(x.max_abs, 1),
+                "hours_above_5_percent": round(x.share_above_5_percent, 2),
+                "n": x.n,
+            }
+            for model, x in error_summary(result.rows).items()
+        },
         "metrics": [
             {
                 "model": m.model,
@@ -79,6 +89,29 @@ def to_markdown(result: BacktestResult) -> str:
             "",
             f"On the {tso.n} hours that also have a SMARD forecast, the MAPE is: {parts}, "
             f"{LABELS['tso']} {tso.mape:.2f} %.",
+        ]
+    stats = error_summary(result.rows)
+    if stats:
+        lines += [
+            "",
+            "## Error distribution",
+            "",
+            "| Forecast | Bias (MWh per hour) | 95th percentile of absolute error (MWh) "
+            "| Largest absolute error (MWh) | Hours with error above 5 % |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for model in models:
+            if model in stats:
+                e = stats[model]
+                lines.append(
+                    f"| {LABELS[model]} | {e.bias:+,.0f} | {e.p95_abs:,.0f} | {e.max_abs:,.0f} "
+                    f"| {e.share_above_5_percent:.1f} % |"
+                )
+        lines += [
+            "",
+            "Bias is the mean of forecast minus actual; a positive value means the forecast "
+            "is too high on average. The error above 5 % is the absolute percentage error of "
+            "an hour. Each forecast is scored on the same hours as in the overall table.",
         ]
     lines += [
         "",

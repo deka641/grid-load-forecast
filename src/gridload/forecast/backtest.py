@@ -60,6 +60,17 @@ class BacktestResult:
     inputs: dict[str, object] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ErrorStats:
+    """Distribution of the hourly error of one forecast, in MWh per hour."""
+
+    bias: float  # mean of forecast minus actual
+    p95_abs: float  # 95th percentile of the absolute error (linear interpolation)
+    max_abs: float
+    share_above_5_percent: float  # percent of hours with absolute percentage error above 5 %
+    n: int
+
+
 def mae(actual: np.ndarray, predicted: np.ndarray) -> float:
     return float(np.mean(np.abs(actual - predicted)))
 
@@ -200,6 +211,42 @@ def metrics_for(rows: list[dict[str, object]]) -> list[Metric]:
                     int(actual.size),
                 )
             )
+    return out
+
+
+def error_stats(actual: np.ndarray, predicted: np.ndarray) -> ErrorStats | None:
+    """Error distribution over the hours where both values exist and the actual is non-zero.
+
+    Returns None if no such hour exists.
+    """
+    actual = np.asarray(actual, dtype=np.float64)
+    predicted = np.asarray(predicted, dtype=np.float64)
+    keep = ~np.isnan(actual) & ~np.isnan(predicted) & (actual != 0)
+    if not keep.any():
+        return None
+    error = predicted[keep] - actual[keep]
+    absolute = np.abs(error)
+    return ErrorStats(
+        bias=float(np.mean(error)),
+        p95_abs=float(np.percentile(absolute, 95)),
+        max_abs=float(np.max(absolute)),
+        share_above_5_percent=float(100.0 * np.mean(absolute / np.abs(actual[keep]) > 0.05)),
+        n=int(keep.sum()),
+    )
+
+
+def error_summary(rows: list[dict[str, object]]) -> dict[str, ErrorStats]:
+    """:func:`error_stats` per forecast on the same hours as the overall metrics."""
+    primary = [r for r in rows if _present(r, ("actual", MODEL_NAME, BASELINE_NAME))]
+    primary = [r for r in primary if _f(r["actual"]) != 0]
+    with_tso = [r for r in primary if _present(r, (TSO_NAME,))]
+    out: dict[str, ErrorStats] = {}
+    for model, subset in ((MODEL_NAME, primary), (BASELINE_NAME, primary), (TSO_NAME, with_tso)):
+        stats = error_stats(
+            np.array([_f(r["actual"]) for r in subset]), np.array([_f(r[model]) for r in subset])
+        )
+        if stats is not None:
+            out[model] = stats
     return out
 
 
