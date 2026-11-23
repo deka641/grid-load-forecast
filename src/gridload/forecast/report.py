@@ -156,8 +156,7 @@ def to_markdown(result: BacktestResult) -> str:
         lines.append(
             f"- Input data: SHA-256 `{result.inputs['sha256']}` over {result.inputs['hours']} "
             "hourly values of grid load and the SMARD forecast up to the last delivery day "
-            f"(canonical form in `service.input_fingerprint`); {result.inputs['revised_hours']} "
-            "of these hours contain a value that SMARD corrected after it was first loaded."
+            "(canonical form in `service.input_fingerprint`)."
         )
     if result.skipped_days:
         lines.append(f"- Days without actual values, not scored: {len(result.skipped_days)}.")

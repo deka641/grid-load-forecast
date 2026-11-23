@@ -54,14 +54,13 @@ def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        revised = service.revised_hours(con, last_day)
     finally:
         con.close()
     result = run_backtest(
         load, tso, last_day, days=args.days, training_start=service.training_start(load)
     )
     digest, hours = service.input_fingerprint({"load": load, "load_forecast_tso": tso}, last_day)
-    result.inputs = {"sha256": digest, "hours": hours, "revised_hours": revised}
+    result.inputs = {"sha256": digest, "hours": hours}
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "backtest.json").write_text(report.to_json(result), encoding="utf-8")
     (args.out / "backtest.md").write_text(report.to_markdown(result), encoding="utf-8")

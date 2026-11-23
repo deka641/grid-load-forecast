@@ -70,14 +70,14 @@ def _result_with_rows() -> BacktestResult:
     result = BacktestResult(date(2025, 1, 1), date(2025, 1, 1), {"retrain_every": 7, "seed": 42})
     result.rows = [_row(100.0, 110.0, 100.0, 120.0), _row(100.0, 90.0, 95.0, 100.0)]
     result.metrics = metrics_for(result.rows)
-    result.inputs = {"sha256": "ab" * 32, "hours": 4, "revised_hours": 1}
+    result.inputs = {"sha256": "ab" * 32, "hours": 4}
     return result
 
 
 def test_report_contains_error_distribution_and_inputs() -> None:
     result = _result_with_rows()
     data = json.loads(report.to_json(result))
-    assert data["inputs"] == {"sha256": "ab" * 32, "hours": 4, "revised_hours": 1}
+    assert data["inputs"] == {"sha256": "ab" * 32, "hours": 4}
     assert data["error_distribution"]["lightgbm"] == {
         "bias_mwh": 0.0,
         "p95_abs_error_mwh": 10.0,
@@ -91,7 +91,7 @@ def test_report_contains_error_distribution_and_inputs() -> None:
     assert "| LightGBM model | +0 | 10 | 10 | 100.0 % |" in text
     assert "| SMARD grid load forecast | +10 | 19 | 20 | 50.0 % |" in text
     assert "SHA-256 `" + "ab" * 32 + "` over 4 hourly values" in text
-    assert "1 of these hours" in text
+    assert "corrected" not in text
 
 
 def test_report_without_rows_has_no_error_distribution() -> None:

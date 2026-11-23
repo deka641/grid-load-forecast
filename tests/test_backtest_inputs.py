@@ -5,7 +5,6 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-import duckdb
 import numpy as np
 import pytest
 
@@ -57,27 +56,12 @@ def test_resolve_last_day() -> None:
 def _warehouse_file(tmp_path: Path) -> Path:
     settings = Settings(data_dir=tmp_path)
     source = synthetic.warehouse(FIRST, LAST)
-    # one revised hour (two revised quarter hours) inside the window, one after it
-    source.execute(
-        "UPDATE observations SET revision = 1 WHERE series_key = 'load' AND ts_utc IN "
-        "('2025-04-10 10:00:00+00', '2025-04-10 10:15:00+00', '2025-04-30 21:00:00+00')"
-    )
     escaped = str(settings.warehouse_path).replace("'", "''")
     source.execute(f"ATTACH '{escaped}' AS target")
     source.execute("COPY FROM DATABASE memory TO target")
     source.execute("DETACH target")
     source.close()
     return settings.warehouse_path
-
-
-def test_revised_hours_counts_hours_up_to_last_day(tmp_path: Path) -> None:
-    con = duckdb.connect(str(_warehouse_file(tmp_path)), read_only=True)
-    try:
-        assert service.revised_hours(con, date(2025, 4, 29)) == 1
-        assert service.revised_hours(con, date(2025, 4, 30)) == 2
-        assert service.revised_hours(con, date(2025, 4, 9)) == 0
-    finally:
-        con.close()
 
 
 def _script() -> Any:
@@ -95,7 +79,7 @@ def test_backtest_script_last_day_and_fingerprint(
     data = json.loads((tmp_path / "a" / "backtest.json").read_text())
     assert data["last_day"] == "2025-04-20"
     assert data["first_day"] == "2025-04-14"
-    assert data["inputs"]["revised_hours"] == 1
+    assert set(data["inputs"]) == {"sha256", "hours"}
     assert len(data["inputs"]["sha256"]) == 64
     first_digest = data["inputs"]["sha256"]
     assert "Input data: SHA-256" in (tmp_path / "a" / "backtest.md").read_text()
@@ -117,5 +101,7 @@ def test_backtest_script_last_day_and_fingerprint(
     )
     assert "not in the past" in capsys.readouterr().err
     assert not (tmp_path / "c").exists()
+    # the script only writes the reports and the rows, never the serving snapshot
+    assert not Settings(data_dir=tmp_path).serving_path.exists()
     with pytest.raises(SystemExit):
         main([*args, "--last-day", "20.04.2025"], today=today)

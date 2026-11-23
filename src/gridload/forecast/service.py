@@ -100,18 +100,6 @@ def input_fingerprint(series: dict[str, History], last_day: date) -> tuple[str, 
     return digest.hexdigest(), count
 
 
-def revised_hours(con: duckdb.DuckDBPyConnection, last_day: date) -> int:
-    """Hours of ``FINGERPRINT_SERIES`` up to the end of ``last_day`` with a revised quarter hour."""
-    end = tz.day_hours(last_day)[-1] + timedelta(hours=1)
-    row = con.execute(
-        "SELECT count(DISTINCT (series_key, time_bucket(INTERVAL 1 HOUR, ts_utc))) "
-        "FROM observations WHERE resolution = 'quarterhour' AND revision > 0 "
-        "AND series_key IN (SELECT unnest(?::VARCHAR[])) AND ts_utc < ?",
-        [list(FINGERPRINT_SERIES), end],
-    ).fetchone()
-    return int(row[0]) if row else 0
-
-
 def due_delivery_day(con: duckdb.DuckDBPyConnection, now: datetime) -> date | None:
     """Delivery day to forecast now, or None if not yet due or already issued."""
     local_now = now.astimezone(tz.BERLIN)
