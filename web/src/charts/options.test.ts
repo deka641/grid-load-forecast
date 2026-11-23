@@ -209,12 +209,19 @@ describe('mixOption and priceOption', () => {
       [null, null, null, null, null],
     ]) {
       expect(built(priceOption(hours, values, palette)).series[0]?.markArea).toBeUndefined()
-      expect(priceGaps(hours, values)).toEqual([])
     }
+    // The missing last hour is still a gap; only the shading leaves it out.
+    expect(priceGaps(hours, [1, 2, 3, 4, null])).toEqual([{ kind: 'pending', from: 4, to: 4 }])
+    expect(priceGaps(hours, [1, 2, 3, 4, 5])).toEqual([])
+    expect(priceGaps(hours, [null, null, null, null, null])).toEqual([])
   })
 
   it('extends each price to the end of its hour', () => {
-    expect(stepEnds([1, null, null, 2, null])).toEqual([1, 1, null, 2, 2])
+    // Only the hour after the last price is carried forward; a missing hour inside the
+    // series is not drawn with the price before it.
+    expect(stepEnds([1, null, null, 2, null])).toEqual([1, null, null, 2, 2])
+    expect(stepEnds([1, null, 2])).toEqual([1, null, 2])
+    expect(stepEnds([1, 2, null, null])).toEqual([1, 2, 2, null])
     expect(stepEnds([null, 3])).toEqual([null, 3])
     expect(lastValueIndex([1, null, 2, null])).toBe(2)
     expect(lastValueIndex([null])).toBe(-1)
@@ -243,6 +250,8 @@ describe('price gaps', () => {
     expect(newestDueDay('2026-11-20T18:00:00Z')).toBe('2026-11-21')
     expect(newestDueDay('2026-07-01T17:00:00Z')).toBe('2026-07-02')
     expect(newestDueDay('2026-12-31T23:30:00+01:00')).toBe('2027-01-01')
+    expect(newestDueDay('not a time')).toBeNull()
+    expect(newestDueDay('')).toBeNull()
   })
 
   it('labels a missing run inside the range as a source gap', () => {
@@ -287,10 +296,15 @@ describe('price gaps', () => {
     expect(area?.data[1]).toEqual([{ xAxis: '4' }, { xAxis: '7' }])
   })
 
-  it('finds gaps at the start and leaves a missing last hour alone', () => {
-    expect(priceGaps(hours, [null, null, 3, 4, 5, 6, 7, null], '2026-11-21')).toEqual([
+  it('finds gaps at the start and does not shade a missing last hour', () => {
+    const values = [null, null, 3, 4, 5, 6, 7, null]
+    expect(priceGaps(hours, values, '2026-11-21')).toEqual([
       { kind: 'source', from: 0, to: 1 },
+      { kind: 'source', from: 7, to: 7 },
     ])
+    const area = built(priceOption(hours, values, palette, undefined, '2026-11-21')).series[0]
+      ?.markArea
+    expect(areas(area)).toEqual([['0', '2', 'No price published by SMARD']])
   })
 
   it('counts the hours of a gap over the 25-hour and the 23-hour day', () => {

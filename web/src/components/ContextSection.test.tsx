@@ -85,17 +85,28 @@ describe('Price summary', () => {
     expect(summary.textContent.match(/mean/g)).toHaveLength(2)
   })
 
-  it.each([[[10, 20, 30, 40]], [[10, 20, 30, null]]])(
-    'says nothing about the end when the chart shades nothing (%j)',
-    async (prices) => {
-      serve(actuals(prices))
-      renderApp()
-      const summary = await screen.findByText(/^Hourly prices/)
-      expect(summary).not.toHaveTextContent('last published price')
-      expect(summary).not.toHaveTextContent('shaded')
-      expect(summary).not.toHaveTextContent('SMARD has published no prices')
-    },
-  )
+  it('says nothing about gaps when every hour has a price', async () => {
+    serve(actuals([10, 20, 30, 40]))
+    renderApp()
+    const summary = await screen.findByText(/^Hourly prices/)
+    expect(summary).toHaveTextContent('negative in 0 of 4 hours.')
+    expect(summary).not.toHaveTextContent('last published price')
+    expect(summary).not.toHaveTextContent('shade')
+    expect(summary).not.toHaveTextContent('SMARD has published no prices')
+  })
+
+  it('counts and names a missing last hour, which the chart does not shade', async () => {
+    serve(actuals([10, 20, 30, null]))
+    renderApp()
+    const summary = await screen.findByText(/^Hourly prices/)
+    expect(summary).toHaveTextContent(
+      'average 20.00 EUR/MWh over 3 of 4 hours, negative in 0 of them.',
+    )
+    expect(summary).toHaveTextContent(
+      'SMARD has published no prices from Fri 20 Nov, 01:00 to 02:00 (UTC+1).',
+    )
+    expect(summary).not.toHaveTextContent('shade')
+  })
 
   it('names the hours SMARD has not priced inside the range', async () => {
     serve(actuals([-10, null, null, 30]))
@@ -104,8 +115,8 @@ describe('Price summary', () => {
     expect(summary).toHaveTextContent(
       'Hourly prices (each the mean of four quarter hours) from -10.00 to 30.00 EUR/MWh, ' +
         'average 10.00 EUR/MWh over 2 of 4 hours, negative in 1 of them. A single negative ' +
-        'quarter hour can be hidden in its hourly mean. SMARD has published no prices for ' +
-        'Thu 19 Nov, 23:00 to Fri 20 Nov, 00:00 (UTC+1); the chart shades these hours lighter.',
+        'quarter hour can be hidden in its hourly mean. SMARD has published no prices from ' +
+        'Thu 19 Nov, 23:00 to Fri 20 Nov, 01:00 (UTC+1); the chart shades these hours lighter.',
     )
     expect(summary).not.toHaveTextContent('shaded part')
   })
@@ -124,7 +135,7 @@ describe('Price summary', () => {
       'average 10.00 EUR/MWh over 2 of 4 hours, negative in 1 of them.',
     )
     expect(summary).toHaveTextContent(
-      'SMARD has published no prices for Sat 21 Nov, 00:00 to Sat 21 Nov, 01:00 (UTC+1); the chart shades these hours lighter.',
+      'SMARD has published no prices from Sat 21 Nov, 00:00 to 02:00 (UTC+1); the chart shades these hours lighter.',
     )
     expect(summary).not.toHaveTextContent('last published price')
   })
@@ -143,7 +154,7 @@ describe('Price summary', () => {
       'average 20.00 EUR/MWh over 2 of 27 hours, negative in 0 of them.',
     )
     expect(summary).toHaveTextContent(
-      'SMARD has published no prices for Sun 25 Oct, 00:00 (UTC+2) to Sun 25 Oct, 23:00 (UTC+1); the chart shades these hours lighter.',
+      'SMARD has published no prices from Sun 25 Oct, 00:00 (UTC+2) to Mon 26 Oct, 00:00 (UTC+1); the chart shades these hours lighter.',
     )
   })
 

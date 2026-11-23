@@ -401,20 +401,30 @@ export function lastValueIndex(values: readonly (number | null)[]): number {
 
 /**
  * A price holds for the hour that starts at its timestamp, so a step line needs the
- * point where that hour ends. Where the next price is missing, the value is repeated
- * there for drawing only; the tooltip still reads the published values.
+ * point where that hour ends. After the last published price that point is missing, so
+ * the value is repeated there for drawing only; the tooltip still reads the published
+ * values. Inside the series a missing hour stays empty, so it is not drawn with the price
+ * before it.
  */
 export function stepEnds(values: readonly (number | null)[]): (number | null)[] {
-  return values.map((value, i) => value ?? (i > 0 ? (values[i - 1] ?? null) : null))
+  const last = lastValueIndex(values)
+  return values.map(
+    (value, i) => value ?? (last >= 0 && i === last + 1 ? (values[last] ?? null) : null),
+  )
 }
 
 /**
- * Day-ahead prices for day D are published around 13:00 Berlin time on D minus 1. Like the
- * pipeline, which waits six hours before it calls a missing value a source gap, a day counts
- * as due only from 19:00 on the day before. Returns the newest due day at `instant`.
+ * Day-ahead prices for day D are published around 13:00 Berlin time on D minus 1. With a
+ * six-hour allowance after the 13:00 auction, in the spirit of the pipeline's
+ * LATE_DATA_ALLOWANCE, a day counts as due from 19:00 on the day before. Returns the newest
+ * due day at `instant`, or null if the timestamp cannot be read.
  */
-export function newestDueDay(instant: string): string {
-  const { day, time } = berlinParts(new Date(Date.parse(instant)))
+export function newestDueDay(instant: string): string | null {
+  const epoch = Date.parse(instant)
+  if (Number.isNaN(epoch)) {
+    return null
+  }
+  const { day, time } = berlinParts(new Date(epoch))
   return time >= '19:00' ? addDays(day, 1) : day
 }
 
@@ -430,8 +440,7 @@ export interface PriceGap {
 /**
  * The runs of hours without a price. An hour whose day is later than `dueDay` is not yet
  * published (`pending`); any other missing hour is a gap in the source. Without a due day,
- * the hours after the last price count as pending. A missing last hour alone is left out,
- * because the last price is drawn to the end of its hour and the hour is not visible.
+ * the hours after the last price count as pending.
  */
 export function priceGaps(
   stamps: readonly string[],
@@ -457,7 +466,15 @@ export function priceGaps(
       gaps.push({ kind, from: i, to: i })
     }
   }
-  return gaps.filter((g) => g.from < stamps.length - 1)
+  return gaps
+}
+
+/**
+ * Whether the chart shades a gap. A missing last hour alone is not shaded: the time axis
+ * ends where that hour starts, so the hour is not visible.
+ */
+export function isShaded(gap: PriceGap, count: number): boolean {
+  return gap.from < count - 1
 }
 
 /** First and last axis index of the shading for a gap: up to where the next price starts. */
@@ -499,7 +516,7 @@ export function priceOption(
   dueDay: string | null = null,
 ) {
   const option = base(palette, layout)
-  const gaps = priceGaps(stamps, values, dueDay)
+  const gaps = priceGaps(stamps, values, dueDay).filter((g) => isShaded(g, stamps.length))
   const span = gaps.find((g) => g.kind === 'pending') ?? null
   const unpublished =
     gaps.length > 0

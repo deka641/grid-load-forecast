@@ -3,7 +3,7 @@ import { useCallback, useMemo } from 'react'
 import type { Actuals, SeriesCatalog } from '../api/client'
 import { useActuals, useSeries, useStatus } from '../api/queries'
 import { Chart } from '../charts/LazyChart'
-import { mixOption, newestDueDay, priceGaps, priceOption } from '../charts/options'
+import { isShaded, mixOption, newestDueDay, priceGaps, priceOption } from '../charts/options'
 import type { ChartLayout, TimeSeries } from '../charts/options'
 import { GENERATION, generationColor } from '../charts/palette'
 import type { Palette } from '../charts/palette'
@@ -11,7 +11,15 @@ import { NOT_AVAILABLE } from '../lib/format'
 import { PRICE_KEY, alignSeries, meanOf, stats } from '../lib/series'
 import type { Aligned } from '../lib/series'
 import { coversFullDays } from '../lib/days'
-import { addDays, dayPlain, dayShort, localDay, offsetLabel, wallClock } from '../lib/time'
+import {
+  addDays,
+  berlinParts,
+  dayPlain,
+  dayShort,
+  localDay,
+  offsetLabel,
+  wallClock,
+} from '../lib/time'
 import { Legend } from './Legend'
 import { Loading, QueryProblem } from './Notice'
 
@@ -97,13 +105,28 @@ function hourText(ts: string, withOffset: boolean): string {
   return withOffset ? `${text} (${offsetLabel(ts)})` : text
 }
 
-/** "Fri 20 Nov, 00:00 to Sat 21 Nov, 23:00 (UTC+1)", with both offsets if they differ. */
+/** Berlin day, wall clock and offset of the end of the hour that starts at `ts`. */
+function hourEnd(ts: string): { day: string; time: string; offset: string } {
+  const end = Date.parse(ts) + 3_600_000
+  const { day, time } = berlinParts(new Date(end))
+  const minutes = (Date.parse(`${day}T${time}:00Z`) - end) / 60_000
+  const hours = String(Math.trunc(Math.abs(minutes) / 60))
+  const rest = Math.abs(minutes) % 60
+  const sign = minutes < 0 ? '-' : '+'
+  const tail = rest === 0 ? '' : `:${String(rest).padStart(2, '0')}`
+  return { day, time, offset: `UTC${sign}${hours}${tail}` }
+}
+
+/**
+ * "from Thu 19 Nov, 23:00 to Fri 20 Nov, 01:00 (UTC+1)": from the start of the first hour
+ * to the end of the last, the day named once for a range within one day, and both offsets
+ * if they differ.
+ */
 function hoursText(from: string, to: string): string {
-  if (from === to) {
-    return hourText(from, true)
-  }
-  const both = offsetLabel(from) !== offsetLabel(to)
-  return `${hourText(from, both)} to ${hourText(to, true)}`
+  const end = hourEnd(to)
+  const both = offsetLabel(from) !== end.offset
+  const endDay = end.day === localDay(from) ? '' : `${dayShort(end.day, false)}, `
+  return `from ${hourText(from, both)} to ${endDay}${end.time} (${end.offset})`
 }
 
 function listText(parts: readonly string[]): string {
@@ -127,7 +150,9 @@ function PriceStats({
   }
   const gaps = priceGaps(stamps, values, dueDay)
   const source = gaps.filter((g) => g.kind === 'source')
-  const pending = gaps.find((g) => g.kind === 'pending')
+  const sourceShaded = source.some((g) => isShaded(g, stamps.length))
+  // The sentence about hours not yet published refers to the shading, so it needs one.
+  const pending = gaps.find((g) => g.kind === 'pending' && isShaded(g, stamps.length))
   const missing = source.reduce((sum, g) => sum + g.to - g.from + 1, 0)
   const lastIndex =
     pending === undefined ? -1 : values.slice(0, pending.from).findLastIndex((v) => v !== null)
@@ -144,7 +169,7 @@ function PriceStats({
         : `, negative in ${String(s.negativeHours)} of ${String(s.hours)} hours.`}{' '}
       A single negative quarter hour can be hidden in its hourly mean.
       {missing > 0
-        ? ` SMARD has published no prices for ${sourceText}; the chart shades these hours lighter.`
+        ? ` SMARD has published no prices ${sourceText}${sourceShaded ? '; the chart shades these hours lighter' : ''}.`
         : ''}
       {last !== undefined
         ? ` The last published price is for ${hourText(last, true)}; the shaded part of the chart has no prices yet.`

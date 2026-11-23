@@ -441,7 +441,7 @@ for (const [scheme, width] of [
     await mockApi(page, { priceEnd: Date.parse('2026-11-19T22:00:00Z') })
     await open(page)
     await expect(page.locator('.chart-stats')).toContainText(
-      'SMARD has published no prices for Fri 20 Nov, 00:00 to Fri 20 Nov, 13:00 (UTC+1); the chart shades these hours lighter.',
+      'SMARD has published no prices from Fri 20 Nov, 00:00 to 14:00 (UTC+1); the chart shades these hours lighter.',
     )
     await expect(page.locator('.chart-stats')).not.toContainText('last published price')
     await expect(page.locator('.chart-stats')).toContainText(
@@ -480,7 +480,7 @@ for (const [scheme, width] of [
     await open(page)
     const stats = page.locator('.chart-stats')
     await expect(stats).toContainText(
-      'SMARD has published no prices for Mon 16 Nov, 00:00 to Tue 17 Nov, 23:00 (UTC+1); the chart shades these hours lighter.',
+      'SMARD has published no prices from Mon 16 Nov, 00:00 to Wed 18 Nov, 00:00 (UTC+1); the chart shades these hours lighter.',
     )
     await expect(stats).toContainText('over 120 of 168 hours')
     await expect(stats).not.toContainText('no prices yet')
