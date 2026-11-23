@@ -6,6 +6,30 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-23
+
+### Added
+
+- The backtest report gives, per forecast, the mean bias, the 95th percentile and the largest absolute hourly error and the share of hours that miss by more than 5 %, next to MAE and MAPE. Over the backtest year the model misses by 4,134 MWh or more in one hour in twenty and by more than 5 % in 18.3 % of hours, figures that matter more for sizing positions and reserves than the mean error. The README and the forecast explanation say how to read these figures and what the forecast is suited for.
+- `scripts/backtest.py --last-day YYYY-MM-DD` fixes the end of the backtest window, and the report records a SHA-256 fingerprint of its input data. The committed report can be reproduced with the documented commands, and a rerun shows whether a different result comes from different data.
+- The dashboard names delivery days for which no forecast was issued, for example after the pipeline was stopped, instead of skipping them silently in the day selector. The operations guide explains when a delivery day is forecast and that a missed day is not forecast later.
+- While the dashboard loads, each section shows placeholder blocks in the layout of its content instead of a single line of text.
+
+### Changed
+
+- The price chart tells a source gap from prices that are not yet due. Hours whose prices SMARD should already have published but has not are shaded lighter, labelled "No price published by SMARD" and named in the summary with the number of hours covered, instead of being shown as "Not yet published" or as an unlabelled hole. The chart shows all published prices up to the end of today, not only the hours for which generation data exists.
+- The backtest caveats are stated with their direction: the model is scored with load values as stored today, including later corrections it would not have had at the cutoff, which can favour the model; the SMARD forecast is scored with the values SMARD publishes now, which may favour SMARD. The dashboard note under the backtest table names both.
+- The documentation states that regional public holidays are not modelled, so the forecast treats days such as Corpus Christi as ordinary working days.
+- The forecast chart marks the peak hour named in the headline, uses whole 5 GW steps on its axis, draws its lines in one after another (not with reduced motion), and shows the hour under the pointer on the axis. The tooltip stays at the top of the chart on the side away from the pointer, so it no longer covers the lines being read. The forecast peak is larger and the chart frames have rounded, raised surfaces.
+- Each client address may hold at most half of the API's 100 MiB budget for responses being built or waiting to be sent, cached responses included. One address that requests large responses and does not read them could previously fill the budget and get every other client's data requests refused.
+- The pipeline healthcheck no longer imports the forecast stack: one probe took about 0.1 s of CPU and 21 MB instead of 0.65 s and 105 MB, measured on the host.
+
+### Fixed
+
+- A single missing hour inside the price chart is no longer drawn with the price of the hour before.
+- The gap before an opening parenthesis or a vertical bar is visible again throughout the dashboard; the display font's narrow word space had swallowed it.
+- The documentation of the late forecast issue, the rows of `load_log` and the script table of the CLI reference match the code.
+
 ## [0.1.1] - 2026-11-21
 
 ### Added
@@ -68,6 +92,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 - Docker Compose stack with Caddy, healthchecks, memory limits, log rotation and non-root containers; local quality gates `make verify-fast` and `make verify` with style and secret scans; production-like check with image scan, and load test; seven-day wait period for new dependency versions.
 - Documentation: tutorial, how-to guides, reference and explanation.
 
-[Unreleased]: https://github.com/deka641/grid-load-forecast/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/deka641/grid-load-forecast/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/deka641/grid-load-forecast/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/deka641/grid-load-forecast/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/deka641/grid-load-forecast/releases/tag/v0.1.0
