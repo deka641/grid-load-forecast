@@ -45,7 +45,14 @@
   --text-display: 64px;
   --gutter: 48px;
   --radius: 4px;
+  --radius-lg: 10px;
   --control: 40px;
+
+  /* Depth: raised surfaces, a second surface tone, the page tint behind the header. */
+  --color-surface-2: #f9fafb;
+  --color-skeleton: color-mix(in srgb, var(--color-ink) 7%, transparent);
+  --shadow-1: 0 1px 2px rgb(16 24 40 / 0.04), 0 2px 8px rgb(16 24 40 / 0.06);
+  --hero-glow: color-mix(in srgb, var(--color-model) 7%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -68,6 +75,9 @@
     --color-warn-bg: #3a2a12;
     --color-error: #ff9b8f;
     --gen-wind-offshore: #3b6fae;
+    --color-surface-2: #1a2738;
+    --shadow-1: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px rgb(0 0 0 / 0.35);
+    --hero-glow: color-mix(in srgb, var(--color-model) 10%, transparent);
   }
 }
 
@@ -90,6 +100,9 @@
   --color-warn-bg: #3a2a12;
   --color-error: #ff9b8f;
   --gen-wind-offshore: #3b6fae;
+  --color-surface-2: #1a2738;
+  --shadow-1: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px rgb(0 0 0 / 0.35);
+  --hero-glow: color-mix(in srgb, var(--color-model) 10%, transparent);
 }
 
 *,
@@ -111,6 +124,8 @@ body {
   font-size: var(--text-md);
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
+  /* Barlow's space is narrow; without this the gap before "(" and "|" all but disappears. */
+  word-spacing: 0.06em;
 }
 
 h1,
@@ -322,17 +337,22 @@ a:hover {
 }
 
 .section-title {
-  font-size: var(--text-lg);
+  font-family: var(--font-display);
+  font-size: 22px;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.25;
+  letter-spacing: 0.005em;
   text-wrap: balance;
 }
 
 /* The forecast section is named by a small label; its headline carries the result. */
 .section-title.eyebrow {
-  font-size: 15px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
   color: var(--color-muted);
-  letter-spacing: 0.01em;
+  letter-spacing: 0.04em;
 }
 
 .subsection-title {
@@ -363,6 +383,42 @@ a:hover {
   margin-top: 8px;
 }
 
+/* A soft glow in the model colour behind the peak figure, fading out on every side. It hangs
+   from the small label above the hero rather than from the hero itself, so the background of
+   the headline and key figures stays a plain colour that contrast checkers can read. */
+.section:has(> .forecast-hero) {
+  isolation: isolate;
+}
+
+.section-title.eyebrow:has(+ .forecast-hero) {
+  position: relative;
+}
+
+.section-title.eyebrow:has(+ .forecast-hero)::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: -40px;
+  left: calc(-1 * var(--gutter));
+  width: min(900px, 80%);
+  height: 260px;
+  background: radial-gradient(closest-side, var(--hero-glow), transparent);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .forecast-hero {
+    animation: settle 400ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+}
+
+/* Moves only: the text keeps full contrast in every frame. */
+@keyframes settle {
+  from {
+    transform: translateY(6px);
+  }
+}
+
 .headline {
   font-family: var(--font-display);
   font-size: var(--text-xxl);
@@ -385,14 +441,17 @@ a:hover {
 .headline-figure {
   display: block;
   margin-top: 2px;
-  font-size: var(--text-display);
+  font-size: clamp(44px, 5.2vw, 88px);
   line-height: 1;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  word-spacing: 0.02em;
   color: var(--color-model);
 }
 
 .key-figures-label {
-  font-size: var(--text-sm);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   color: var(--color-muted);
 }
 
@@ -412,7 +471,7 @@ a:hover {
 }
 
 .key-figure dt {
-  font-size: var(--text-sm);
+  font-size: 13px;
   color: var(--color-muted);
   white-space: nowrap;
 }
@@ -421,9 +480,11 @@ a:hover {
   margin-right: 6px;
 }
 
+/* Wide enough for a value such as "12.3 %", so the band keeps its width while it loads. */
 .key-figure dd {
+  min-width: 2.9em;
   font-family: var(--font-display);
-  font-size: var(--text-xl);
+  font-size: 32px;
   font-weight: 600;
   line-height: 1.15;
   white-space: nowrap;
@@ -634,18 +695,21 @@ a:hover {
   box-shadow: none;
 }
 
-/* Charts sit on the surface colour inside a hairline frame. Its top edge is ink, like the
-   heavier rule above each section, and heaviest on the forecast chart. */
+/* Charts sit on a raised surface inside a hairline frame. The forecast chart carries a top
+   edge in the model colour, which ties it to the peak figure above it. */
 .chart {
   position: relative;
   margin-top: 10px;
   border: 1px solid var(--color-rule);
-  border-top-color: var(--color-ink);
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
+  box-shadow: var(--shadow-1);
 }
 
 .chart-forecast {
-  border-top-width: 2px;
+  box-shadow:
+    inset 0 3px 0 var(--color-model),
+    var(--shadow-1);
 }
 
 .chart-canvas {
@@ -895,6 +959,114 @@ tr.narrow-only {
   min-height: 890px;
 }
 
+/* Placeholders while a section loads: quiet blocks in the place of its content. */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: 16px;
+}
+
+.skeleton-block {
+  display: block;
+  border-radius: var(--radius);
+  background: var(--color-skeleton);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton-block {
+    animation: pulse 1.2s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes pulse {
+  to {
+    opacity: 0.5;
+  }
+}
+
+.skeleton-title {
+  width: 180px;
+  height: 22px;
+  margin-bottom: 4px;
+}
+
+.skeleton-lead {
+  width: min(420px, 70%);
+  height: 28px;
+}
+
+.skeleton-figure {
+  width: min(560px, 85%);
+  height: clamp(44px, 5.2vw, 88px);
+  margin-top: 8px;
+}
+
+.skeleton-legend {
+  width: min(480px, 80%);
+  height: 14px;
+  margin-top: 24px;
+}
+
+.skeleton-line {
+  width: min(640px, 90%);
+  height: 16px;
+  margin-top: 8px;
+}
+
+.skeleton-line-short {
+  width: min(360px, 50%);
+}
+
+/* The chart frames keep the look of the final chart, without lines. */
+.skeleton-chart {
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-1);
+}
+
+.skeleton-chart-forecast {
+  height: 380px;
+  box-shadow:
+    inset 0 3px 0 var(--color-rule),
+    var(--shadow-1);
+}
+
+.skeleton-chart-small {
+  height: 260px;
+  margin-top: 0;
+}
+
+.skeleton-chart-mix {
+  height: 320px;
+}
+
+.skeleton-chart-price {
+  height: 200px;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 32px;
+  width: 100%;
+  margin-top: 16px;
+}
+
+.skeleton-table {
+  height: 260px;
+}
+
+/* While the status loads, each section is drawn as it will appear, below its heavy rule. */
+.skeleton-section {
+  margin-top: 40px;
+  padding-top: 14px;
+  border-top: 2px solid var(--color-rule);
+}
+
 /* The key figures wrap under the headline only where they do not fit beside it, below about
    970 to 1010 px depending on the day name; the floor grows with them there. */
 @media (max-width: 1000px) {
@@ -925,8 +1097,13 @@ tr.narrow-only {
 }
 
 @media (max-width: 1240px) {
-  .backtest-grid {
+  .backtest-grid,
+  .skeleton-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .skeleton-table {
+    max-width: 760px;
   }
 
   .loading-backtest {
@@ -961,10 +1138,6 @@ tr.narrow-only {
     font-size: var(--text-lg);
   }
 
-  .headline-figure {
-    font-size: 44px;
-  }
-
   .forecast-hero {
     gap: 16px;
   }
@@ -979,7 +1152,7 @@ tr.narrow-only {
   }
 
   .key-figure dd {
-    font-size: 22px;
+    font-size: 24px;
   }
 
   .empty-title {
@@ -994,8 +1167,13 @@ tr.narrow-only {
     height: 300px;
   }
 
-  .chart-mix .chart-canvas {
+  .chart-mix .chart-canvas,
+  .skeleton-chart-mix {
     height: 280px;
+  }
+
+  .skeleton-chart-forecast {
+    height: 300px;
   }
 
   .day-selector {
@@ -1226,7 +1404,6 @@ tr.narrow-only {
 .empty-chart {
   height: 300px;
   margin-top: 28px;
-  border-top-width: 2px;
   background:
     linear-gradient(var(--color-muted), var(--color-muted)) 52px calc(100% - 28px) /
       calc(100% - 68px) 1px no-repeat,
