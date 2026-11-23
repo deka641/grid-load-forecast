@@ -32,6 +32,7 @@ interface MockOptions {
   degradedChecks?: string[]
   days?: string[]
   priceEnd?: number
+  priceGap?: readonly [number, number]
   /** Paths that answer 500. */
   failing?: string[]
   /** Data requests (all but status and series) wait for this. */
@@ -84,6 +85,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
             url.searchParams.get('start') ?? fixtures.TODAY,
             url.searchParams.get('end') ?? fixtures.TODAY,
             options.priceEnd,
+            options.priceGap,
           ),
         )
       default:
@@ -423,7 +425,7 @@ for (const [scheme, width] of [
   ['light', 390],
   ['dark', 390],
 ] as const) {
-  test(`marks unpublished prices and negative prices in ${scheme} at ${String(width)} px`, async ({
+  test(`marks missing prices and negative prices in ${scheme} at ${String(width)} px`, async ({
     browser,
   }) => {
     const context = await browser.newContext({
@@ -434,12 +436,14 @@ for (const [scheme, width] of [
     })
     const page = await context.newPage()
     const problems = watchProblems(page)
-    // Prices end with 19 November, while generation runs into 20 November.
+    // Prices end with 19 November, while generation runs into 20 November. The prices of
+    // 20 November were due on 19 November, so the missing hours are a gap in the source.
     await mockApi(page, { priceEnd: Date.parse('2026-11-19T22:00:00Z') })
     await open(page)
     await expect(page.locator('.chart-stats')).toContainText(
-      'The last published price is for Thu 19 Nov, 23:00 (UTC+1)',
+      'SMARD has published no prices for Fri 20 Nov, 00:00 to Fri 20 Nov, 13:00 (UTC+1).',
     )
+    await expect(page.locator('.chart-stats')).not.toContainText('last published price')
     await expect(page.locator('.chart-stats')).toContainText(
       'Hourly prices (each the mean of four quarter hours) from',
     )
@@ -447,6 +451,42 @@ for (const [scheme, width] of [
     const chart = page.locator('.chart-price')
     await chart.scrollIntoViewIfNeeded()
     await chart.screenshot({ path: join(SHOTS, `price-end-${scheme}-${String(width)}.png`) })
+    await expectNoSeriousAxe(page)
+    expect(await cspViolations(page)).toEqual([])
+    expect(problems).toEqual([])
+    await context.close()
+  })
+}
+
+for (const [scheme, width] of [
+  ['light', 1440],
+  ['dark', 390],
+] as const) {
+  test(`marks a price gap inside the range in ${scheme} at ${String(width)} px`, async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      colorScheme: scheme,
+      viewport: { width, height: 900 },
+      deviceScaleFactor: width < 600 ? 2 : 1,
+      timezoneId: 'Europe/Berlin',
+    })
+    const page = await context.newPage()
+    const problems = watchProblems(page)
+    // No prices for 16 and 17 November; those of today run to its end, past generation.
+    await mockApi(page, {
+      priceGap: [Date.parse('2026-11-15T23:00:00Z'), Date.parse('2026-11-17T22:00:00Z')],
+    })
+    await open(page)
+    const stats = page.locator('.chart-stats')
+    await expect(stats).toContainText(
+      'SMARD has published no prices for Mon 16 Nov, 00:00 to Tue 17 Nov, 23:00 (UTC+1).',
+    )
+    await expect(stats).toContainText('over 120 of 168 hours')
+    await expect(stats).not.toContainText('shaded')
+    const chart = page.locator('.chart-price')
+    await chart.scrollIntoViewIfNeeded()
+    await chart.screenshot({ path: join(SHOTS, `price-gap-${scheme}-${String(width)}.png`) })
     await expectNoSeriousAxe(page)
     expect(await cspViolations(page)).toEqual([])
     expect(problems).toEqual([])

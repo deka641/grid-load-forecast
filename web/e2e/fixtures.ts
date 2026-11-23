@@ -208,8 +208,17 @@ function price(instant: number): number {
   return Math.round(value * 100) / 100
 }
 
-/** `priceEnd` makes prices stop at that instant, as when SMARD has not published more yet. */
-export function actuals(keys: string[], start: string, end: string, priceEnd?: number) {
+/**
+ * `priceEnd` makes prices stop at that instant, as when SMARD has not published more yet;
+ * `priceGap` leaves out the prices from its first to its last instant, as a gap in the source.
+ */
+export function actuals(
+  keys: string[],
+  start: string,
+  end: string,
+  priceEnd?: number,
+  priceGap?: readonly [number, number],
+) {
   const hours: number[] = []
   for (let day = start; day <= end; day = addDays(day, 1)) {
     hours.push(...hoursOfDay(day))
@@ -230,6 +239,7 @@ export function actuals(keys: string[], start: string, end: string, priceEnd?: n
         unit: info?.unit ?? 'MWh',
         points: hours
           .filter((t) => t <= limit)
+          .filter((t) => !isPrice || priceGap === undefined || t < priceGap[0] || t > priceGap[1])
           .map((t) => ({ ts: isoLocal(t), value: isPrice ? price(t) : generation(key, t) })),
       }
     }),

@@ -7,10 +7,11 @@ import {
   lastValueIndex,
   mapeByHourOption,
   mixOption,
+  newestDueDay,
+  priceGaps,
   priceOption,
   stepEnds,
   tooltipHtml,
-  unpublishedSpan,
 } from './options'
 import type { Palette } from './palette'
 
@@ -42,7 +43,10 @@ interface Series {
   areaStyle?: { color: string }
   z?: number
   markLine?: { data: unknown[]; label: { formatter: string }; lineStyle: { color: string } }
-  markArea?: { data: unknown[][]; label: { formatter: string } }
+  markArea?: {
+    data: { xAxis: string; label?: { formatter: string }; itemStyle?: { opacity: number } }[][]
+    label: { formatter: string }
+  }
 }
 interface Built {
   animation: boolean
@@ -190,11 +194,9 @@ describe('mixOption and priceOption', () => {
     // The last price is drawn over its whole hour; the tooltip keeps the gap.
     expect(early.series[0]?.data).toEqual([50, 60, 60, null, null])
     expect(early.tooltip.formatter([{ dataIndex: 2 }])).toContain('n/a')
-    expect(unpublishedSpan(hours, [50, 60, null, null, null])).toEqual({
-      first: 2,
-      last: 4,
-      lastPrice: 1,
-    })
+    expect(priceGaps(hours, [50, 60, null, null, null])).toEqual([
+      { kind: 'pending', from: 2, to: 4 },
+    ])
     // Only the last hour missing, complete or empty: nothing to shade.
     for (const values of [
       [1, 2, 3, 4, null],
@@ -202,7 +204,7 @@ describe('mixOption and priceOption', () => {
       [null, null, null, null, null],
     ]) {
       expect(built(priceOption(hours, values, palette)).series[0]?.markArea).toBeUndefined()
-      expect(unpublishedSpan(hours, values)).toBeNull()
+      expect(priceGaps(hours, values)).toEqual([])
     }
   })
 
@@ -211,6 +213,95 @@ describe('mixOption and priceOption', () => {
     expect(stepEnds([null, 3])).toEqual([null, 3])
     expect(lastValueIndex([1, null, 2, null])).toBe(2)
     expect(lastValueIndex([null])).toBe(-1)
+  })
+})
+
+describe('price gaps', () => {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const hoursOf = (day: string, from: number, to: number, offset = '+01:00') =>
+    Array.from({ length: to - from + 1 }, (_, i) => `${day}T${pad(from + i)}:00:00${offset}`)
+  // 20 Nov 20:00 to 21 Nov 03:00.
+  const hours = [...hoursOf('2026-11-20', 20, 23), ...hoursOf('2026-11-21', 0, 3)]
+  // Start, end and label text of each shaded span.
+  const areas = (area: Series['markArea']) =>
+    (area?.data ?? []).map(([start, end]) => [
+      start?.xAxis,
+      end?.xAxis,
+      start?.label?.formatter ?? area?.label.formatter,
+    ])
+
+  it('takes a day as due from 19:00 Berlin time on the day before', () => {
+    expect(newestDueDay('2026-11-20T18:59:00+01:00')).toBe('2026-11-20')
+    expect(newestDueDay('2026-11-20T19:00:00+01:00')).toBe('2026-11-21')
+    // The instant decides, not the offset it is written with.
+    expect(newestDueDay('2026-11-20T17:59:00Z')).toBe('2026-11-20')
+    expect(newestDueDay('2026-11-20T18:00:00Z')).toBe('2026-11-21')
+    expect(newestDueDay('2026-07-01T17:00:00Z')).toBe('2026-07-02')
+    expect(newestDueDay('2026-12-31T23:30:00+01:00')).toBe('2027-01-01')
+  })
+
+  it('labels a missing run inside the range as a source gap', () => {
+    const values = [1, 2, null, null, null, 6, 7, 8]
+    expect(priceGaps(hours, values, '2026-11-21')).toEqual([{ kind: 'source', from: 2, to: 4 }])
+    const option = built(priceOption(hours, values, palette, undefined, '2026-11-21'))
+    const area = option.series[0]?.markArea
+    // The shading ends where the next price starts.
+    expect(areas(area)).toEqual([['2', '5', 'No price published by SMARD']])
+    // Lighter than the shading of hours not yet published.
+    expect(area?.data[0]?.[0]?.itemStyle?.opacity).toBeLessThan(0.5)
+  })
+
+  it('labels a missing end of the range as a source gap once its day is due', () => {
+    const values = [1, 2, 3, null, null, null, null, null]
+    expect(priceGaps(hours, values, '2026-11-21')).toEqual([{ kind: 'source', from: 3, to: 7 }])
+    const area = built(priceOption(hours, values, palette, undefined, '2026-11-21')).series[0]
+      ?.markArea
+    expect(areas(area)).toEqual([['3', '7', 'No price published by SMARD']])
+  })
+
+  it('keeps hours of a day not yet due as not yet published', () => {
+    const values = [1, 2, null, null, null, null, null, null]
+    // 20 Nov is due, 21 Nov is not: the run splits at midnight.
+    expect(priceGaps(hours, values, '2026-11-20')).toEqual([
+      { kind: 'source', from: 2, to: 3 },
+      { kind: 'pending', from: 4, to: 7 },
+    ])
+    const area = built(priceOption(hours, values, palette, undefined, '2026-11-20')).series[0]
+      ?.markArea
+    expect(area?.label.formatter).toBe('Not yet published')
+    expect(areas(area)).toEqual([
+      ['2', '4', 'No price published by SMARD'],
+      ['4', '7', 'Not yet published'],
+    ])
+    expect(area?.data[1]).toEqual([{ xAxis: '4' }, { xAxis: '7' }])
+  })
+
+  it('finds gaps at the start and leaves a missing last hour alone', () => {
+    expect(priceGaps(hours, [null, null, 3, 4, 5, 6, 7, null], '2026-11-21')).toEqual([
+      { kind: 'source', from: 0, to: 1 },
+    ])
+  })
+
+  it('counts the hours of a gap over the 25-hour and the 23-hour day', () => {
+    const autumn = [
+      '2026-10-24T23:00:00+02:00',
+      ...hoursOf('2026-10-25', 0, 2, '+02:00'),
+      ...hoursOf('2026-10-25', 2, 23),
+      '2026-10-26T00:00:00+01:00',
+    ]
+    expect(autumn).toHaveLength(27)
+    const gapsAutumn = priceGaps(autumn, [1, ...new Array<null>(25).fill(null), 2], '2026-10-26')
+    expect(gapsAutumn).toEqual([{ kind: 'source', from: 1, to: 25 }])
+    const spring = [
+      '2026-03-28T23:00:00+01:00',
+      ...hoursOf('2026-03-29', 0, 1),
+      ...hoursOf('2026-03-29', 3, 23, '+02:00'),
+      '2026-03-30T00:00:00+02:00',
+    ]
+    expect(spring).toHaveLength(25)
+    expect(priceGaps(spring, [1, ...new Array<null>(23).fill(null), 2], '2026-03-30')).toEqual([
+      { kind: 'source', from: 1, to: 23 },
+    ])
   })
 })
 

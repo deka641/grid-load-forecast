@@ -2,7 +2,16 @@ import type { BacktestMetrics, ForecastPoint } from '../api/client'
 import { MODELS, mapeByHour } from '../lib/metrics'
 import type { ForecastKey } from '../lib/metrics'
 import { NOT_AVAILABLE } from '../lib/format'
-import { dayShort, hourLabels, localDay, offsetChange, offsetLabel, wallClock } from '../lib/time'
+import {
+  addDays,
+  berlinParts,
+  dayShort,
+  hourLabels,
+  localDay,
+  offsetChange,
+  offsetLabel,
+  wallClock,
+} from '../lib/time'
 import type { EChartsCoreOption } from './echarts'
 import type { Palette } from './palette'
 
@@ -400,19 +409,86 @@ export function stepEnds(values: readonly (number | null)[]): (number | null)[] 
 }
 
 /**
- * The hours after the last published price that the shared time axis still shows, as
- * first and last index, or null. The chart shades exactly this span, and the summary
- * below the chart mentions the shading only when it exists. A missing last hour alone
- * is not shaded, because the last price is drawn to the end of its hour.
+ * Day-ahead prices for day D are published around 13:00 Berlin time on D minus 1. Like the
+ * pipeline, which waits six hours before it calls a missing value a source gap, a day counts
+ * as due only from 19:00 on the day before. Returns the newest due day at `instant`.
  */
-export function unpublishedSpan(
+export function newestDueDay(instant: string): string {
+  const { day, time } = berlinParts(new Date(Date.parse(instant)))
+  return time >= '19:00' ? addDays(day, 1) : day
+}
+
+export type PriceGapKind = 'pending' | 'source'
+
+/** A run of hours without a price, as indices of its first and last hour. */
+export interface PriceGap {
+  kind: PriceGapKind
+  from: number
+  to: number
+}
+
+/**
+ * The runs of hours without a price. An hour whose day is later than `dueDay` is not yet
+ * published (`pending`); any other missing hour is a gap in the source. Without a due day,
+ * the hours after the last price count as pending. A missing last hour alone is left out,
+ * because the last price is drawn to the end of its hour and the hour is not visible.
+ */
+export function priceGaps(
   stamps: readonly string[],
   values: readonly (number | null)[],
-): { first: number; last: number; lastPrice: number } | null {
+  dueDay: string | null = null,
+): PriceGap[] {
   const lastPrice = lastValueIndex(values)
-  return lastPrice >= 0 && lastPrice + 1 < stamps.length - 1
-    ? { first: lastPrice + 1, last: stamps.length - 1, lastPrice }
-    : null
+  if (lastPrice < 0) {
+    return []
+  }
+  const kindOf = (i: number): PriceGapKind =>
+    (dueDay === null ? i > lastPrice : localDay(stamps[i] ?? '') > dueDay) ? 'pending' : 'source'
+  const gaps: PriceGap[] = []
+  for (let i = 0; i < stamps.length; i += 1) {
+    if ((values[i] ?? null) !== null) {
+      continue
+    }
+    const kind = kindOf(i)
+    const open = gaps.at(-1)
+    if (open?.to === i - 1 && open.kind === kind) {
+      open.to = i
+    } else {
+      gaps.push({ kind, from: i, to: i })
+    }
+  }
+  return gaps.filter((g) => g.from < stamps.length - 1)
+}
+
+/** First and last axis index of the shading for a gap: up to where the next price starts. */
+function gapArea(gap: PriceGap, count: number): [number, number] {
+  return [gap.from, Math.min(gap.to + 1, count - 1)]
+}
+
+/**
+ * A gap in the source is shaded lighter than hours not yet published. Its label sits inside
+ * the top of the span, and only when the span is wide enough to hold it.
+ */
+function sourceGapStart(
+  first: number,
+  last: number,
+  count: number,
+  palette: Palette,
+  layout: ChartLayout,
+) {
+  const share = count > 1 ? (last - first) / (count - 1) : 0
+  return {
+    xAxis: String(first),
+    itemStyle: { color: palette.rule, opacity: 0.25 },
+    label: {
+      show: share >= (layout.compact ? 0.5 : 0.2),
+      position: 'insideTop',
+      align: 'center',
+      verticalAlign: 'top',
+      offset: [0, 0],
+      formatter: 'No price published by SMARD',
+    },
+  }
 }
 
 export function priceOption(
@@ -420,11 +496,13 @@ export function priceOption(
   values: (number | null)[],
   palette: Palette,
   layout: ChartLayout = DEFAULT_LAYOUT,
+  dueDay: string | null = null,
 ) {
   const option = base(palette, layout)
-  const span = unpublishedSpan(stamps, values)
+  const gaps = priceGaps(stamps, values, dueDay)
+  const span = gaps.find((g) => g.kind === 'pending') ?? null
   const unpublished =
-    span !== null
+    gaps.length > 0
       ? {
           markArea: {
             silent: true,
@@ -451,7 +529,15 @@ export function priceOption(
               fontSize: 11,
               formatter: 'Not yet published',
             },
-            data: [[{ xAxis: String(span.first) }, { xAxis: String(span.last) }]],
+            data: gaps.map((gap) => {
+              const [first, last] = gapArea(gap, stamps.length)
+              return [
+                gap.kind === 'pending'
+                  ? { xAxis: String(first) }
+                  : sourceGapStart(first, last, stamps.length, palette, layout),
+                { xAxis: String(last) },
+              ]
+            }),
           },
         }
       : {}
