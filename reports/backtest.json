@@ -21,7 +21,35 @@
     "seed": 42,
     "training_start": "2015-01-16"
   },
+  "error_distribution": {
+    "baseline_week": {
+      "bias_mwh": 2.6,
+      "hours_above_5_percent": 40.21,
+      "max_abs_error_mwh": 30293.0,
+      "n": 8760,
+      "p95_abs_error_mwh": 7530.8
+    },
+    "lightgbm": {
+      "bias_mwh": 34.8,
+      "hours_above_5_percent": 18.29,
+      "max_abs_error_mwh": 11309.7,
+      "n": 8760,
+      "p95_abs_error_mwh": 4134.0
+    },
+    "tso": {
+      "bias_mwh": 201.4,
+      "hours_above_5_percent": 29.67,
+      "max_abs_error_mwh": 11261.4,
+      "n": 8760,
+      "p95_abs_error_mwh": 5530.9
+    }
+  },
   "first_day": "2025-11-20",
+  "inputs": {
+    "hours": 208344,
+    "revised_hours": 11,
+    "sha256": "af82bedd8f459064d2196e74e239ff608783703f425f7fc5b2a9b713ab84d6fc"
+  },
   "last_day": "2026-11-19",
   "metrics": [
     {
