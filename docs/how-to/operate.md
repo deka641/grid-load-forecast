@@ -10,6 +10,10 @@ curl -s http://127.0.0.1:8460/api/v1/status    # what the dashboard sees
 
 A run with status `partial` loaded fresh data, but an older chunk or a follow-up step (forecast, backtest) failed, a week that just ended has a gap, or SMARD withdrew stored values from a recent week of a series other than the grid load (errors on chunks that ended more than seven days ago also count as `partial`); the details are in `gridload status` (errors and warnings of the last run) and in the pipeline log. `failed` means recent data could not be loaded, or recent grid load values were withdrawn, which the forecast depends on. A `partial` run counts as a success for the pipeline healthcheck (which also needs a load value younger than 12 hours), so a withdrawal that persists in a series other than the grid load shows up in the status, not as an unhealthy container.
 
+## Keep the pipeline running before a delivery day
+
+A delivery day is forecast only by runs between 12:00 and 24:00 (Europe/Berlin) on the day before. From midnight on, the runs consider only the following day, so a day that has no forecast by then gets none, and none is issued later: a forecast for a day that has already begun would no longer be a day-ahead forecast. If the pipeline is stopped during that window, or none of its runs in it finds a load value in the 24 hours before 10:00, the day is missing from `/api/v1/forecasts/days` and from the day selector of the dashboard. Plan maintenance for the morning. After an outage in the afternoon or evening, start the stack before midnight: the pipeline container runs the job once at start-up and then at minute 5 of every hour, so the last scheduled run that can still issue the forecast starts at 23:05.
+
 ## Pick up corrections to older data
 
 The hourly run reloads the four newest weeks. To check older weeks for corrections:
