@@ -526,20 +526,6 @@ export function lastValueIndex(values: readonly (number | null)[]): number {
 }
 
 /**
- * A price holds for the hour that starts at its timestamp, so a step line needs the
- * point where that hour ends. After the last published price that point is missing, so
- * the value is repeated there for drawing only; the tooltip still reads the published
- * values. Inside the series a missing hour stays empty, so it is not drawn with the price
- * before it.
- */
-export function stepEnds(values: readonly (number | null)[]): (number | null)[] {
-  const last = lastValueIndex(values)
-  return values.map(
-    (value, i) => value ?? (last >= 0 && i === last + 1 ? (values[last] ?? null) : null),
-  )
-}
-
-/**
  * Day-ahead prices for day D are published around 13:00 Berlin time on D minus 1. With a
  * six-hour allowance after the 13:00 auction, in the spirit of the pipeline's
  * LATE_DATA_ALLOWANCE, a day counts as due from 19:00 on the day before. Returns the newest
@@ -725,10 +711,13 @@ export function priceOption(
       {
         type: 'line',
         name: 'Day-ahead price DE/LU',
-        data: stepEnds(values),
+        data: values,
         showSymbol: false,
         symbol: 'none',
-        // A price holds for the hour that starts at its timestamp.
+        // A price holds for the hour that starts at its timestamp. With step 'end' each price
+        // is drawn up to the next axis position even when the next hour has no price, so the
+        // line ends where the shading of a gap starts. The last axis position is where the
+        // axis ends, so a price there needs no width of its own.
         step: 'end',
         lineStyle: { color: palette.price, width: 1.5 },
         itemStyle: { color: palette.price },
