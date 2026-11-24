@@ -4,6 +4,7 @@ import {
   escapeHtml,
   firstIndex,
   forecastOption,
+  hatchImage,
   hourLabel,
   lastValueIndex,
   mapeByHourOption,
@@ -51,7 +52,7 @@ interface Series {
     data: {
       xAxis: string
       label?: { formatter: string; show?: boolean }
-      itemStyle?: { opacity: number }
+      itemStyle?: { opacity: number; color?: unknown }
     }[][]
     label: { formatter: string }
   }
@@ -280,8 +281,14 @@ describe('price gaps', () => {
     const area = option.series[0]?.markArea
     // The shading ends where the next price starts.
     expect(areas(area)).toEqual([['2', '5', 'No price published by SMARD']])
-    // Lighter than the shading of hours not yet published.
+    // Lighter than the shading of hours not yet published, and hatched, so it shows as a gap
+    // also where its label does not fit.
     expect(area?.data[0]?.[0]?.itemStyle?.opacity).toBeLessThan(0.5)
+    expect(area?.data[0]?.[0]?.itemStyle?.color).toEqual({
+      image: hatchImage(palette.ink),
+      repeat: 'repeat',
+    })
+    expect(hatchImage(palette.ink)).toMatch(/^data:image\/svg\+xml,/)
     // Labelled in the chart where the span can hold the text; the summary names it always.
     expect(area?.data[0]?.[0]?.label?.show).toBe(true)
     const compact = built(

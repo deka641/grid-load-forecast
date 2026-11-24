@@ -609,7 +609,19 @@ function gapArea(gap: PriceGap, count: number): [number, number] {
 }
 
 /**
- * A gap in the source is shaded lighter than hours not yet published. Its label sits inside
+ * Diagonal hatching as a pattern tile, in the given colour. A data URI, which the
+ * Content-Security-Policy allows for images.
+ */
+export function hatchImage(color: string): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">` +
+    `<path d="M-2 2 L2 -2 M0 8 L8 0 M6 10 L10 6" stroke="${color}" stroke-width="1.25"/></svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
+}
+
+/**
+ * A gap in the source is shaded lighter than hours not yet published, and hatched, so that
+ * it reads as a gap also where its label does not fit. Its label sits inside
  * the top of the span, and only when the span is wide enough to hold it.
  */
 function sourceGapStart(
@@ -622,13 +634,19 @@ function sourceGapStart(
   const share = count > 1 ? (last - first) / (count - 1) : 0
   return {
     xAxis: String(first),
-    itemStyle: { color: palette.rule, opacity: 0.25 },
+    itemStyle: {
+      color: { image: hatchImage(palette.ink), repeat: 'repeat' },
+      opacity: 0.4,
+    },
     label: {
       show: share >= (layout.compact ? 0.5 : 0.2),
       position: 'insideTop',
       align: 'center',
       verticalAlign: 'top',
       offset: [0, 0],
+      // On a plain ground, so the hatching does not run through the text.
+      backgroundColor: palette.surface,
+      padding: [1, 3],
       formatter: 'No price published by SMARD',
     },
   }
