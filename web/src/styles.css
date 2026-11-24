@@ -270,6 +270,31 @@ main {
   gap: 4px;
 }
 
+/* Where the title and the meta line do not fit side by side, the meta line runs below the
+   title as one row: the data time on the left, the theme control on the right. Without a
+   data time the control still sits at the right end, where it is on every path. */
+@media (max-width: 1180px) {
+  .site-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  /* Set off from the title by a dotted rule, drawn like the grid lines of the charts. */
+  .site-meta {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 12px;
+    background: linear-gradient(to right, var(--color-control-border) 0 2px, transparent 2px) 0 0 /
+      6px 1px repeat-x;
+  }
+
+  .freshness-group {
+    min-width: 0;
+  }
+}
+
 .freshness {
   font-size: var(--text-sm);
   color: var(--color-muted);
@@ -1327,11 +1352,34 @@ tr.narrow-only {
   }
 
   .site-header {
-    padding-top: 20px;
+    gap: 12px;
+    padding-top: 16px;
   }
 
   .site-header h1 {
-    font-size: 24px;
+    gap: 10px;
+    font-size: 22px;
+  }
+
+  .site-mark {
+    width: 26px;
+    height: 26px;
+  }
+
+  .lede {
+    margin-top: 4px;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  /* Each option keeps the full touch height; the track adds only its border around them. */
+  .theme-toggle {
+    padding: 0 2px;
+  }
+
+  .theme-option span {
+    min-height: var(--control);
+    padding: 0 10px;
   }
 
   .headline {
