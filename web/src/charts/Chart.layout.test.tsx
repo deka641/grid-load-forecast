@@ -146,18 +146,26 @@ describe('Chart layout', () => {
     motion(true)
     const view = render(<Chart build={build} arrival={arrival} label="Accent" />)
     expect(instance.setOption).toHaveBeenCalledTimes(1)
-    act(() => vi.advanceTimersByTime(999))
+    act(() => {
+      vi.advanceTimersByTime(999)
+    })
     expect(instance.setOption).toHaveBeenCalledTimes(1)
-    act(() => vi.advanceTimersByTime(1))
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
     expect(instance.setOption).toHaveBeenLastCalledWith({ series: [series] })
-    act(() => vi.advanceTimersByTime(500))
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
     expect(instance.setOption).toHaveBeenLastCalledWith({ series: [{ id: 'ring', data: [] }] })
     view.unmount()
 
     vi.clearAllMocks()
     motion(false)
     render(<Chart build={build} arrival={arrival} label="Still accent" />)
-    act(() => vi.advanceTimersByTime(5000))
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
     expect(arrival).not.toHaveBeenCalled()
     expect(instance.setOption).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
