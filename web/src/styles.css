@@ -469,6 +469,28 @@ main {
   pointer-events: none;
 }
 
+/* Behind the right half of the hero, a faint day of load over a dotted base line: the curve
+   of the page mark, drawn large in the model colour. */
+.section-title.eyebrow:has(+ .forecast-hero:not(.skeleton-hero))::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 4px;
+  right: 0;
+  width: min(620px, 55%);
+  height: 150px;
+  background: color-mix(in srgb, var(--color-model) 10%, transparent);
+  mask: url('/load-curve.svg') center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* On phones the hero stacks, and the curve would run through the figure. */
+@media (max-width: 640px) {
+  .section-title.eyebrow:has(+ .forecast-hero:not(.skeleton-hero))::before {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .forecast-hero:not(.skeleton-hero) {
     animation: settle 400ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
