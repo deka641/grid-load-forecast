@@ -6,6 +6,8 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-24
+
 ### Added
 
 - The dashboard section on accuracy says in one sentence how far the model misses an hour on average and how that compares with the baseline and, on the hours SMARD covers, with the SMARD forecast. The sentence is computed from the stored backtest, so it follows the weekly update.
@@ -13,12 +15,18 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ### Changed
 
-- The README and the forecast explanation read the backtest figures around the forecast timing: the forecast is computed only after the day-ahead auction has closed at 12:00, so it serves as an independent reference and not as an input to bids.
+- The page no longer jumps while it loads: the placeholders take the size of the content they stand for, the header keeps one shape whether or not data are available, and loading notices sit inside the first frame instead of pushing the sections down. This holds on the normal, stale, first-start and failed-status paths.
+- The dashboard has a reworked look: the day selector is one joined control, the theme choice sits on a track, "Show data" is a text toggle above each chart instead of a button inside it, tooltips show line samples as in the legends, the header is more compact on phones, and the dark theme uses calmer colours for the generation mix. In the dark theme the model line glows softly, and with motion allowed a single ring marks the forecast peak once the lines have drawn in. Hours in which SMARD published no price are hatched.
+- The README and the forecast explanation read the backtest figures around the forecast timing: the forecast is computed only after the day-ahead auction has closed at 12:00, so it serves as an independent reference and not as an input to bids. This replaces the 0.1.2 wording that named the figures as relevant for sizing positions and reserves, which a national load forecast computed after the auction does not serve.
 - The command line reference lists all options of `scripts/backtest.py`, including the rows file that the metric cross-check reads.
+- The build image uses uv 0.13.9.
 
 ### Fixed
 
-- The dashboard note under the backtest table said the model is scored with the load values as stored today; it is the model's inputs that use them.
+- The price line ran one hour into the shaded span of prices not yet published; it now ends where that span begins.
+- `scripts/backtest.py --days` accepted 0 or negative values and then overwrote the committed report with an empty run. It now rejects windows shorter than seven days, as `gridload backtest` does, before anything is written.
+- The internal forecast step returned the run id of the baseline instead of the model run; it now returns the model run and reads its details by that id.
+- The dashboard note under the backtest table said the model is scored with the load values as stored today, as did the 0.1.2 notes; it is the model's inputs that use them.
 
 ### Security
 
@@ -110,7 +118,8 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 - Docker Compose stack with Caddy, healthchecks, memory limits, log rotation and non-root containers; local quality gates `make verify-fast` and `make verify` with style and secret scans; production-like check with image scan, and load test; seven-day wait period for new dependency versions.
 - Documentation: tutorial, how-to guides, reference and explanation.
 
-[Unreleased]: https://github.com/deka641/grid-load-forecast/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/deka641/grid-load-forecast/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/deka641/grid-load-forecast/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/deka641/grid-load-forecast/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/deka641/grid-load-forecast/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/deka641/grid-load-forecast/releases/tag/v0.1.0
