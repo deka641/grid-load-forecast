@@ -105,6 +105,12 @@ export function Chart({ build, arrival, label, children, dataLabel, className }:
     const key = `${resolved}|${String(narrow)}`
     // A width change that does not cross COMPACT_WIDTH needs no new option.
     const same = rendered.current?.build === build && rendered.current.key === key
+    if (!same) {
+      // New data or theme replaces the series, so an accent still waiting belongs to the old
+      // drawing. A font re-render within this run keeps it, since the data are the same.
+      accents.current.forEach(clearTimeout)
+      accents.current = []
+    }
     const motion = allowsMotion()
     // Only the very first render draws in; later ones would replay it on every change.
     const previous = rendered.current
@@ -113,9 +119,6 @@ export function Chart({ build, arrival, label, children, dataLabel, className }:
     let drawn = false
     const render = () => {
       if (active) {
-        // A new drawing replaces the series, so an accent still waiting belongs to old data.
-        accents.current.forEach(clearTimeout)
-        accents.current = []
         const palette = readPalette()
         instance.current?.setOption(build(palette, { compact: narrow, motion, animate }), {
           notMerge: true,
