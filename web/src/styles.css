@@ -1542,6 +1542,20 @@ tr.narrow-only {
   }
 }
 
+/* The joined day control keeps one row down to 320 px, so the parts get tighter text there
+   and the day list shows its full date. */
+@media (max-width: 380px) {
+  .day-selector .button,
+  .day-selector select {
+    padding: 0 8px;
+    font-size: 13px;
+  }
+
+  .day-selector select {
+    padding-right: 2px;
+  }
+}
+
 /* Between phone and tablet width the generation legend takes one more row. */
 @media (min-width: 641px) and (max-width: 760px) {
   .loading-context {
