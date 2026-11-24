@@ -108,6 +108,15 @@ describe('Backtest caveats', () => {
   })
 })
 
+/** The fixture backtest without the metrics of one forecast. */
+function without(model: string): BacktestMetrics {
+  const base = fx.backtest()
+  return {
+    ...base,
+    metrics: Object.fromEntries(Object.entries(base.metrics).filter(([key]) => key !== model)),
+  }
+}
+
 /** The fixture backtest with SMARD forecast metrics added at the given MAE values. */
 function withSmard(modelOnSmardHours: number, smard: number): BacktestMetrics {
   const base = fx.backtest()
@@ -159,8 +168,7 @@ describe('Backtest reading', () => {
   })
 
   it('leaves out the baseline clause without a baseline result', async () => {
-    const backtest = fx.backtest()
-    serve(undefined, { ...backtest, metrics: { lightgbm: backtest.metrics.lightgbm } })
+    serve(undefined, without('baseline_week'))
     renderApp()
     expect(
       await screen.findByText('On average the LightGBM model misses an hour by 1.20 GW.'),
@@ -168,8 +176,7 @@ describe('Backtest reading', () => {
   })
 
   it('gives no sentence without a model result', async () => {
-    const backtest = fx.backtest()
-    serve(undefined, { ...backtest, metrics: { baseline_week: backtest.metrics.baseline_week } })
+    serve(undefined, without('lightgbm'))
     renderApp()
     await screen.findByText(/^Delivery days from/)
     expect(screen.queryByText(/^On average the LightGBM model/)).toBeNull()
