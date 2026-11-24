@@ -11,7 +11,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 ### Added
 
 - The backtest report gives, per forecast, the mean bias, the 95th percentile and the largest absolute hourly error and the share of hours that miss by more than 5 %, next to MAE and MAPE. Over the backtest year the model misses by 4,134 MWh or more in one hour in twenty and by more than 5 % in 18.3 % of hours, figures that show the size of the rare large misses that the mean error hides. The README and the forecast explanation say how to read these figures and what the forecast is suited for.
-- `scripts/backtest.py --last-day YYYY-MM-DD` fixes the end of the backtest window, and the report records a SHA-256 fingerprint of its input data. The committed report can be reproduced with the documented commands, and a rerun shows whether a different result comes from different data.
+- `scripts/backtest.py --last-day YYYY-MM-DD` fixes the end of the backtest window, and the report records a SHA-256 fingerprint of its input data. With the same input data, which the fingerprint confirms, the documented commands reproduce the committed report; later SMARD corrections can change the figures slightly, and a rerun shows whether a different result comes from different data.
 - The dashboard names delivery days for which no forecast was issued, for example after the pipeline was stopped, instead of skipping them silently in the day selector. The operations guide explains when a delivery day is forecast and that a missed day is not forecast later.
 - While the dashboard loads, each section shows placeholder blocks in the layout of its content instead of a single line of text.
 
