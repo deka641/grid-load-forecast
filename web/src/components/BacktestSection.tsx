@@ -64,7 +64,8 @@ function relative(model: number, reference: number): string {
 
 /**
  * The model's MAE in words, against the baseline on the same hours and against the SMARD
- * forecast on the hours SMARD covers; null without a model result.
+ * forecast on the hours SMARD covers, naming the model's MAE on those hours when it differs
+ * after rounding; null without a model result.
  */
 function readingSentence(backtest: BacktestMetrics): string | null {
   const model = findMetric(backtest, 'lightgbm', 'overall', 'all')
@@ -81,7 +82,11 @@ function readingSentence(backtest: BacktestMetrics): string | null {
   if (modelOnSmardHours && smard && smard.mae > 0) {
     sentence +=
       `, and ${relative(modelOnSmardHours.mae, smard.mae)} the SMARD forecast ` +
-      `(${gw(smard.mae)}) on the hours it covers`
+      `(${gw(smard.mae)}) on the hours SMARD covers`
+    // The comparison uses the model's error on those hours; name it if it reads differently.
+    if (gw(modelOnSmardHours.mae) !== gw(model.mae)) {
+      sentence += ` (the model misses by ${gw(modelOnSmardHours.mae)} on those hours)`
+    }
   }
   return `${sentence}.`
 }

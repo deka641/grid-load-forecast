@@ -141,9 +141,38 @@ describe('Backtest reading', () => {
       await screen.findByText(
         'On average the LightGBM model misses an hour by 1.20 GW, 59 % less than the ' +
           'baseline (2.95 GW), and 38 % less than the SMARD forecast (2.00 GW) on the hours ' +
-          'it covers.',
+          'SMARD covers (the model misses by 1.25 GW on those hours).',
       ),
     ).toBeInTheDocument()
+  })
+
+  it('names the model error on the SMARD hours only when it differs', async () => {
+    serve(undefined, withSmard(1_200, 2_000))
+    renderApp()
+    expect(
+      await screen.findByText(
+        'On average the LightGBM model misses an hour by 1.20 GW, 59 % less than the ' +
+          'baseline (2.95 GW), and 40 % less than the SMARD forecast (2.00 GW) on the hours ' +
+          'SMARD covers.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('leaves out the baseline clause without a baseline result', async () => {
+    const backtest = fx.backtest()
+    serve(undefined, { ...backtest, metrics: { lightgbm: backtest.metrics.lightgbm } })
+    renderApp()
+    expect(
+      await screen.findByText('On average the LightGBM model misses an hour by 1.20 GW.'),
+    ).toBeInTheDocument()
+  })
+
+  it('gives no sentence without a model result', async () => {
+    const backtest = fx.backtest()
+    serve(undefined, { ...backtest, metrics: { baseline_week: backtest.metrics.baseline_week } })
+    renderApp()
+    await screen.findByText(/^Delivery days from/)
+    expect(screen.queryByText(/^On average the LightGBM model/)).toBeNull()
   })
 
   it('says so when the model misses by more than a reference', async () => {
