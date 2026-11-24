@@ -13,7 +13,7 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ### Changed
 
-- The README and the forecast explanation read the backtest figures around the forecast timing: the forecast is computed at 12:05 at the earliest, after the day-ahead auction has closed, so it serves as an independent reference and not as an input to bids.
+- The README and the forecast explanation read the backtest figures around the forecast timing: the forecast is computed only after the day-ahead auction has closed at 12:00, so it serves as an independent reference and not as an input to bids.
 - The command line reference lists all options of `scripts/backtest.py`, including the rows file that the metric cross-check reads.
 
 ### Fixed
