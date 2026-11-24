@@ -265,11 +265,20 @@ export interface components {
         };
         /** ForecastPoint */
         ForecastPoint: {
-            /** Actual */
+            /**
+             * Actual
+             * @description Actual grid load (filter 410), MWh per hour; null where SMARD has not published the complete hour
+             */
             actual: number | null;
-            /** Baseline Week */
+            /**
+             * Baseline Week
+             * @description Baseline: load of the same local hour seven days earlier, MWh per hour; null where none is stored
+             */
             baseline_week: number | null;
-            /** Lightgbm */
+            /**
+             * Lightgbm
+             * @description LightGBM forecast, MWh per hour; null where none is stored
+             */
             lightgbm: number | null;
             /**
              * Ts
@@ -277,7 +286,10 @@ export interface components {
              * @description Start of the delivery hour, Europe/Berlin offset
              */
             ts: string;
-            /** Tso */
+            /**
+             * Tso
+             * @description Grid load forecast published by SMARD (filter 411), MWh per hour; null where SMARD publishes none
+             */
             tso: number | null;
         };
         /** ForecastRunInfo */
@@ -285,7 +297,7 @@ export interface components {
             /**
              * Created At
              * Format: date-time
-             * @description When the pipeline computed the forecast, on the day before delivery: in the first run that reaches its forecast step, after loading, at or after 12:00 and finds the load up to 10:00 (scheduled runs start at minute 5 of each hour), or from 20:00 on if that hour is still missing. The forecast reaches the API with the snapshot that run publishes afterwards
+             * @description When the pipeline computed the forecast, on the day before delivery: the first run from 12:00 on that finds the load up to 10:00 loaded, or the first run from 20:00 on if that hour is still missing and at least one load value falls in the 24 hours before 10:00 (scheduled runs start at minute 5 of each hour). The forecast reaches the API with the snapshot that run publishes afterwards
              */
             created_at: string;
             /**
