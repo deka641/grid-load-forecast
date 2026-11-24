@@ -88,7 +88,7 @@ export function Dashboard() {
 
   return (
     <div className="page">
-      <Header freshness={freshness} />
+      <Header freshness={freshness} pending={status.data === undefined && !status.isError} />
       <main id="main">
         <StaleNotice freshness={freshness} />
         {status.isError && status.data ? (

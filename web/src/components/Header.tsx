@@ -31,7 +31,19 @@ function Mark() {
   )
 }
 
-export function Header({ freshness }: { freshness: FreshnessState }) {
+/**
+ * While the status loads, an invisible line of the usual length holds the place of the data
+ * time, so the toggle does not move or wrap to a new row when the time arrives.
+ */
+const PENDING_UP_TO = 'Data up to 28 Nov 2026, 23:45'
+
+export function Header({
+  freshness,
+  pending = false,
+}: {
+  freshness: FreshnessState
+  pending?: boolean
+}) {
   const { lastTs, fallback, stale } = freshness
   // While the data is old, the band across the page names its time; the header does not repeat it.
   const upTo = lastTs !== null && !stale ? dataUpTo(lastTs) : null
@@ -49,7 +61,11 @@ export function Header({ freshness }: { freshness: FreshnessState }) {
       </div>
       <div className="site-meta">
         {/* Without any line the group is left out, so the toggle lines up with the title. */}
-        {upTo !== null || fallback ? (
+        {pending ? (
+          <div className="freshness-group freshness-pending" aria-hidden="true">
+            <p className="freshness">{PENDING_UP_TO}</p>
+          </div>
+        ) : upTo !== null || fallback ? (
           <div className="freshness-group">
             {upTo === null ? null : <p className="freshness">{upTo}</p>}
             {fallback ? <p className="freshness freshness-stale">{SNAPSHOT_FALLBACK}</p> : null}

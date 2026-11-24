@@ -3,6 +3,10 @@ import type { Page, Route } from '@playwright/test'
 import * as fixtures from './fixtures.ts'
 
 export interface FixtureOptions {
+  /** The status request waits for this before it answers. */
+  statusHold?: Promise<unknown>
+  /** Every data request (all but status and series) waits for this before it answers. */
+  dataHold?: Promise<unknown>
   /** The backtest request waits for this before it answers. */
   backtestHold?: Promise<unknown>
   /** The backtest request answers 500. */
@@ -17,6 +21,11 @@ export async function mockFixtureApi(page: Page, options: FixtureOptions = {}) {
     const url = new URL(route.request().url())
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+    if (url.pathname === '/api/v1/status') {
+      await options.statusHold
+    } else if (url.pathname !== '/api/v1/series') {
+      await options.dataHold
+    }
     switch (url.pathname) {
       case '/api/v1/status':
         return json(fixtures.status())
