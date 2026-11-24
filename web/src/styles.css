@@ -880,6 +880,18 @@ main {
   grid-column: 1;
 }
 
+/* While the chart code loads, the frame has the size of the final one: the canvas inside
+   the border, and on phones the row of the toggle above it. */
+.chart:has(> .chart-canvas[aria-busy='true']) > .chart-canvas {
+  margin-block: -1px;
+}
+
+@media (max-width: 640px) {
+  .chart:has(> .chart-canvas[aria-busy='true']) {
+    margin-top: calc(10px + 44px + 10px);
+  }
+}
+
 /* Room on the right of the line above a chart, where its toggle sits. */
 .chart-head:has(+ .chart > .chart-data-toggle),
 .legend:has(+ .chart > .chart-data-toggle),
@@ -1141,11 +1153,11 @@ tr.narrow-only {
 /* Floors just below the usual height of each section's content while it loads. The
    forecast blocks have the size of the final content, so that section needs no floor. */
 .loading-backtest {
-  min-height: 480px;
+  min-height: 566px;
 }
 
 .loading-context {
-  min-height: 890px;
+  min-height: 805px;
 }
 
 /* Placeholders while a section loads: quiet blocks in the place of its content. */
@@ -1336,7 +1348,7 @@ tr.narrow-only {
   }
 
   .loading-backtest {
-    min-height: 860px;
+    min-height: 900px;
   }
 
   /* Stacked under the text, the table keeps a readable width instead of spreading out. */
@@ -1467,7 +1479,7 @@ tr.narrow-only {
   }
 
   .loading-backtest {
-    min-height: 1060px;
+    min-height: 1258px;
   }
 
   .loading-context {
@@ -1479,6 +1491,13 @@ tr.narrow-only {
 @media (max-width: 420px) {
   .skeleton-for-forecast .skeleton-legend {
     height: 75px;
+  }
+}
+
+/* Between phone and tablet width the generation legend takes one more row. */
+@media (min-width: 641px) and (max-width: 760px) {
+  .loading-context {
+    min-height: 880px;
   }
 }
 
