@@ -98,6 +98,8 @@ export function firstIndex(params: unknown): number {
 /** Gap between the cursor and the tooltip, and between the tooltip and the top of the chart. */
 const TOOLTIP_GAP = 16
 const TOOLTIP_TOP = 8
+/** Left edge of the plot in every chart; the value labels sit to its left. */
+const GRID_LEFT = 52
 
 interface TooltipSize {
   contentSize: [number, number]
@@ -106,21 +108,23 @@ interface TooltipSize {
 
 /**
  * The tooltip sits at the top of the chart on the side away from the cursor, so it does not
- * cover the lines next to the hour being read.
+ * cover the lines next to the hour being read. Where the chart is wide enough, it also keeps
+ * clear of the value labels left of the plot.
  */
 export function tooltipPosition(point: [number, number], size: TooltipSize): [number, number] {
   const [x] = point
   const [width] = size.contentSize
   const [view] = size.viewSize
   const left = x > view / 2 ? x - width - TOOLTIP_GAP : x + TOOLTIP_GAP
-  return [Math.max(0, Math.min(left, view - width)), TOOLTIP_TOP]
+  const floor = view - width >= GRID_LEFT ? GRID_LEFT : 0
+  return [Math.max(floor, Math.min(left, view - width)), TOOLTIP_TOP]
 }
 
 function base(palette: Palette, layout: ChartLayout = DEFAULT_LAYOUT): EChartsCoreOption {
   return {
     animation: false,
     textStyle: { fontFamily: palette.fontFamily, color: palette.muted, fontSize: 12 },
-    grid: { left: 52, right: 16, top: 16, bottom: 28, containLabel: false },
+    grid: { left: GRID_LEFT, right: 16, top: 16, bottom: 28, containLabel: false },
     tooltip: {
       trigger: 'axis',
       renderMode: 'html',
@@ -152,7 +156,8 @@ function valueAxis(palette: Palette, unit: string, extra: Record<string, unknown
     name: unit,
     nameLocation: 'end',
     nameGap: 8,
-    nameTextStyle: { color: palette.muted, align: 'right', padding: [0, 6, 0, 0] },
+    // Starts at the left edge of the plot, clear of the rounded corner of the frame.
+    nameTextStyle: { color: palette.muted, align: 'left' },
     scale: true,
     axisLine: { show: false },
     axisTick: { show: false },

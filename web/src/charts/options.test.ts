@@ -460,7 +460,13 @@ describe('tooltipPosition', () => {
       viewSize: [300, 300] as [number, number],
     }
     expect(tooltipPosition([140, 50], narrow)).toEqual([100, 8])
-    expect(tooltipPosition([160, 50], narrow)).toEqual([0, 8])
+    // Clear of the value labels left of the plot, where the chart has room for that.
+    expect(tooltipPosition([160, 50], narrow)).toEqual([52, 8])
+    const tight = {
+      contentSize: [200, 120] as [number, number],
+      viewSize: [240, 300] as [number, number],
+    }
+    expect(tooltipPosition([200, 50], tight)).toEqual([0, 8])
   })
 })
 
