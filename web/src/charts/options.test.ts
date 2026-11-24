@@ -12,7 +12,6 @@ import {
   priceGaps,
   priceOption,
   roundedGwRange,
-  stepEnds,
   tooltipHtml,
   tooltipPosition,
 } from './options'
@@ -42,6 +41,7 @@ interface Axis {
 interface Series {
   name: string
   data: (number | null)[]
+  step?: string
   lineStyle: { color?: string; type?: unknown; width: number }
   areaStyle?: { color: string }
   z?: number
@@ -198,8 +198,9 @@ describe('mixOption and priceOption', () => {
     const early = built(priceOption(hours, [50, 60, null, null, null], palette))
     expect(early.series[0]?.markArea?.data).toEqual([[{ xAxis: '2' }, { xAxis: '4' }]])
     expect(early.series[0]?.markArea?.label.formatter).toBe('Not yet published')
-    // The last price is drawn over its whole hour; the tooltip keeps the gap.
-    expect(early.series[0]?.data).toEqual([50, 60, 60, null, null])
+    // The step line already draws the last price up to the next hour, where the shading
+    // starts, so no value is drawn for the first hour without a price.
+    expect(early.series[0]?.data).toEqual([50, 60, null, null, null])
     expect(early.tooltip.formatter([{ dataIndex: 2 }])).toContain('n/a')
     expect(priceGaps(hours, [50, 60, null, null, null])).toEqual([
       { kind: 'pending', from: 2, to: 4 },
@@ -218,13 +219,28 @@ describe('mixOption and priceOption', () => {
     expect(priceGaps(hours, [null, null, null, null, null])).toEqual([])
   })
 
-  it('extends each price to the end of its hour', () => {
-    // Only the hour after the last price is carried forward; a missing hour inside the
-    // series is not drawn with the price before it.
-    expect(stepEnds([1, null, null, 2, null])).toEqual([1, null, null, 2, 2])
-    expect(stepEnds([1, null, 2])).toEqual([1, null, 2])
-    expect(stepEnds([1, 2, null, null])).toEqual([1, 2, 2, null])
-    expect(stepEnds([null, 3])).toEqual([null, 3])
+  it('draws each price up to the next hour and no further', () => {
+    const hours = [
+      '2026-11-20T20:00:00+01:00',
+      '2026-11-20T21:00:00+01:00',
+      '2026-11-20T22:00:00+01:00',
+      '2026-11-20T23:00:00+01:00',
+      '2026-11-21T00:00:00+01:00',
+    ]
+    // With step 'end', each point is drawn to the next axis position even when the next
+    // value is missing, so the series holds the published prices unchanged: after the last
+    // price, inside a gap, before the last hour, and when the last hour has a price.
+    for (const values of [
+      [1, 2, null, null, null],
+      [1, null, null, 2, null],
+      [1, 2, 3, 4, null],
+      [1, 2, 3, 4, 5],
+      [null, 2, 3, 4, 5],
+    ]) {
+      const series = built(priceOption(hours, values, palette)).series[0]
+      expect(series?.step).toBe('end')
+      expect(series?.data).toEqual(values)
+    }
     expect(lastValueIndex([1, null, 2, null])).toBe(2)
     expect(lastValueIndex([null])).toBe(-1)
   })
@@ -329,6 +345,15 @@ describe('price gaps', () => {
     expect(priceGaps(spring, [1, ...new Array<null>(23).fill(null), 2], '2026-03-30')).toEqual([
       { kind: 'source', from: 1, to: 23 },
     ])
+    // Over both clock changes the last price is drawn to the next hour only, and the
+    // shading starts there.
+    for (const day of [autumn, spring]) {
+      const values = day.map((_, i) => (i < day.length - 3 ? i : null))
+      const option = built(priceOption(day, values, palette))
+      expect(option.series[0]?.data).toEqual(values)
+      expect(option.series[0]?.data[day.length - 3]).toBeNull()
+      expect(option.series[0]?.markArea?.data[0]?.[0]?.xAxis).toBe(String(day.length - 3))
+    }
   })
 })
 
