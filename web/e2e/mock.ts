@@ -5,6 +5,10 @@ import * as fixtures from './fixtures.ts'
 export interface FixtureOptions {
   /** The status request waits for this before it answers. */
   statusHold?: Promise<unknown>
+  /** The status answer in place of the fresh fixture status. */
+  status?: unknown
+  /** The status request answers 500. */
+  statusFails?: boolean
   /** Every data request (all but status and series) waits for this before it answers. */
   dataHold?: Promise<unknown>
   /** The backtest request waits for this before it answers. */
@@ -28,7 +32,10 @@ export async function mockFixtureApi(page: Page, options: FixtureOptions = {}) {
     }
     switch (url.pathname) {
       case '/api/v1/status':
-        return json(fixtures.status())
+        if (options.statusFails) {
+          return json({ detail: 'the snapshot could not be read' }, 500)
+        }
+        return json(options.status ?? fixtures.status())
       case '/api/v1/series':
         return json(fixtures.seriesCatalog(true))
       case '/api/v1/forecasts/days':

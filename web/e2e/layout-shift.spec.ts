@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test'
 import type { Server } from 'node:http'
 import { resolve } from 'node:path'
 
+import * as fixtures from './fixtures.ts'
 import { mockFixtureApi } from './mock.ts'
 import { serveDist } from './server.ts'
 
@@ -80,10 +81,38 @@ async function settle(page: Page) {
   )
 }
 
+type Path = 'fresh' | 'stale' | 'first start' | 'failed status'
+
+const CASES: readonly { path: Path; timing: 'delayed' | 'instant' }[] = [
+  { path: 'fresh', timing: 'delayed' },
+  { path: 'fresh', timing: 'instant' },
+  { path: 'stale', timing: 'delayed' },
+  { path: 'first start', timing: 'delayed' },
+  { path: 'failed status', timing: 'delayed' },
+]
+
+/** What the page shows once it has loaded on each path. */
+async function loaded(page: Page, path: Path) {
+  if (path === 'first start') {
+    await expect(page.locator('.empty-state')).toBeVisible()
+    return
+  }
+  if (path === 'failed status') {
+    // The status query retries twice before it gives up.
+    await expect(page.getByText(/^Could not load the status/)).toBeVisible({ timeout: 20_000 })
+    return
+  }
+  if (path === 'stale') {
+    await expect(page.locator('.stale-banner')).toBeVisible()
+  }
+  await expect(page.locator('.headline')).toBeVisible()
+  await expect(page.locator('.chart-canvas canvas')).toHaveCount(4)
+}
+
 for (const scheme of ['light', 'dark'] as const) {
   for (const width of [1440, 1024, 390]) {
-    for (const timing of ['delayed', 'instant'] as const) {
-      test(`keeps the layout in place while the page loads with ${timing} answers in ${scheme} at ${String(width)} px`, async ({
+    for (const { path, timing } of CASES) {
+      test(`keeps the layout in place while the page loads on the ${path} path with ${timing} answers in ${scheme} at ${String(width)} px`, async ({
         browser,
       }) => {
         const context = await browser.newContext({
@@ -96,11 +125,12 @@ for (const scheme of ['light', 'dark'] as const) {
         const status = hold()
         const data = hold()
         await recordShifts(page)
-        if (timing === 'instant') {
-          await mockFixtureApi(page)
-        } else {
-          await mockFixtureApi(page, { statusHold: status.promise, dataHold: data.promise })
-        }
+        await mockFixtureApi(page, {
+          ...(timing === 'delayed' ? { statusHold: status.promise, dataHold: data.promise } : {}),
+          ...(path === 'stale' ? { status: fixtures.status(8 * 3600) } : {}),
+          ...(path === 'first start' ? { status: fixtures.statusBeforeFirstSnapshot() } : {}),
+          statusFails: path === 'failed status',
+        })
         await page.goto(`http://127.0.0.1:${String(PORT)}/`)
 
         if (timing === 'delayed') {
@@ -108,14 +138,16 @@ for (const scheme of ['light', 'dark'] as const) {
           // No screenshots here: a full page capture resizes the viewport, and the browser
           // then leaves out the shifts that follow.
           await expect(page.getByText('Loading status')).toBeVisible()
+          await page.evaluate(() => document.fonts.ready)
           await settle(page)
           status.release()
-          await expect(page.getByText('Loading generation data')).toBeVisible()
-          await settle(page)
+          if (path === 'fresh' || path === 'stale') {
+            await expect(page.getByText('Loading generation data')).toBeVisible()
+            await settle(page)
+          }
           data.release()
         }
-        await expect(page.locator('.headline')).toBeVisible()
-        await expect(page.locator('.chart-canvas canvas')).toHaveCount(4)
+        await loaded(page, path)
         await page.evaluate(() => document.fonts.ready)
         await settle(page)
 

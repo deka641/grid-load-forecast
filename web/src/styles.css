@@ -183,15 +183,26 @@ a:hover {
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px 48px;
-  padding: 32px 0 20px;
+  padding: 32px 0 0;
+}
+
+/* The heavy rule of the first section is the only divider below the header. Without
+   sections (a failed status), a thin rule is drawn at the top of the main area instead, in
+   the place it would have below the header, so the header keeps one height on every path. */
+main:not(:has(.section, .loading-page))::before {
+  content: '';
+  display: block;
+  padding-top: 20px;
   border-bottom: 1px solid var(--color-rule);
 }
 
-/* The heavy rule of the first section is the only divider below the header. The same holds
-   while the status loads, so the header keeps its height when the sections arrive. */
-.page:has(.section, .loading-page) .site-header {
-  padding-bottom: 0;
-  border-bottom: 0;
+/* At least a screen high, so the footer stays below the fold when a short state such as the
+   first start or a failure takes the place of the tall loading placeholders. Its own block
+   context keeps the top margin of its first child inside, so it starts right below the
+   header whatever comes first. */
+main {
+  display: flow-root;
+  min-height: 100vh;
 }
 
 .site-header h1 {
@@ -249,8 +260,14 @@ a:hover {
   color: var(--color-muted);
 }
 
+/* The place of the data time where the header shows none: as wide and high as the usual
+   line, never seen or read. */
 .freshness-pending {
   visibility: hidden;
+}
+
+.freshness-pending::before {
+  content: 'Data up to 28 Nov 2026, 23:45';
 }
 
 .freshness-stale {

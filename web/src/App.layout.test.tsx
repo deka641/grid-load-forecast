@@ -44,10 +44,11 @@ describe('Places held while loading', () => {
     expect(notice.closest('[aria-hidden="true"]')).toBeNull()
     expect(notice.parentElement).toHaveClass('loading-forecast')
 
-    const line = container.querySelector('.freshness-pending')
+    // An empty, hidden line holds the place of the data time.
+    const line = container.querySelector('.site-meta .freshness-pending')
     expect(line).toHaveAttribute('aria-hidden', 'true')
-    // The only time line is the hidden one that holds the place.
-    expect(screen.getByText(/^Data up to/).closest('.freshness-pending')).toBe(line)
+    expect(line?.textContent).toBe('')
+    expect(screen.queryByText(/Data up to/)).toBeNull()
     const page = container.querySelector('.loading-page')
     expect(page?.querySelector('.skeleton-hero')).toHaveAttribute('aria-hidden', 'true')
     expect(page?.querySelector('.forecast-controls .skeleton-controls')).not.toBeNull()
@@ -139,8 +140,11 @@ describe('Page layout', () => {
       /^Data up to 20 Nov 2026, \d\d:\d\d \(more than 6 hours old\)$/,
     )
     expect(screen.getAllByText(/Data up to/)).toHaveLength(1)
-    // Without a line of its own, the header lines the theme switch up with the title.
-    expect(container.querySelector('.freshness-group')).toBeNull()
+    // Without a time of its own, the header holds the place of the line empty and hidden.
+    expect(container.querySelector('.site-meta .freshness-pending')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    )
   })
 
   it('composes the first start as the forecast section without a freshness line', async () => {
@@ -156,6 +160,10 @@ describe('Page layout', () => {
       expect(container.querySelector('.empty-state')).toHaveTextContent(NO_DATA)
     })
     expect(screen.getByRole('heading', { level: 2, name: 'Day-ahead forecast' })).toBeVisible()
-    expect(container.querySelector('.freshness-group')).toBeNull()
+    expect(screen.queryByText(/Data up to/)).toBeNull()
+    expect(container.querySelector('.site-meta .freshness-pending')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    )
   })
 })
