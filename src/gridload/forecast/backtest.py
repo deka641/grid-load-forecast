@@ -36,6 +36,8 @@ from gridload.forecast.model import (
 MODELS = (MODEL_NAME, BASELINE_NAME, TSO_NAME)
 TRAINING_START = date(2015, 1, 15)
 MIN_TRAINING_DAYS = timedelta(days=28)
+# Shortest evaluation window a backtest run accepts, in days.
+MIN_BACKTEST_DAYS = 7
 
 
 @dataclass(frozen=True)

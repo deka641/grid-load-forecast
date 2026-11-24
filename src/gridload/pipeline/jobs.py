@@ -16,6 +16,7 @@ from gridload import timezones as tz
 from gridload.config import Settings
 from gridload.forecast import calendar as fcal
 from gridload.forecast import service
+from gridload.forecast.backtest import MIN_BACKTEST_DAYS
 from gridload.pipeline import heartbeat, snapshot
 from gridload.pipeline.db import connect
 from gridload.pipeline.ingest import Ingestor, RunResult
@@ -275,8 +276,8 @@ def _forecast_step(con: duckdb.DuckDBPyConnection, current: datetime) -> None:
 
 def backtest(settings: Settings, *, days: int) -> str:
     """Run and store a backtest, then republish the snapshot. Returns a summary line."""
-    if days < 7:
-        return "error: --days must be at least 7"
+    if days < MIN_BACKTEST_DAYS:
+        return f"error: --days must be at least {MIN_BACKTEST_DAYS}"
     with connect(settings.warehouse_path) as con:
         result = service.run_and_store_backtest(con, days=days)
         if result is None:

@@ -10,6 +10,7 @@ import pytest
 
 from gridload.config import Settings
 from gridload.forecast import service
+from gridload.forecast.backtest import MIN_BACKTEST_DAYS
 from gridload.forecast.features import History
 from tests import synthetic
 
@@ -105,3 +106,28 @@ def test_backtest_script_last_day_and_fingerprint(
     assert not Settings(data_dir=tmp_path).serving_path.exists()
     with pytest.raises(SystemExit):
         main([*args, "--last-day", "20.04.2025"], today=today)
+
+
+@pytest.mark.parametrize("days", ["0", "-5", "6"])
+def test_backtest_script_rejects_short_window_before_writing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], days: str
+) -> None:
+    warehouse = _warehouse_file(tmp_path)
+    out = tmp_path / "reports"
+    out.mkdir()
+    rows = tmp_path / "rows.csv"
+    existing = {
+        out / "backtest.json": '{"kept": true}\n',
+        out / "backtest.md": "# kept\n",
+        rows: "kept\n",
+    }
+    for path, text in existing.items():
+        path.write_text(text, encoding="utf-8")
+    args = ["--warehouse", str(warehouse), "--out", str(out), "--rows", str(rows)]
+    with pytest.raises(SystemExit) as exc:
+        _script()([*args, "--days", days], today=date(2025, 6, 1))
+    assert exc.value.code != 0
+    assert f"at least {MIN_BACKTEST_DAYS}" in capsys.readouterr().err
+    assert sorted(out.iterdir()) == sorted(p for p in existing if p.parent == out)
+    for path, text in existing.items():
+        assert path.read_text(encoding="utf-8") == text
