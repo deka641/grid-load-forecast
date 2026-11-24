@@ -15,12 +15,25 @@ export interface ChartProps {
    * keep it stable with useCallback.
    */
   build: (palette: Palette, layout: ChartLayout) => EChartsCoreOption
+  /**
+   * A one-time accent after the draw-in: a series shown at `delay` ms after the first
+   * animated render and removed after `duration` ms. Only with motion allowed; keep it
+   * stable with useCallback.
+   */
+  arrival?: (palette: Palette) => ChartArrival | null
   label: string
   /** The plotted values as a table: read by screen readers, shown on request. */
   children?: ReactNode
   /** Short name of the opened data table, for its scroll region. */
   dataLabel?: string
   className?: string
+}
+
+export interface ChartArrival {
+  /** A series option with an `id`, added to the chart and later emptied by that id. */
+  series: { id: string; type: string } & Record<string, unknown>
+  delay: number
+  duration: number
 }
 
 type Instance = ReturnType<typeof echarts.init>
@@ -39,7 +52,7 @@ function allowsMotion(): boolean {
   )
 }
 
-export function Chart({ build, label, children, dataLabel, className }: ChartProps) {
+export function Chart({ build, arrival, label, children, dataLabel, className }: ChartProps) {
   const container = useRef<HTMLDivElement>(null)
   const instance = useRef<Instance | null>(null)
   const { resolved } = useTheme()
@@ -47,6 +60,9 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
   // Changes only when the width crosses COMPACT_WIDTH, so a resize renders again only then.
   const [compact, setCompact] = useState(false)
   const rendered = useRef<{ build: ChartProps['build']; key: string } | null>(null)
+  // Timers of the accent after the draw-in. They outlive re-runs of the render effect that
+  // draw nothing (such as setting the width class right after init) and end with the chart.
+  const accents = useRef<ReturnType<typeof setTimeout>[]>([])
   const dataId = useId()
 
   useEffect(() => {
@@ -72,6 +88,8 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
     observer.observe(element)
     return () => {
       observer.disconnect()
+      accents.current.forEach(clearTimeout)
+      accents.current = []
       chart.dispose()
       instance.current = null
       // A new instance (such as after a StrictMode remount) starts empty and must be drawn.
@@ -95,9 +113,25 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
     let drawn = false
     const render = () => {
       if (active) {
-        instance.current?.setOption(build(readPalette(), { compact: narrow, motion, animate }), {
+        const palette = readPalette()
+        instance.current?.setOption(build(palette, { compact: narrow, motion, animate }), {
           notMerge: true,
         })
+        const accent = animate ? arrival?.(palette) : null
+        if (accent) {
+          // Added once the lines have drawn in, emptied once it has played.
+          accents.current.forEach(clearTimeout)
+          accents.current = [
+            setTimeout(() => {
+              instance.current?.setOption({ series: [accent.series] })
+            }, accent.delay),
+            setTimeout(() => {
+              // With its type, so that it is a valid series also after a full re-render.
+              const { id, type } = accent.series
+              instance.current?.setOption({ series: [{ id, type, data: [] }] })
+            }, accent.delay + accent.duration),
+          ]
+        }
         animate = false
         drawn = true
       }
@@ -130,7 +164,7 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
         rendered.current = previous
       }
     }
-  }, [build, resolved, compact])
+  }, [build, arrival, resolved, compact])
 
   return (
     <figure className={className ? `chart ${className}` : 'chart'}>

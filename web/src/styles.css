@@ -53,6 +53,9 @@
   --color-skeleton: color-mix(in srgb, var(--color-ink) 7%, transparent);
   --shadow-1: 0 1px 2px rgb(16 24 40 / 0.04), 0 2px 8px rgb(16 24 40 / 0.06);
   --hero-glow: color-mix(in srgb, var(--color-model) 7%, transparent);
+  /* Glow around the model line in the charts: none in light. A plain rgba value, since the
+     charts read it as a colour string. */
+  --chart-glow: transparent;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -74,10 +77,16 @@
     --color-warn: #f2b45c;
     --color-warn-bg: #3a2a12;
     --color-error: #ff9b8f;
-    --gen-wind-offshore: #3b6fae;
+    /* Bands that do not glow on the dark surface, with the water and wind neighbours set
+       apart by lightness. */
+    --gen-other-conventional: #6b7482;
+    --gen-pumped-storage: #557fa8;
+    --gen-wind-offshore: #3a6db8;
+    --gen-wind-onshore: #4aa6e3;
     --color-surface-2: #1a2738;
     --shadow-1: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px rgb(0 0 0 / 0.35);
     --hero-glow: color-mix(in srgb, var(--color-model) 10%, transparent);
+    --chart-glow: rgba(110, 164, 242, 0.55);
   }
 }
 
@@ -99,10 +108,14 @@
   --color-warn: #f2b45c;
   --color-warn-bg: #3a2a12;
   --color-error: #ff9b8f;
-  --gen-wind-offshore: #3b6fae;
+  --gen-other-conventional: #6b7482;
+  --gen-pumped-storage: #557fa8;
+  --gen-wind-offshore: #3a6db8;
+  --gen-wind-onshore: #4aa6e3;
   --color-surface-2: #1a2738;
   --shadow-1: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px rgb(0 0 0 / 0.35);
   --hero-glow: color-mix(in srgb, var(--color-model) 10%, transparent);
+  --chart-glow: rgba(110, 164, 242, 0.55);
 }
 
 *,
@@ -255,6 +268,59 @@ main {
   gap: 4px;
 }
 
+/* Where the title and the meta line do not fit side by side, the theme control moves up
+   beside the title and the data time runs below the lede, so the header never ends in a row
+   that holds the control alone. */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .site-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px 32px;
+  }
+
+  .site-meta {
+    display: contents;
+  }
+
+  .site-title {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .theme-toggle {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .freshness-group {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+}
+
+/* On phones the data time and the theme control share one row below the lede, set off from
+   the title by a dotted rule drawn like the grid lines of the charts. */
+@media (max-width: 640px) {
+  .site-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .site-meta {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 12px;
+    background: linear-gradient(to right, var(--color-control-border) 0 2px, transparent 2px) 0 0 /
+      6px 1px repeat-x;
+  }
+
+  .freshness-group {
+    min-width: 0;
+  }
+}
+
 .freshness {
   font-size: var(--text-sm);
   color: var(--color-muted);
@@ -295,12 +361,16 @@ main {
   margin-top: 24px;
 }
 
-/* Segmented theme control built from native radio inputs. */
+/* Theme control built from native radio inputs: options on a track, the chosen one filled. */
 .theme-toggle {
   display: inline-flex;
+  flex: none;
+  gap: 2px;
   margin: 0;
-  padding: 0;
-  border: 0;
+  padding: 3px;
+  border: 1px solid var(--color-control-border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--color-surface-2);
 }
 
 .theme-option {
@@ -315,33 +385,30 @@ main {
   cursor: pointer;
 }
 
+/* The track adds its padding and border around the options, so the whole control keeps the
+   usual control height. */
 .theme-option span {
   display: inline-flex;
   align-items: center;
-  min-height: var(--control);
+  min-height: calc(var(--control) - 8px);
   padding: 0 12px;
-  border: 1px solid var(--color-control-border);
-  margin-left: -1px;
+  border-radius: var(--radius);
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-muted);
-  background: var(--color-surface);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
 }
 
-.theme-option:first-of-type span {
-  margin-left: 0;
-  border-radius: var(--radius) 0 0 var(--radius);
-}
-
-.theme-option:last-of-type span {
-  border-radius: 0 var(--radius) var(--radius) 0;
+.theme-option input:hover + span {
+  color: var(--color-ink);
 }
 
 .theme-option input:checked + span {
-  position: relative;
-  border-color: var(--color-ink);
   background: var(--color-ink);
   color: var(--color-bg);
+  box-shadow: 0 1px 2px rgb(16 24 40 / 0.2);
 }
 
 .theme-option input:focus-visible + span {
@@ -426,6 +493,28 @@ main {
   height: 260px;
   background: radial-gradient(closest-side, var(--hero-glow), transparent);
   pointer-events: none;
+}
+
+/* Behind the right half of the hero, a faint day of load over a dotted base line: the curve
+   of the page mark, drawn large in the model colour. */
+.section-title.eyebrow:has(+ .forecast-hero:not(.skeleton-hero))::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 4px;
+  right: 0;
+  width: min(620px, 55%);
+  height: 150px;
+  background: color-mix(in srgb, var(--color-model) 10%, transparent);
+  mask: url('/load-curve.svg') center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* On phones the hero stacks, and the curve would run through the figure. */
+@media (max-width: 640px) {
+  .section-title.eyebrow:has(+ .forecast-hero:not(.skeleton-hero))::before {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -555,10 +644,41 @@ main {
   stroke-width: 1;
 }
 
+/* Previous day, the day list and Next day form one joined control. */
 .day-selector {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+}
+
+.day-selector .button,
+.day-selector select {
+  position: relative;
+  border-radius: 0;
+}
+
+.day-selector > :first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.day-selector > :last-child {
+  margin-left: -1px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.day-select {
+  display: flex;
+  margin-left: -1px;
+}
+
+/* The day list draws the shared edges, and a hovered or focused part comes to the front. */
+.day-selector select {
+  z-index: 1;
+}
+
+.day-selector .button:hover:not(:disabled),
+.day-selector select:hover,
+.day-selector .button:focus-visible,
+.day-selector select:focus-visible {
+  z-index: 2;
 }
 
 .button,
@@ -697,20 +817,55 @@ main {
   background: var(--gen-other-renewable);
 }
 
+/* Lines in the tooltip are drawn as in the legend: a short sample with width and pattern. */
+.tt-swatch.tt-actual,
+.tt-swatch.tt-lightgbm,
+.tt-swatch.tt-baseline_week,
+.tt-swatch.tt-tso,
+.tt-swatch.tt-price {
+  width: 18px;
+  height: 2px;
+  box-shadow: none;
+  background: var(--tt-line);
+}
+
 .tt-actual {
-  background: var(--color-actual);
+  --tt-line: var(--color-actual);
+}
+.tt-swatch.tt-actual {
+  height: 3px;
 }
 .tt-lightgbm {
-  background: var(--color-model);
+  --tt-line: var(--color-model);
+}
+.tt-swatch.tt-lightgbm {
+  height: 2.5px;
 }
 .tt-baseline_week {
-  background: var(--color-baseline);
+  --tt-line: var(--color-baseline);
+}
+.tt-swatch.tt-baseline_week {
+  background: linear-gradient(to right, var(--tt-line) 0 6px, transparent 6px 10px) 0 0 / 10px 100%
+    repeat-x;
 }
 .tt-tso {
-  background: var(--color-tso);
+  --tt-line: var(--color-tso);
+}
+.tt-swatch.tt-tso {
+  background: linear-gradient(
+      to right,
+      var(--tt-line) 0 8px,
+      transparent 8px 11px,
+      var(--tt-line) 11px 13px,
+      transparent 13px 16px
+    )
+    0 0 / 16px 100% repeat-x;
 }
 .tt-price {
-  background: var(--color-price);
+  --tt-line: var(--color-price);
+}
+.tt-swatch.tt-price {
+  height: 1.5px;
 }
 .tt-none {
   background: transparent;
@@ -732,6 +887,64 @@ main {
   box-shadow:
     inset 0 3px 0 var(--color-model),
     var(--shadow-1);
+}
+
+/* A chart with a data table: the frame holds the canvas (and the opened table), and the
+   "Show data" toggle sits above the frame on the right, at the height of the line above. */
+.chart:has(> .chart-data-toggle) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  isolation: isolate;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.chart:has(> .chart-data-toggle)::before {
+  content: '';
+  grid-row: 2 / 4;
+  grid-column: 1;
+  z-index: -1;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-1);
+}
+
+.chart-forecast:has(> .chart-data-toggle)::before {
+  box-shadow:
+    inset 0 3px 0 var(--color-model),
+    var(--shadow-1);
+}
+
+.chart:has(> .chart-data-toggle) > .chart-canvas {
+  grid-row: 2;
+  grid-column: 1;
+}
+
+.chart:has(> .chart-data-toggle) > figcaption {
+  grid-row: 3;
+  grid-column: 1;
+}
+
+/* While the chart code loads, the frame has the size of the final one: the canvas inside
+   the border, and on phones the row of the toggle above it. */
+.chart:has(> .chart-canvas[aria-busy='true']) > .chart-canvas {
+  margin-block: -1px;
+}
+
+@media (max-width: 640px) {
+  .chart:has(> .chart-canvas[aria-busy='true']) {
+    margin-top: calc(10px + 44px + 10px);
+  }
+}
+
+/* Room on the right of the line above a chart, where its toggle sits. */
+.chart-head:has(+ .chart > .chart-data-toggle),
+.legend:has(+ .chart > .chart-data-toggle),
+.subsection-title:has(+ .chart > .chart-data-toggle) {
+  padding-right: 112px;
 }
 
 .chart-canvas {
@@ -988,11 +1201,11 @@ tr.narrow-only {
 /* Floors just below the usual height of each section's content while it loads. The
    forecast blocks have the size of the final content, so that section needs no floor. */
 .loading-backtest {
-  min-height: 480px;
+  min-height: 566px;
 }
 
 .loading-context {
-  min-height: 890px;
+  min-height: 805px;
 }
 
 /* Placeholders while a section loads: quiet blocks in the place of its content. */
@@ -1109,9 +1322,10 @@ tr.narrow-only {
   box-shadow: var(--shadow-1);
 }
 
-/* The frame of the final chart: canvas, the "Show data" button and the border. */
+/* The frame of the final chart, which holds only the canvas; the "Show data" toggle sits
+   above it, on the line of the legend. */
 .skeleton-chart-forecast {
-  height: calc(380px + 44px + 2px);
+  height: 380px;
   margin-top: 10px;
   box-shadow:
     inset 0 3px 0 var(--color-rule),
@@ -1182,7 +1396,7 @@ tr.narrow-only {
   }
 
   .loading-backtest {
-    min-height: 860px;
+    min-height: 900px;
   }
 
   /* Stacked under the text, the table keeps a readable width instead of spreading out. */
@@ -1198,11 +1412,34 @@ tr.narrow-only {
   }
 
   .site-header {
-    padding-top: 20px;
+    gap: 12px;
+    padding-top: 16px;
   }
 
   .site-header h1 {
-    font-size: 24px;
+    gap: 10px;
+    font-size: 22px;
+  }
+
+  .site-mark {
+    width: 26px;
+    height: 26px;
+  }
+
+  .lede {
+    margin-top: 4px;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  /* Each option keeps the full touch height; the track adds only its border around them. */
+  .theme-toggle {
+    padding: 0 2px;
+  }
+
+  .theme-option span {
+    min-height: var(--control);
+    padding: 0 10px;
   }
 
   .headline {
@@ -1247,8 +1484,10 @@ tr.narrow-only {
     height: 280px;
   }
 
+  /* Below the toggle row: margin, toggle and gap. */
   .skeleton-chart-forecast {
-    height: calc(300px + 52px + 2px);
+    height: 300px;
+    margin-top: calc(10px + 44px + 10px);
   }
 
   /* The legend wraps to two rows and the line under the chart to two lines. */
@@ -1288,7 +1527,7 @@ tr.narrow-only {
   }
 
   .loading-backtest {
-    min-height: 1060px;
+    min-height: 1258px;
   }
 
   .loading-context {
@@ -1300,6 +1539,27 @@ tr.narrow-only {
 @media (max-width: 420px) {
   .skeleton-for-forecast .skeleton-legend {
     height: 75px;
+  }
+}
+
+/* The joined day control keeps one row down to 320 px, so the parts get tighter text there
+   and the day list shows its full date. */
+@media (max-width: 380px) {
+  .day-selector .button,
+  .day-selector select {
+    padding: 0 8px;
+    font-size: 13px;
+  }
+
+  .day-selector select {
+    padding-right: 2px;
+  }
+}
+
+/* Between phone and tablet width the generation legend takes one more row. */
+@media (min-width: 641px) and (max-width: 760px) {
+  .loading-context {
+    min-height: 880px;
   }
 }
 
@@ -1353,23 +1613,47 @@ tr.narrow-only {
   }
 }
 
+/* A text toggle: no box of its own, a chevron that turns when the table is open. */
 .chart-data-toggle {
-  display: block;
-  margin: 0 8px 8px auto;
-  min-height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--color-control-border);
+  display: inline-flex;
+  grid-row: 1;
+  grid-column: 1;
+  justify-self: end;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin: -38px 0 6px;
+  padding: 0 4px 0 8px;
+  border: 0;
   border-radius: var(--radius);
-  background: var(--color-surface);
+  background: none;
   color: var(--color-muted);
   font: inherit;
   font-size: var(--text-sm);
+  font-weight: 500;
   cursor: pointer;
+}
+
+.chart-data-toggle::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin: -3px 4px 0 0;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.chart-data-toggle[aria-expanded='true']::after {
+  margin-top: 3px;
+  transform: rotate(-135deg);
 }
 
 .chart-data-toggle:hover {
   color: var(--color-ink);
-  border-color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .chart-data {
@@ -1441,9 +1725,17 @@ tr.narrow-only {
   cursor: pointer;
 }
 
+/* On phones the toggle takes its own row above the frame, with a full touch target. */
 @media (max-width: 640px) {
   .chart-data-toggle {
     min-height: 44px;
+    margin: 0 0 10px;
+  }
+
+  .chart-head:has(+ .chart > .chart-data-toggle),
+  .legend:has(+ .chart > .chart-data-toggle),
+  .subsection-title:has(+ .chart > .chart-data-toggle) {
+    padding-right: 0;
   }
 }
 

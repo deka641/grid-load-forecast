@@ -98,6 +98,8 @@ export function firstIndex(params: unknown): number {
 /** Gap between the cursor and the tooltip, and between the tooltip and the top of the chart. */
 const TOOLTIP_GAP = 16
 const TOOLTIP_TOP = 8
+/** Left edge of the plot in every chart; the value labels sit to its left. */
+const GRID_LEFT = 52
 
 interface TooltipSize {
   contentSize: [number, number]
@@ -106,21 +108,23 @@ interface TooltipSize {
 
 /**
  * The tooltip sits at the top of the chart on the side away from the cursor, so it does not
- * cover the lines next to the hour being read.
+ * cover the lines next to the hour being read. Where the chart is wide enough, it also keeps
+ * clear of the value labels left of the plot.
  */
 export function tooltipPosition(point: [number, number], size: TooltipSize): [number, number] {
   const [x] = point
   const [width] = size.contentSize
   const [view] = size.viewSize
   const left = x > view / 2 ? x - width - TOOLTIP_GAP : x + TOOLTIP_GAP
-  return [Math.max(0, Math.min(left, view - width)), TOOLTIP_TOP]
+  const floor = view - width >= GRID_LEFT ? GRID_LEFT : 0
+  return [Math.max(floor, Math.min(left, view - width)), TOOLTIP_TOP]
 }
 
 function base(palette: Palette, layout: ChartLayout = DEFAULT_LAYOUT): EChartsCoreOption {
   return {
     animation: false,
     textStyle: { fontFamily: palette.fontFamily, color: palette.muted, fontSize: 12 },
-    grid: { left: 52, right: 16, top: 16, bottom: 28, containLabel: false },
+    grid: { left: GRID_LEFT, right: 16, top: 16, bottom: 28, containLabel: false },
     tooltip: {
       trigger: 'axis',
       renderMode: 'html',
@@ -152,7 +156,8 @@ function valueAxis(palette: Palette, unit: string, extra: Record<string, unknown
     name: unit,
     nameLocation: 'end',
     nameGap: 8,
-    nameTextStyle: { color: palette.muted, align: 'right', padding: [0, 6, 0, 0] },
+    // Starts at the left edge of the plot, clear of the rounded corner of the frame.
+    nameTextStyle: { color: palette.muted, align: 'left' },
     scale: true,
     axisLine: { show: false },
     axisTick: { show: false },
@@ -204,12 +209,18 @@ function categoryAxis(
   }
 }
 
+/** A soft glow in the theme's glow colour, or nothing where the theme has none. */
+function glow(palette: Palette, blur: number) {
+  return palette.glow === 'transparent' ? {} : { shadowColor: palette.glow, shadowBlur: blur }
+}
+
 function lineSeries(
   name: string,
   data: (number | null)[],
   spec: LineStyleSpec,
   palette: Palette,
   z: number,
+  glowBlur = 0,
 ) {
   return {
     type: 'line',
@@ -227,6 +238,7 @@ function lineSeries(
       type: dash(spec.pattern),
       cap: spec.pattern === 'solid' ? 'round' : 'butt',
       join: 'round',
+      ...(glowBlur > 0 ? glow(palette, glowBlur) : {}),
     },
     itemStyle: { color: spec.color(palette) },
     emphasis: { disabled: true },
@@ -320,7 +332,12 @@ function peakMark(points: readonly ForecastPoint[], palette: Palette, delay: num
       symbol: 'circle',
       symbolSize: 11,
       label: { show: false },
-      itemStyle: { color: palette.model, borderColor: palette.surface, borderWidth: 2 },
+      itemStyle: {
+        color: palette.model,
+        borderColor: palette.surface,
+        borderWidth: 2,
+        ...glow(palette, 12),
+      },
       animationDelay: delay,
       data: [{ coord: [x, y] }],
     },
@@ -392,6 +409,8 @@ export function forecastOption(
         LINE_STYLES[s.key],
         palette,
         z[s.key],
+        // The model line glows where the theme has a glow, so the forecast leads the chart.
+        s.key === 'lightgbm' ? 8 : 0,
       ),
       animationDelay: DRAW_ORDER[s.key] * DRAW_STAGGER_MS,
       ...(i === 0
@@ -404,6 +423,46 @@ export function forecastOption(
         ? peakMark(points, palette, DRAW_ORDER.lightgbm * DRAW_STAGGER_MS + DRAW_DURATION_MS)
         : {}),
     })),
+  }
+}
+
+/** How long the ring around the peak dot takes to open and fade, in milliseconds. */
+const ARRIVAL_MS = 1200
+
+/**
+ * After the draw-in, a single ring opens around the peak dot and fades, so the eye finds the
+ * point the headline names. It adds no value and no label, and is never shown without motion.
+ */
+export function peakArrival(points: readonly ForecastPoint[], palette: Palette) {
+  const peak = forecastPeak(points)
+  const index = peak === null ? -1 : points.findIndex((p) => p.ts === peak.ts)
+  if (peak === null || index < 0) {
+    return null
+  }
+  return {
+    delay: DRAW_ORDER.lightgbm * DRAW_STAGGER_MS + DRAW_DURATION_MS,
+    // Emptied just before the ripple would start a second round.
+    duration: ARRIVAL_MS - 60,
+    series: {
+      id: 'peak-arrival',
+      type: 'effectScatter',
+      silent: true,
+      animation: false,
+      z: 5,
+      symbolSize: 11,
+      showEffectOn: 'render',
+      rippleEffect: {
+        number: 1,
+        period: ARRIVAL_MS / 1000,
+        scale: 4.5,
+        brushType: 'stroke',
+        color: palette.model,
+      },
+      // The same dot as the peak mark below it, so only the ring is new.
+      itemStyle: { color: palette.model, borderColor: palette.surface, borderWidth: 2 },
+      tooltip: { show: false },
+      data: [[String(index), peak.value / 1000]],
+    },
   }
 }
 
@@ -595,7 +654,19 @@ function gapArea(gap: PriceGap, count: number): [number, number] {
 }
 
 /**
- * A gap in the source is shaded lighter than hours not yet published. Its label sits inside
+ * Diagonal hatching as a pattern tile, in the given colour. A data URI, which the
+ * Content-Security-Policy allows for images.
+ */
+export function hatchImage(color: string): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">` +
+    `<path d="M-2 2 L2 -2 M0 8 L8 0 M6 10 L10 6" stroke="${color}" stroke-width="1.25"/></svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
+}
+
+/**
+ * A gap in the source is shaded lighter than hours not yet published, and hatched, so that
+ * it reads as a gap also where its label does not fit. Its label sits inside
  * the top of the span, and only when the span is wide enough to hold it.
  */
 function sourceGapStart(
@@ -608,13 +679,21 @@ function sourceGapStart(
   const share = count > 1 ? (last - first) / (count - 1) : 0
   return {
     xAxis: String(first),
-    itemStyle: { color: palette.rule, opacity: 0.25 },
+    itemStyle: {
+      // At this opacity the colour of the hatch lines reaches 3:1 against the surface in both
+      // themes.
+      color: { image: hatchImage(palette.ink), repeat: 'repeat' },
+      opacity: 0.48,
+    },
     label: {
       show: share >= (layout.compact ? 0.5 : 0.2),
       position: 'insideTop',
       align: 'center',
       verticalAlign: 'top',
       offset: [0, 0],
+      // On a plain ground, so the hatching does not run through the text.
+      backgroundColor: palette.surface,
+      padding: [1, 3],
       formatter: 'No price published by SMARD',
     },
   }

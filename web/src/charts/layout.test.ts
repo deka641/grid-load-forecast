@@ -16,6 +16,7 @@ const palette: Palette = {
   tso: '#2b9c8d',
   actual: '#e4e9f0',
   price: '#e4e9f0',
+  glow: 'transparent',
   fontFamily: 'Barlow',
   generation: {},
 }

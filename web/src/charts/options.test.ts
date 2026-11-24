@@ -4,11 +4,13 @@ import {
   escapeHtml,
   firstIndex,
   forecastOption,
+  hatchImage,
   hourLabel,
   lastValueIndex,
   mapeByHourOption,
   mixOption,
   newestDueDay,
+  peakArrival,
   priceGaps,
   priceOption,
   roundedGwRange,
@@ -30,6 +32,7 @@ const palette: Palette = {
   tso: '#0f8476',
   actual: '#172131',
   price: '#172131',
+  glow: 'transparent',
   fontFamily: 'Barlow',
   generation: { gen_solar: '#e9c32d' },
 }
@@ -50,7 +53,7 @@ interface Series {
     data: {
       xAxis: string
       label?: { formatter: string; show?: boolean }
-      itemStyle?: { opacity: number }
+      itemStyle?: { opacity: number; color?: unknown }
     }[][]
     label: { formatter: string }
   }
@@ -279,8 +282,14 @@ describe('price gaps', () => {
     const area = option.series[0]?.markArea
     // The shading ends where the next price starts.
     expect(areas(area)).toEqual([['2', '5', 'No price published by SMARD']])
-    // Lighter than the shading of hours not yet published.
+    // Lighter than the shading of hours not yet published, and hatched, so it shows as a gap
+    // also where its label does not fit.
     expect(area?.data[0]?.[0]?.itemStyle?.opacity).toBeLessThan(0.5)
+    expect(area?.data[0]?.[0]?.itemStyle?.color).toEqual({
+      image: hatchImage(palette.ink),
+      repeat: 'repeat',
+    })
+    expect(hatchImage(palette.ink)).toMatch(/^data:image\/svg\+xml,/)
     // Labelled in the chart where the span can hold the text; the summary names it always.
     expect(area?.data[0]?.[0]?.label?.show).toBe(true)
     const compact = built(
@@ -390,6 +399,40 @@ describe('forecast chart finish', () => {
     expect(marked[0]?.markPoint?.silent).toBe(true)
   })
 
+  it('lets only the model line and its peak dot glow, and only where the theme has a glow', () => {
+    interface Glow {
+      series: {
+        name: string
+        lineStyle: { shadowColor?: string; shadowBlur?: number }
+        markPoint?: { itemStyle: { shadowColor?: string } }
+      }[]
+    }
+    const points = forecast('2026-11-20').points
+    const light = forecastOption(points, palette) as unknown as Glow
+    expect(light.series.every((s) => s.lineStyle.shadowColor === undefined)).toBe(true)
+    const glow = 'rgba(110, 164, 242, 0.55)'
+    const dark = forecastOption(points, { ...palette, glow }) as unknown as Glow
+    const glowing = dark.series.filter((s) => s.lineStyle.shadowColor === glow)
+    expect(glowing.map((s) => s.name)).toEqual(['LightGBM model'])
+    expect(glowing[0]?.markPoint?.itemStyle.shadowColor).toBe(glow)
+  })
+
+  it('opens one silent ring at the peak dot once the lines have drawn in', () => {
+    const points = forecast('2026-11-20').points
+    const arrival = peakArrival(points, palette)
+    const option = forecastOption(points, palette) as unknown as Finish
+    const peak = option.series.find((s) => s.markPoint)?.markPoint?.data[0]?.coord
+    const model = option.series.find((s) => s.name === 'LightGBM model')
+    expect(arrival?.series.data).toEqual([peak])
+    expect(arrival?.series).toMatchObject({ type: 'effectScatter', silent: true })
+    expect(arrival?.series.rippleEffect.number).toBe(1)
+    expect(arrival?.series).not.toHaveProperty('label')
+    // After the model line has drawn in, and gone before the ripple would repeat.
+    expect(arrival?.delay).toBeGreaterThan(model?.animationDelay ?? Infinity)
+    expect(arrival?.duration).toBeLessThan((arrival?.series.rippleEffect.period ?? 0) * 1000)
+    expect(peakArrival([], palette)).toBeNull()
+  })
+
   it('rounds the value axis to whole 5 GW steps around all lines', () => {
     const points = forecast('2026-11-20').points
     const option = forecastOption(points, palette) as unknown as Finish
@@ -434,7 +477,13 @@ describe('tooltipPosition', () => {
       viewSize: [300, 300] as [number, number],
     }
     expect(tooltipPosition([140, 50], narrow)).toEqual([100, 8])
-    expect(tooltipPosition([160, 50], narrow)).toEqual([0, 8])
+    // Clear of the value labels left of the plot, where the chart has room for that.
+    expect(tooltipPosition([160, 50], narrow)).toEqual([52, 8])
+    const tight = {
+      contentSize: [200, 120] as [number, number],
+      viewSize: [240, 300] as [number, number],
+    }
+    expect(tooltipPosition([200, 50], tight)).toEqual([0, 8])
   })
 })
 

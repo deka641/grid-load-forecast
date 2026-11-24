@@ -10,8 +10,8 @@ import { serveDist } from './server.ts'
 /** The page must not move when the loading placeholders give way to the content. */
 const PORT = 8471
 const DIST = resolve(import.meta.dirname, '..', 'dist')
-/** The "good" limit of the Core Web Vitals. */
-const LIMIT = 0.1
+/** A tenth of the "good" limit of the Core Web Vitals: the page should not move at all. */
+const LIMIT = 0.01
 
 let server: Server
 

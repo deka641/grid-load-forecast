@@ -633,15 +633,19 @@ function controlContrasts(page: Page) {
       return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05)
     }
     const page = getComputedStyle(document.body).backgroundColor
-    const selector =
-      '.button:not(:disabled), .day-select select, .theme-option span, .chart-data-toggle'
+    // The theme options sit on one track, whose border is the edge of the control. The data
+    // toggles are text buttons without a border: their text is their edge.
+    const selector = '.button:not(:disabled), .day-select select, .theme-toggle, .chart-data-toggle'
     return [...document.querySelectorAll(selector)].map((el) => {
       const style = getComputedStyle(el)
-      const fill = style.backgroundColor
+      const text = el.matches('.chart-data-toggle')
+      const fill = text ? page : style.backgroundColor
+      const edge = text ? style.color : style.borderTopColor
       return {
         control: el.textContent.trim(),
-        againstFill: ratio(style.borderTopColor, fill),
-        againstPage: ratio(style.borderTopColor, page),
+        text,
+        againstFill: ratio(edge, fill),
+        againstPage: ratio(edge, page),
       }
     })
   })
@@ -654,12 +658,13 @@ for (const scheme of ['light', 'dark'] as const) {
     await mockApi(page)
     await open(page)
     const contrasts = await controlContrasts(page)
-    expect(contrasts.length).toBeGreaterThan(8)
+    expect(contrasts.length).toBeGreaterThan(6)
     for (const c of contrasts) {
       // The checked theme option is filled with ink; its edge is the fill against the page.
       expect(Math.max(c.againstFill, c.againstPage), c.control).toBeGreaterThanOrEqual(3)
-      expect(c.againstPage, c.control).toBeGreaterThanOrEqual(3)
+      expect(c.againstPage, c.control).toBeGreaterThanOrEqual(c.text ? 4.5 : 3)
     }
+    expect(contrasts.filter((c) => c.text)).toHaveLength(4)
     await context.close()
   })
 }

@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react'
 import type { ForecastDay, ForecastPoint } from '../api/client'
 import { useBacktest, useForecast, useForecastDays } from '../api/queries'
 import { Chart } from '../charts/LazyChart'
-import { FORECAST_SERIES, LINE_STYLES, forecastOption } from '../charts/options'
+import { FORECAST_SERIES, LINE_STYLES, forecastOption, peakArrival } from '../charts/options'
 import type { ChartLayout } from '../charts/options'
 import type { Palette } from '../charts/palette'
 import { NOT_AVAILABLE, formatGW, formatPercent } from '../lib/format'
@@ -248,6 +248,7 @@ function ForecastView({ forecast }: { forecast: ForecastDay }) {
     (palette: Palette, layout: ChartLayout) => forecastOption(points, palette, layout),
     [points],
   )
+  const arrival = useCallback((palette: Palette) => peakArrival(points, palette), [points])
   const hours = points.length
   return (
     <>
@@ -276,6 +277,7 @@ function ForecastView({ forecast }: { forecast: ForecastDay }) {
       </div>
       <Chart
         build={build}
+        arrival={arrival}
         label={`Line chart of the grid load on ${dayShort(forecast.delivery_day)} in GW by local hour: actual, LightGBM model, baseline and SMARD forecast`}
         className="chart-forecast"
         dataLabel="Hourly forecast table"
