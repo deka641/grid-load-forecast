@@ -188,9 +188,9 @@ function BacktestView({ backtest }: { backtest: BacktestMetrics }) {
           {tsoSentence === null ? null : <p className="note">{tsoSentence}</p>}
           <p className="note">
             The SMARD forecast is scored on its values as published today. Its publication time is
-            not known, so it may include revisions made after 12:00 on the day before. The model is
-            scored with the load values as stored today, including later corrections it would not
-            have had at the cutoff, which can favour the model.
+            not known, so it may include revisions made after 12:00 on the day before. The
+            model&apos;s inputs are the load values as stored today, including later corrections it
+            would not have had at the cutoff, which can favour the model.
           </p>
         </div>
         <div className="backtest-hours">
