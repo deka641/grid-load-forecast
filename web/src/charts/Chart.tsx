@@ -31,7 +31,7 @@ export interface ChartProps {
 
 export interface ChartArrival {
   /** A series option with an `id`, added to the chart and later emptied by that id. */
-  series: { id: string } & Record<string, unknown>
+  series: { id: string; type: string } & Record<string, unknown>
   delay: number
   duration: number
 }
@@ -121,7 +121,9 @@ export function Chart({ build, arrival, label, children, dataLabel, className }:
               instance.current?.setOption({ series: [accent.series] })
             }, accent.delay),
             setTimeout(() => {
-              instance.current?.setOption({ series: [{ id: accent.series.id, data: [] }] })
+              // With its type, so that it is a valid series also after a full re-render.
+              const { id, type } = accent.series
+              instance.current?.setOption({ series: [{ id, type, data: [] }] })
             }, accent.delay + accent.duration),
           )
         }

@@ -157,7 +157,9 @@ describe('Chart layout', () => {
     act(() => {
       vi.advanceTimersByTime(500)
     })
-    expect(instance.setOption).toHaveBeenLastCalledWith({ series: [{ id: 'ring', data: [] }] })
+    expect(instance.setOption).toHaveBeenLastCalledWith({
+      series: [{ id: 'ring', type: 'effectScatter', data: [] }],
+    })
     view.unmount()
 
     vi.clearAllMocks()
