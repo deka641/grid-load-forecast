@@ -49,6 +49,43 @@ function useOverflowsX<T extends HTMLElement>() {
   return [ref, overflows] as const
 }
 
+function gw(mae: number): string {
+  return `${(mae / 1000).toFixed(2)} GW`
+}
+
+/** The model's mean error relative to a reference forecast, e.g. "38 % less than". */
+function relative(model: number, reference: number): string {
+  const percent = Math.round(Math.abs(model / reference - 1) * 100)
+  if (percent === 0) {
+    return 'about the same as'
+  }
+  return `${String(percent)} % ${model < reference ? 'less' : 'more'} than`
+}
+
+/**
+ * The model's MAE in words, against the baseline on the same hours and against the SMARD
+ * forecast on the hours SMARD covers; null without a model result.
+ */
+function readingSentence(backtest: BacktestMetrics): string | null {
+  const model = findMetric(backtest, 'lightgbm', 'overall', 'all')
+  if (!model) {
+    return null
+  }
+  const baseline = findMetric(backtest, 'baseline_week', 'overall', 'all')
+  const modelOnSmardHours = findMetric(backtest, 'lightgbm', 'overall_tso_hours', 'all')
+  const smard = findMetric(backtest, 'tso', 'overall', 'all')
+  let sentence = `On average the LightGBM model misses an hour by ${gw(model.mae)}`
+  if (baseline && baseline.mae > 0) {
+    sentence += `, ${relative(model.mae, baseline.mae)} the baseline (${gw(baseline.mae)})`
+  }
+  if (modelOnSmardHours && smard && smard.mae > 0) {
+    sentence +=
+      `, and ${relative(modelOnSmardHours.mae, smard.mae)} the SMARD forecast ` +
+      `(${gw(smard.mae)}) on the hours it covers`
+  }
+  return `${sentence}.`
+}
+
 function MetricsTable({ backtest }: { backtest: BacktestMetrics }) {
   const [box, overflows] = useOverflowsX<HTMLDivElement>()
   const mape = (model: (typeof MODELS)[number]['key'], scope: string, value: string) => {
@@ -176,12 +213,14 @@ function BacktestView({ backtest }: { backtest: BacktestMetrics }) {
   const build = useCallback((palette: Palette) => mapeByHourOption(backtest, palette), [backtest])
   const hours = findMetric(backtest, 'lightgbm', 'overall', 'all')?.n
   const tsoSentence = tsoHoursSentence(backtest)
+  const reading = readingSentence(backtest)
   return (
     <>
       <p className="prose">
         {methodSentence(backtest)} Errors are measured against the actual grid load
         {hours === undefined ? '' : ` over ${hours.toLocaleString('en-GB')} hours`}.
       </p>
+      {reading === null ? null : <p className="prose">{reading}</p>}
       <div className="backtest-grid">
         <div>
           <MetricsTable backtest={backtest} />
