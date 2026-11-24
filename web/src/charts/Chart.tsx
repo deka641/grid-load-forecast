@@ -60,6 +60,9 @@ export function Chart({ build, arrival, label, children, dataLabel, className }:
   // Changes only when the width crosses COMPACT_WIDTH, so a resize renders again only then.
   const [compact, setCompact] = useState(false)
   const rendered = useRef<{ build: ChartProps['build']; key: string } | null>(null)
+  // Timers of the accent after the draw-in. They outlive re-runs of the render effect that
+  // draw nothing (such as setting the width class right after init) and end with the chart.
+  const accents = useRef<ReturnType<typeof setTimeout>[]>([])
   const dataId = useId()
 
   useEffect(() => {
@@ -85,6 +88,8 @@ export function Chart({ build, arrival, label, children, dataLabel, className }:
     observer.observe(element)
     return () => {
       observer.disconnect()
+      accents.current.forEach(clearTimeout)
+      accents.current = []
       chart.dispose()
       instance.current = null
       // A new instance (such as after a StrictMode remount) starts empty and must be drawn.
@@ -106,7 +111,6 @@ export function Chart({ build, arrival, label, children, dataLabel, className }:
     let animate = motion && previous === null
     rendered.current = { build, key }
     let drawn = false
-    const accents: ReturnType<typeof setTimeout>[] = []
     const render = () => {
       if (active) {
         const palette = readPalette()
@@ -116,7 +120,8 @@ export function Chart({ build, arrival, label, children, dataLabel, className }:
         const accent = animate ? arrival?.(palette) : null
         if (accent) {
           // Added once the lines have drawn in, emptied once it has played.
-          accents.push(
+          accents.current.forEach(clearTimeout)
+          accents.current = [
             setTimeout(() => {
               instance.current?.setOption({ series: [accent.series] })
             }, accent.delay),
@@ -125,7 +130,7 @@ export function Chart({ build, arrival, label, children, dataLabel, className }:
               const { id, type } = accent.series
               instance.current?.setOption({ series: [{ id, type, data: [] }] })
             }, accent.delay + accent.duration),
-          )
+          ]
         }
         animate = false
         drawn = true
@@ -153,7 +158,6 @@ export function Chart({ build, arrival, label, children, dataLabel, className }:
     return () => {
       active = false
       clearTimeout(timer)
-      accents.forEach(clearTimeout)
       // A render still waiting for the font did not happen: the next run must still do it,
       // including the draw-in when this was the first one.
       if (!drawn) {

@@ -172,4 +172,35 @@ describe('Chart layout', () => {
     expect(instance.setOption).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })
+  it('plays the accent once on a compact chart too, and not after unmount', () => {
+    vi.useFakeTimers()
+    width = 358
+    const series = { id: 'ring', type: 'effectScatter', data: [[1, 2]] }
+    const arrival = vi.fn(() => ({ series, delay: 1000, duration: 500 }))
+    const build = vi.fn(() => ({}))
+    motion(true)
+    const view = render(<Chart build={build} arrival={arrival} label="Compact accent" />)
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(instance.setOption).toHaveBeenLastCalledWith({ series: [series] })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    expect(instance.setOption).toHaveBeenLastCalledWith({
+      series: [{ id: 'ring', type: 'effectScatter', data: [] }],
+    })
+    expect(arrival).toHaveBeenCalledTimes(1)
+    view.unmount()
+
+    // Unmounted before the ring: its timers end with the chart.
+    vi.clearAllMocks()
+    const early = render(<Chart build={build} arrival={arrival} label="Gone" />)
+    early.unmount()
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(instance.setOption).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
 })
