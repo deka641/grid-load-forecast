@@ -22,7 +22,10 @@ class ObserverMock {
 }
 
 let width = 0
-const fonts = { status: 'loaded', ready: Promise.resolve() }
+const fonts: { status: string; ready: Promise<unknown> } = {
+  status: 'loaded',
+  ready: Promise.resolve(),
+}
 
 function motion(allowed: boolean) {
   vi.stubGlobal(
@@ -201,6 +204,61 @@ describe('Chart layout', () => {
       vi.advanceTimersByTime(5000)
     })
     expect(instance.setOption).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+  it('drops a pending accent when the chart is drawn again with new data', () => {
+    vi.useFakeTimers()
+    width = 900
+    const series = { id: 'ring', type: 'effectScatter', data: [[1, 2]] }
+    const arrival = vi.fn(() => ({ series, delay: 1000, duration: 500 }))
+    const first = vi.fn(() => ({}))
+    const next = vi.fn(() => ({}))
+    motion(true)
+    const view = render(<Chart build={first} arrival={arrival} label="Day" />)
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    // Another day before the ring: its peak is somewhere else, so the old ring must not play.
+    view.rerender(<Chart build={next} arrival={arrival} label="Day" />)
+    expect(instance.setOption).toHaveBeenCalledTimes(2)
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(instance.setOption).toHaveBeenCalledTimes(2)
+    expect(arrival).toHaveBeenCalledTimes(1)
+    view.unmount()
+    vi.useRealTimers()
+  })
+  it('keeps the accent when a late web font redraws the same data', async () => {
+    vi.useFakeTimers()
+    width = 900
+    let loaded: (value?: unknown) => void = () => undefined
+    fonts.status = 'loading'
+    fonts.ready = new Promise((resolve) => {
+      loaded = resolve
+    })
+    const series = { id: 'ring', type: 'effectScatter', data: [[1, 2]] }
+    const arrival = vi.fn(() => ({ series, delay: 1000, duration: 500 }))
+    const build = vi.fn(() => ({}))
+    motion(true)
+    const view = render(<Chart build={build} arrival={arrival} label="Late font" />)
+    // The draw-in waits for the font, then falls back after the wait.
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(arrival).toHaveBeenCalledTimes(1)
+    // The font arrives before the ring: the redraw must not drop it.
+    await act(async () => {
+      fonts.status = 'loaded'
+      loaded()
+      await Promise.resolve()
+    })
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(instance.setOption).toHaveBeenLastCalledWith({ series: [series] })
+    view.unmount()
+    fonts.ready = Promise.resolve()
     vi.useRealTimers()
   })
 })
