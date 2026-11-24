@@ -79,6 +79,17 @@ def test_issue_forecast_stores_model_and_baseline(con: duckdb.DuckDBPyConnection
     assert service.due_delivery_day(con, datetime(2025, 4, 29, 13, tzinfo=tz.BERLIN)) is None
 
 
+def test_issue_forecast_returns_the_model_run_id(con: duckdb.DuckDBPyConnection) -> None:
+    day = date(2025, 4, 30)
+    run_id = service.issue_forecast(con, day)
+    row = con.execute(
+        "SELECT r.model, count(f.run_id) FROM forecast_runs r "
+        "LEFT JOIN forecasts f USING (run_id) WHERE r.run_id = ? GROUP BY 1",
+        [run_id],
+    ).fetchone()
+    assert row == ("lightgbm", 24)
+
+
 def test_forecast_for_a_25_hour_day() -> None:
     con = synthetic.warehouse(date(2025, 8, 1), date(2025, 10, 25))
     service.issue_forecast(con, date(2025, 10, 26))

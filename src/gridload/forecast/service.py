@@ -128,10 +128,11 @@ def issue_forecast(
 ) -> str | None:
     """Train on all days that ended before the origin day and store model and baseline runs.
 
-    Returns None (and stores nothing) if there are fewer than ``MIN_TRAINING_ROWS``
-    training hours. ``degraded`` means the newest admissible hour is missing. The
-    run details record ``degraded`` (true if any check in :func:`degraded_checks`
-    fails, for example a hollowed week before the cutoff) and ``degraded_checks``.
+    Returns the run id of the model run (not the baseline run), or None (and stores
+    nothing) if there are fewer than ``MIN_TRAINING_ROWS`` training hours. ``degraded``
+    means the newest admissible hour is missing. The run details record ``degraded``
+    (true if any check in :func:`degraded_checks` fails, for example a hollowed week
+    before the cutoff) and ``degraded_checks``.
     """
     created = now or datetime.now(UTC)
     load = load_history(con, "load")
@@ -158,11 +159,11 @@ def issue_forecast(
         "degraded": bool(checks),
         "degraded_checks": checks,
     }
-    run_id = ""
+    run_ids = {model: uuid.uuid4().hex for model in forecasts}
     con.execute("BEGIN")
     try:
         for model, values in forecasts.items():
-            run_id = uuid.uuid4().hex
+            run_id = run_ids[model]
             con.execute(
                 "INSERT INTO forecast_runs VALUES (?, ?, ?, ?, ?, ?)",
                 [
@@ -185,7 +186,7 @@ def issue_forecast(
     except Exception:
         con.execute("ROLLBACK")
         raise
-    return run_id
+    return run_ids[MODEL_NAME]
 
 
 def training_start(load: History) -> date:
