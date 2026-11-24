@@ -680,8 +680,10 @@ function sourceGapStart(
   return {
     xAxis: String(first),
     itemStyle: {
+      // At this opacity the colour of the hatch lines reaches 3:1 against the surface in both
+      // themes.
       color: { image: hatchImage(palette.ink), repeat: 'repeat' },
-      opacity: 0.4,
+      opacity: 0.48,
     },
     label: {
       show: share >= (layout.compact ? 0.5 : 0.2),
