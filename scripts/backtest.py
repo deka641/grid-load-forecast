@@ -20,7 +20,7 @@ import duckdb
 
 from gridload import timezones as tz
 from gridload.forecast import report, service
-from gridload.forecast.backtest import run_backtest
+from gridload.forecast.backtest import MIN_BACKTEST_DAYS, run_backtest
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -32,9 +32,19 @@ def _day(value: str) -> date:
         raise argparse.ArgumentTypeError(f"expected YYYY-MM-DD, got {value!r}") from exc
 
 
+def _days(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected a whole number, got {value!r}") from exc
+    if number < MIN_BACKTEST_DAYS:
+        raise argparse.ArgumentTypeError(f"must be at least {MIN_BACKTEST_DAYS}, got {number}")
+    return number
+
+
 def main(argv: list[str] | None = None, *, today: date | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--days", type=int, default=365)
+    parser.add_argument("--days", type=_days, default=365)
     parser.add_argument(
         "--last-day", type=_day, help="last delivery day, YYYY-MM-DD (default: last complete day)"
     )
