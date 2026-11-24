@@ -310,12 +310,16 @@ main {
   margin-top: 24px;
 }
 
-/* Segmented theme control built from native radio inputs. */
+/* Theme control built from native radio inputs: options on a track, the chosen one filled. */
 .theme-toggle {
   display: inline-flex;
+  flex: none;
+  gap: 2px;
   margin: 0;
-  padding: 0;
-  border: 0;
+  padding: 3px;
+  border: 1px solid var(--color-control-border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--color-surface-2);
 }
 
 .theme-option {
@@ -330,33 +334,30 @@ main {
   cursor: pointer;
 }
 
+/* The track adds its padding and border around the options, so the whole control keeps the
+   usual control height. */
 .theme-option span {
   display: inline-flex;
   align-items: center;
-  min-height: var(--control);
+  min-height: calc(var(--control) - 8px);
   padding: 0 12px;
-  border: 1px solid var(--color-control-border);
-  margin-left: -1px;
+  border-radius: var(--radius);
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-muted);
-  background: var(--color-surface);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
 }
 
-.theme-option:first-of-type span {
-  margin-left: 0;
-  border-radius: var(--radius) 0 0 var(--radius);
-}
-
-.theme-option:last-of-type span {
-  border-radius: 0 var(--radius) var(--radius) 0;
+.theme-option input:hover + span {
+  color: var(--color-ink);
 }
 
 .theme-option input:checked + span {
-  position: relative;
-  border-color: var(--color-ink);
   background: var(--color-ink);
   color: var(--color-bg);
+  box-shadow: 0 1px 2px rgb(16 24 40 / 0.2);
 }
 
 .theme-option input:focus-visible + span {
@@ -570,10 +571,41 @@ main {
   stroke-width: 1;
 }
 
+/* Previous day, the day list and Next day form one joined control. */
 .day-selector {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+}
+
+.day-selector .button,
+.day-selector select {
+  position: relative;
+  border-radius: 0;
+}
+
+.day-selector > :first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.day-selector > :last-child {
+  margin-left: -1px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.day-select {
+  display: flex;
+  margin-left: -1px;
+}
+
+/* The day list draws the shared edges, and a hovered or focused part comes to the front. */
+.day-selector select {
+  z-index: 1;
+}
+
+.day-selector .button:hover:not(:disabled),
+.day-selector select:hover,
+.day-selector .button:focus-visible,
+.day-selector select:focus-visible {
+  z-index: 2;
 }
 
 .button,
@@ -782,6 +814,52 @@ main {
   box-shadow:
     inset 0 3px 0 var(--color-model),
     var(--shadow-1);
+}
+
+/* A chart with a data table: the frame holds the canvas (and the opened table), and the
+   "Show data" toggle sits above the frame on the right, at the height of the line above. */
+.chart:has(> .chart-data-toggle) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  isolation: isolate;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.chart:has(> .chart-data-toggle)::before {
+  content: '';
+  grid-row: 2 / 4;
+  grid-column: 1;
+  z-index: -1;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-1);
+}
+
+.chart-forecast:has(> .chart-data-toggle)::before {
+  box-shadow:
+    inset 0 3px 0 var(--color-model),
+    var(--shadow-1);
+}
+
+.chart:has(> .chart-data-toggle) > .chart-canvas {
+  grid-row: 2;
+  grid-column: 1;
+}
+
+.chart:has(> .chart-data-toggle) > figcaption {
+  grid-row: 3;
+  grid-column: 1;
+}
+
+/* Room on the right of the line above a chart, where its toggle sits. */
+.chart-head:has(+ .chart > .chart-data-toggle),
+.legend:has(+ .chart > .chart-data-toggle),
+.subsection-title:has(+ .chart > .chart-data-toggle) {
+  padding-right: 112px;
 }
 
 .chart-canvas {
@@ -1159,9 +1237,10 @@ tr.narrow-only {
   box-shadow: var(--shadow-1);
 }
 
-/* The frame of the final chart: canvas, the "Show data" button and the border. */
+/* The frame of the final chart, which holds only the canvas; the "Show data" toggle sits
+   above it, on the line of the legend. */
 .skeleton-chart-forecast {
-  height: calc(380px + 44px + 2px);
+  height: 380px;
   margin-top: 10px;
   box-shadow:
     inset 0 3px 0 var(--color-rule),
@@ -1297,8 +1376,10 @@ tr.narrow-only {
     height: 280px;
   }
 
+  /* Below the toggle row: margin, toggle and gap. */
   .skeleton-chart-forecast {
-    height: calc(300px + 52px + 2px);
+    height: 300px;
+    margin-top: calc(10px + 44px + 10px);
   }
 
   /* The legend wraps to two rows and the line under the chart to two lines. */
@@ -1403,23 +1484,47 @@ tr.narrow-only {
   }
 }
 
+/* A text toggle: no box of its own, a chevron that turns when the table is open. */
 .chart-data-toggle {
-  display: block;
-  margin: 0 8px 8px auto;
-  min-height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--color-control-border);
+  display: inline-flex;
+  grid-row: 1;
+  grid-column: 1;
+  justify-self: end;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin: -38px 0 6px;
+  padding: 0 4px 0 8px;
+  border: 0;
   border-radius: var(--radius);
-  background: var(--color-surface);
+  background: none;
   color: var(--color-muted);
   font: inherit;
   font-size: var(--text-sm);
+  font-weight: 500;
   cursor: pointer;
+}
+
+.chart-data-toggle::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin: -3px 4px 0 0;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.chart-data-toggle[aria-expanded='true']::after {
+  margin-top: 3px;
+  transform: rotate(-135deg);
 }
 
 .chart-data-toggle:hover {
   color: var(--color-ink);
-  border-color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .chart-data {
@@ -1491,9 +1596,17 @@ tr.narrow-only {
   cursor: pointer;
 }
 
+/* On phones the toggle takes its own row above the frame, with a full touch target. */
 @media (max-width: 640px) {
   .chart-data-toggle {
     min-height: 44px;
+    margin: 0 0 10px;
+  }
+
+  .chart-head:has(+ .chart > .chart-data-toggle),
+  .legend:has(+ .chart > .chart-data-toggle),
+  .subsection-title:has(+ .chart > .chart-data-toggle) {
+    padding-right: 0;
   }
 }
 
