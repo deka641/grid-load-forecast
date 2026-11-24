@@ -10,6 +10,7 @@ import {
   mapeByHourOption,
   mixOption,
   newestDueDay,
+  peakArrival,
   priceGaps,
   priceOption,
   roundedGwRange,
@@ -414,6 +415,22 @@ describe('forecast chart finish', () => {
     const glowing = dark.series.filter((s) => s.lineStyle.shadowColor === glow)
     expect(glowing.map((s) => s.name)).toEqual(['LightGBM model'])
     expect(glowing[0]?.markPoint?.itemStyle.shadowColor).toBe(glow)
+  })
+
+  it('opens one silent ring at the peak dot once the lines have drawn in', () => {
+    const points = forecast('2026-11-20').points
+    const arrival = peakArrival(points, palette)
+    const option = forecastOption(points, palette) as unknown as Finish
+    const peak = option.series.find((s) => s.markPoint)?.markPoint?.data[0]?.coord
+    const model = option.series.find((s) => s.name === 'LightGBM model')
+    expect(arrival?.series.data).toEqual([peak])
+    expect(arrival?.series).toMatchObject({ type: 'effectScatter', silent: true })
+    expect(arrival?.series.rippleEffect.number).toBe(1)
+    expect(arrival?.series).not.toHaveProperty('label')
+    // After the model line has drawn in, and gone before the ripple would repeat.
+    expect(arrival?.delay).toBeGreaterThan(model?.animationDelay ?? Infinity)
+    expect(arrival?.duration).toBeLessThan((arrival?.series.rippleEffect.period ?? 0) * 1000)
+    expect(peakArrival([], palette)).toBeNull()
   })
 
   it('rounds the value axis to whole 5 GW steps around all lines', () => {

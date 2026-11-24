@@ -1,4 +1,4 @@
-import { LineChart } from 'echarts/charts'
+import { EffectScatterChart, LineChart } from 'echarts/charts'
 import {
   GridComponent,
   MarkAreaComponent,
@@ -11,6 +11,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 
 echarts.use([
   LineChart,
+  EffectScatterChart,
   GridComponent,
   TooltipComponent,
   MarkLineComponent,

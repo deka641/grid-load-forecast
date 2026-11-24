@@ -15,12 +15,25 @@ export interface ChartProps {
    * keep it stable with useCallback.
    */
   build: (palette: Palette, layout: ChartLayout) => EChartsCoreOption
+  /**
+   * A one-time accent after the draw-in: a series shown at `delay` ms after the first
+   * animated render and removed after `duration` ms. Only with motion allowed; keep it
+   * stable with useCallback.
+   */
+  arrival?: (palette: Palette) => ChartArrival | null
   label: string
   /** The plotted values as a table: read by screen readers, shown on request. */
   children?: ReactNode
   /** Short name of the opened data table, for its scroll region. */
   dataLabel?: string
   className?: string
+}
+
+export interface ChartArrival {
+  /** A series option with an `id`, added to the chart and later emptied by that id. */
+  series: { id: string } & Record<string, unknown>
+  delay: number
+  duration: number
 }
 
 type Instance = ReturnType<typeof echarts.init>
@@ -39,7 +52,7 @@ function allowsMotion(): boolean {
   )
 }
 
-export function Chart({ build, label, children, dataLabel, className }: ChartProps) {
+export function Chart({ build, arrival, label, children, dataLabel, className }: ChartProps) {
   const container = useRef<HTMLDivElement>(null)
   const instance = useRef<Instance | null>(null)
   const { resolved } = useTheme()
@@ -93,11 +106,25 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
     let animate = motion && previous === null
     rendered.current = { build, key }
     let drawn = false
+    const accents: ReturnType<typeof setTimeout>[] = []
     const render = () => {
       if (active) {
-        instance.current?.setOption(build(readPalette(), { compact: narrow, motion, animate }), {
+        const palette = readPalette()
+        instance.current?.setOption(build(palette, { compact: narrow, motion, animate }), {
           notMerge: true,
         })
+        const accent = animate ? arrival?.(palette) : null
+        if (accent) {
+          // Added once the lines have drawn in, emptied once it has played.
+          accents.push(
+            setTimeout(() => {
+              instance.current?.setOption({ series: [accent.series] })
+            }, accent.delay),
+            setTimeout(() => {
+              instance.current?.setOption({ series: [{ id: accent.series.id, data: [] }] })
+            }, accent.delay + accent.duration),
+          )
+        }
         animate = false
         drawn = true
       }
@@ -124,13 +151,14 @@ export function Chart({ build, label, children, dataLabel, className }: ChartPro
     return () => {
       active = false
       clearTimeout(timer)
+      accents.forEach(clearTimeout)
       // A render still waiting for the font did not happen: the next run must still do it,
       // including the draw-in when this was the first one.
       if (!drawn) {
         rendered.current = previous
       }
     }
-  }, [build, resolved, compact])
+  }, [build, arrival, resolved, compact])
 
   return (
     <figure className={className ? `chart ${className}` : 'chart'}>

@@ -426,6 +426,46 @@ export function forecastOption(
   }
 }
 
+/** How long the ring around the peak dot takes to open and fade, in milliseconds. */
+const ARRIVAL_MS = 1200
+
+/**
+ * After the draw-in, a single ring opens around the peak dot and fades, so the eye finds the
+ * point the headline names. It adds no value and no label, and is never shown without motion.
+ */
+export function peakArrival(points: readonly ForecastPoint[], palette: Palette) {
+  const peak = forecastPeak(points)
+  const index = peak === null ? -1 : points.findIndex((p) => p.ts === peak.ts)
+  if (peak === null || index < 0) {
+    return null
+  }
+  return {
+    delay: DRAW_ORDER.lightgbm * DRAW_STAGGER_MS + DRAW_DURATION_MS,
+    // Emptied just before the ripple would start a second round.
+    duration: ARRIVAL_MS - 60,
+    series: {
+      id: 'peak-arrival',
+      type: 'effectScatter',
+      silent: true,
+      animation: false,
+      z: 5,
+      symbolSize: 11,
+      showEffectOn: 'render',
+      rippleEffect: {
+        number: 1,
+        period: ARRIVAL_MS / 1000,
+        scale: 4.5,
+        brushType: 'stroke',
+        color: palette.model,
+      },
+      // The same dot as the peak mark below it, so only the ring is new.
+      itemStyle: { color: palette.model, borderColor: palette.surface, borderWidth: 2 },
+      tooltip: { show: false },
+      data: [[String(index), peak.value / 1000]],
+    },
+  }
+}
+
 const HOURS = Array.from({ length: 24 }, (_, h) => h)
 
 export function hourLabel(hour: number): string {
