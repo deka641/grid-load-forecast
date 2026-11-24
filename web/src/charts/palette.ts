@@ -11,6 +11,8 @@ export interface Palette {
   tso: string
   actual: string
   price: string
+  /** Glow around the model line and its peak dot; transparent where the theme has none. */
+  glow: string
   fontFamily: string
   generation: Record<string, string>
 }
@@ -54,6 +56,7 @@ export function readPalette(root: HTMLElement = document.documentElement): Palet
     tso: read('--color-tso'),
     actual: read('--color-actual'),
     price: read('--color-price'),
+    glow: style.getPropertyValue('--chart-glow').trim() || 'transparent',
     fontFamily: style.getPropertyValue('--font-body').trim() || 'sans-serif',
     generation,
   }

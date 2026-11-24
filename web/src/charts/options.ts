@@ -204,12 +204,18 @@ function categoryAxis(
   }
 }
 
+/** A soft glow in the theme's glow colour, or nothing where the theme has none. */
+function glow(palette: Palette, blur: number) {
+  return palette.glow === 'transparent' ? {} : { shadowColor: palette.glow, shadowBlur: blur }
+}
+
 function lineSeries(
   name: string,
   data: (number | null)[],
   spec: LineStyleSpec,
   palette: Palette,
   z: number,
+  glowBlur = 0,
 ) {
   return {
     type: 'line',
@@ -227,6 +233,7 @@ function lineSeries(
       type: dash(spec.pattern),
       cap: spec.pattern === 'solid' ? 'round' : 'butt',
       join: 'round',
+      ...(glowBlur > 0 ? glow(palette, glowBlur) : {}),
     },
     itemStyle: { color: spec.color(palette) },
     emphasis: { disabled: true },
@@ -320,7 +327,12 @@ function peakMark(points: readonly ForecastPoint[], palette: Palette, delay: num
       symbol: 'circle',
       symbolSize: 11,
       label: { show: false },
-      itemStyle: { color: palette.model, borderColor: palette.surface, borderWidth: 2 },
+      itemStyle: {
+        color: palette.model,
+        borderColor: palette.surface,
+        borderWidth: 2,
+        ...glow(palette, 12),
+      },
       animationDelay: delay,
       data: [{ coord: [x, y] }],
     },
@@ -392,6 +404,8 @@ export function forecastOption(
         LINE_STYLES[s.key],
         palette,
         z[s.key],
+        // The model line glows where the theme has a glow, so the forecast leads the chart.
+        s.key === 'lightgbm' ? 8 : 0,
       ),
       animationDelay: DRAW_ORDER[s.key] * DRAW_STAGGER_MS,
       ...(i === 0

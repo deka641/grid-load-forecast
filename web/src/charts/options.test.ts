@@ -30,6 +30,7 @@ const palette: Palette = {
   tso: '#0f8476',
   actual: '#172131',
   price: '#172131',
+  glow: 'transparent',
   fontFamily: 'Barlow',
   generation: { gen_solar: '#e9c32d' },
 }
@@ -388,6 +389,24 @@ describe('forecast chart finish', () => {
     const index = points.findIndex((p) => p.lightgbm === peak)
     expect(marked[0]?.markPoint?.data).toEqual([{ coord: [String(index), peak / 1000] }])
     expect(marked[0]?.markPoint?.silent).toBe(true)
+  })
+
+  it('lets only the model line and its peak dot glow, and only where the theme has a glow', () => {
+    interface Glow {
+      series: {
+        name: string
+        lineStyle: { shadowColor?: string; shadowBlur?: number }
+        markPoint?: { itemStyle: { shadowColor?: string } }
+      }[]
+    }
+    const points = forecast('2026-11-20').points
+    const light = forecastOption(points, palette) as unknown as Glow
+    expect(light.series.every((s) => s.lineStyle.shadowColor === undefined)).toBe(true)
+    const glow = 'rgba(110, 164, 242, 0.55)'
+    const dark = forecastOption(points, { ...palette, glow }) as unknown as Glow
+    const glowing = dark.series.filter((s) => s.lineStyle.shadowColor === glow)
+    expect(glowing.map((s) => s.name)).toEqual(['LightGBM model'])
+    expect(glowing[0]?.markPoint?.itemStyle.shadowColor).toBe(glow)
   })
 
   it('rounds the value axis to whole 5 GW steps around all lines', () => {
