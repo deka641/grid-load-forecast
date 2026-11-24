@@ -80,8 +80,7 @@
     /* Bands that do not glow on the dark surface, with the water and wind neighbours set
        apart by lightness. */
     --gen-other-conventional: #6b7482;
-    --gen-hydro: #1f9a97;
-    --gen-pumped-storage: #a8cde6;
+    --gen-pumped-storage: #557fa8;
     --gen-wind-offshore: #3a6db8;
     --gen-wind-onshore: #4aa6e3;
     --color-surface-2: #1a2738;
@@ -110,8 +109,7 @@
   --color-warn-bg: #3a2a12;
   --color-error: #ff9b8f;
   --gen-other-conventional: #6b7482;
-  --gen-hydro: #1f9a97;
-  --gen-pumped-storage: #a8cde6;
+  --gen-pumped-storage: #557fa8;
   --gen-wind-offshore: #3a6db8;
   --gen-wind-onshore: #4aa6e3;
   --color-surface-2: #1a2738;
