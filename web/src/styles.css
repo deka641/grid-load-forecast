@@ -268,17 +268,45 @@ main {
   gap: 4px;
 }
 
-/* Where the title and the meta line do not fit side by side, the meta line runs below the
-   title as one row: the data time on the left, the theme control on the right. Without a
-   data time the control still sits at the right end, where it is on every path. */
-@media (max-width: 1180px) {
+/* Where the title and the meta line do not fit side by side, the theme control moves up
+   beside the title and the data time runs below the lede, so the header never ends in a row
+   that holds the control alone. */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .site-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px 32px;
+  }
+
+  .site-meta {
+    display: contents;
+  }
+
+  .site-title {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .theme-toggle {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .freshness-group {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+}
+
+/* On phones the data time and the theme control share one row below the lede, set off from
+   the title by a dotted rule drawn like the grid lines of the charts. */
+@media (max-width: 640px) {
   .site-header {
     flex-direction: column;
     align-items: stretch;
-    gap: 14px;
   }
 
-  /* Set off from the title by a dotted rule, drawn like the grid lines of the charts. */
   .site-meta {
     flex-wrap: nowrap;
     justify-content: space-between;
