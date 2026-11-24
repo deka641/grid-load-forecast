@@ -6,6 +6,24 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ## [Unreleased]
 
+### Added
+
+- The dashboard section on accuracy says in one sentence how far the model misses an hour on average and how that compares with the baseline and, on the hours SMARD covers, with the SMARD forecast. The sentence is computed from the stored backtest, so it follows the weekly update.
+- The OpenAPI document describes every field of a forecast point (LightGBM, baseline, SMARD forecast, actual load) with its unit and when it is null.
+
+### Changed
+
+- The README and the forecast explanation read the backtest figures around the forecast timing: the forecast is computed at 12:05 at the earliest, after the day-ahead auction has closed, so it serves as an independent reference and not as an input to bids.
+- The command line reference lists all options of `scripts/backtest.py`, including the rows file that the metric cross-check reads.
+
+### Fixed
+
+- The dashboard note under the backtest table said the model is scored with the load values as stored today; it is the model's inputs that use them.
+
+### Security
+
+- SECURITY.md names the two high vulnerabilities in the Caddy binary of the web image that no Caddy release fixes yet.
+
 ## [0.1.2] - 2026-11-23
 
 ### Added

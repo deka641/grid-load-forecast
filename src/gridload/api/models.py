@@ -62,10 +62,27 @@ class Actuals(BaseModel):
 
 class ForecastPoint(BaseModel):
     ts: datetime = Field(description="Start of the delivery hour, Europe/Berlin offset")
-    lightgbm: float | None
-    baseline_week: float | None
-    tso: float | None
-    actual: float | None
+    lightgbm: float | None = Field(
+        description="LightGBM forecast, MWh per hour; null where none is stored"
+    )
+    baseline_week: float | None = Field(
+        description=(
+            "Baseline: load of the same local hour seven days earlier, MWh per hour; "
+            "null where none is stored"
+        )
+    )
+    tso: float | None = Field(
+        description=(
+            "Grid load forecast published by SMARD (filter 411), MWh per hour; "
+            "null where SMARD publishes none"
+        )
+    )
+    actual: float | None = Field(
+        description=(
+            "Actual grid load (filter 410), MWh per hour; null where SMARD has not "
+            "published the complete hour"
+        )
+    )
 
 
 DEGRADED = (
@@ -87,11 +104,11 @@ ISSUED_AT = (
     "data available at this time; it is not the time the forecast was computed (created_at)"
 )
 CREATED_AT = (
-    "When the pipeline computed the forecast, on the day before delivery: in the first run "
-    "that reaches its forecast step, after loading, at or after 12:00 and finds the load up "
-    "to 10:00 (scheduled runs start at minute 5 of each hour), or from 20:00 on if that hour "
-    "is still missing. The forecast reaches the API with the snapshot that run publishes "
-    "afterwards"
+    "When the pipeline computed the forecast, on the day before delivery: the first run from "
+    "12:00 on that finds the load up to 10:00 loaded, or the first run from 20:00 on if that "
+    "hour is still missing and at least one load value falls in the 24 hours before 10:00 "
+    "(scheduled runs start at minute 5 of each hour). The forecast reaches the API with the "
+    "snapshot that run publishes afterwards"
 )
 
 
