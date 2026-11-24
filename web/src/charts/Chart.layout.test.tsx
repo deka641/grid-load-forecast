@@ -203,4 +203,27 @@ describe('Chart layout', () => {
     expect(instance.setOption).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })
+  it('drops a pending accent when the chart is drawn again with new data', () => {
+    vi.useFakeTimers()
+    width = 900
+    const series = { id: 'ring', type: 'effectScatter', data: [[1, 2]] }
+    const arrival = vi.fn(() => ({ series, delay: 1000, duration: 500 }))
+    const first = vi.fn(() => ({}))
+    const next = vi.fn(() => ({}))
+    motion(true)
+    const view = render(<Chart build={first} arrival={arrival} label="Day" />)
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    // Another day before the ring: its peak is somewhere else, so the old ring must not play.
+    view.rerender(<Chart build={next} arrival={arrival} label="Day" />)
+    expect(instance.setOption).toHaveBeenCalledTimes(2)
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(instance.setOption).toHaveBeenCalledTimes(2)
+    expect(arrival).toHaveBeenCalledTimes(1)
+    view.unmount()
+    vi.useRealTimers()
+  })
 })

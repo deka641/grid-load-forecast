@@ -113,6 +113,9 @@ export function Chart({ build, arrival, label, children, dataLabel, className }:
     let drawn = false
     const render = () => {
       if (active) {
+        // A new drawing replaces the series, so an accent still waiting belongs to old data.
+        accents.current.forEach(clearTimeout)
+        accents.current = []
         const palette = readPalette()
         instance.current?.setOption(build(palette, { compact: narrow, motion, animate }), {
           notMerge: true,
@@ -120,7 +123,6 @@ export function Chart({ build, arrival, label, children, dataLabel, className }:
         const accent = animate ? arrival?.(palette) : null
         if (accent) {
           // Added once the lines have drawn in, emptied once it has played.
-          accents.current.forEach(clearTimeout)
           accents.current = [
             setTimeout(() => {
               instance.current?.setOption({ series: [accent.series] })
