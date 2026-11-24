@@ -48,13 +48,18 @@ export function Header({ freshness }: { freshness: FreshnessState }) {
         </p>
       </div>
       <div className="site-meta">
-        {/* Without any line the group is left out, so the toggle lines up with the title. */}
-        {upTo !== null || fallback ? (
-          <div className="freshness-group">
-            {upTo === null ? null : <p className="freshness">{upTo}</p>}
-            {fallback ? <p className="freshness freshness-stale">{SNAPSHOT_FALLBACK}</p> : null}
-          </div>
-        ) : null}
+        {/* Without a time of its own (while the status loads, when the data is old, before
+            the first snapshot or when the status fails), an empty line of the usual length
+            holds its place, so the header has the same shape on every path and the page
+            below it does not move when the status arrives. */}
+        <div className="freshness-group">
+          {upTo === null ? (
+            <p className="freshness freshness-pending" aria-hidden="true" />
+          ) : (
+            <p className="freshness">{upTo}</p>
+          )}
+          {fallback ? <p className="freshness freshness-stale">{SNAPSHOT_FALLBACK}</p> : null}
+        </div>
         <ThemeToggle />
       </div>
     </header>

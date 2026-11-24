@@ -1,18 +1,19 @@
 import { useCallback, useState } from 'react'
 
-import type { BacktestMetrics, ForecastDay, ForecastPoint } from '../api/client'
+import type { ForecastDay, ForecastPoint } from '../api/client'
 import { useBacktest, useForecast, useForecastDays } from '../api/queries'
 import { Chart } from '../charts/LazyChart'
 import { FORECAST_SERIES, LINE_STYLES, forecastOption } from '../charts/options'
 import type { ChartLayout } from '../charts/options'
 import type { Palette } from '../charts/palette'
 import { NOT_AVAILABLE, formatGW, formatPercent } from '../lib/format'
-import { MODELS, dayErrors, findMetric, hasActuals, headlineParts } from '../lib/metrics'
+import { MODELS, dayErrors, hasActuals, headlineParts } from '../lib/metrics'
 import { neighbours } from '../lib/days'
 import { missingInputs } from '../lib/degraded'
 import { addDays, dayShort, offsetLabel, wallClock } from '../lib/time'
+import { KeyFigures } from './KeyFigures'
 import { Legend } from './Legend'
-import { Loading, QueryProblem } from './Notice'
+import { ControlsSkeleton, HeroSkeleton, Loading, QueryProblem } from './Notice'
 import { NO_FORECAST, noForecastFor } from './messages'
 
 function legendItems(withActual: boolean) {
@@ -38,40 +39,6 @@ function Headline({ forecast }: { forecast: ForecastDay }) {
         </>
       )}
     </p>
-  )
-}
-
-/**
- * The overall backtest MAPE of each forecast, from the backtest the page loads anyway, so
- * the peak can be read against how accurate the model has been. No hour count: the SMARD
- * forecast is scored only on the hours SMARD published, so the values have different bases;
- * the backtest section below names them.
- */
-function KeyFigures({ backtest }: { backtest: BacktestMetrics | null }) {
-  // While the backtest loads, an invisible copy holds the place of the band, so the chart
-  // does not move down when the values arrive.
-  const pending = backtest === null
-  return (
-    <div
-      className={pending ? 'key-figures key-figures-pending' : 'key-figures'}
-      aria-hidden={pending ? true : undefined}
-    >
-      <p className="key-figures-label">Backtest MAPE</p>
-      <dl>
-        {MODELS.map((m) => {
-          const metric = backtest ? findMetric(backtest, m.key, 'overall', 'all') : undefined
-          return (
-            <div key={m.key} className={`key-figure key-${m.key}`}>
-              <dt>
-                <span className={`row-key stroke-${m.key}`} aria-hidden="true" />
-                {m.short}
-              </dt>
-              <dd>{pending ? '\u00a0' : metric ? formatPercent(metric.mape) : NOT_AVAILABLE}</dd>
-            </div>
-          )
-        })}
-      </dl>
-    </div>
   )
 }
 
@@ -363,11 +330,15 @@ export function ForecastSection() {
             <KeyFigures backtest={null} />
           ) : null}
         </div>
+      ) : forecast.isPending ? (
+        <HeroSkeleton />
       ) : null}
       <div className="forecast-controls">
-        {shownDay === undefined ? null : (
+        {shownDay !== undefined ? (
           <DaySelector days={list} current={shownDay} onSelect={setDay} />
-        )}
+        ) : days.isPending ? (
+          <ControlsSkeleton />
+        ) : null}
         {days.isError ? (
           <p className="inline-note">
             The list of forecast days could not be loaded.{' '}

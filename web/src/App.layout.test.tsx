@@ -32,6 +32,61 @@ function routes(overrides: Record<string, Handler> = {}): Record<string, Handler
   }
 }
 
+const never = () => new Promise<never>(() => undefined)
+
+describe('Places held while loading', () => {
+  it('holds the header line and the forecast layout while the status loads', () => {
+    mockFetch(routes({ '/api/v1/status': never }))
+    const { container } = renderApp()
+    // The notice stays readable: it is not inside a hidden placeholder.
+    const notice = screen.getByRole('status')
+    expect(notice).toHaveTextContent('Loading status')
+    expect(notice.closest('[aria-hidden="true"]')).toBeNull()
+    expect(notice.parentElement).toHaveClass('loading-forecast')
+
+    // An empty, hidden line holds the place of the data time.
+    const line = container.querySelector('.site-meta .freshness-pending')
+    expect(line).toHaveAttribute('aria-hidden', 'true')
+    expect(line?.textContent).toBe('')
+    expect(screen.queryByText(/Data up to/)).toBeNull()
+    const page = container.querySelector('.loading-page')
+    expect(page?.querySelector('.skeleton-hero')).toHaveAttribute('aria-hidden', 'true')
+    expect(page?.querySelector('.forecast-controls .skeleton-controls')).not.toBeNull()
+    expect(page?.querySelector('.skeleton-prose')).not.toBeNull()
+    // No glow and no key figures to read: the band is an invisible copy.
+    expect(page?.querySelector('.key-figures')).toHaveClass('key-figures-pending')
+  })
+
+  it('drops the held header line once the status arrives', async () => {
+    mockFetch(routes())
+    const { container } = renderApp()
+    expect(await screen.findByText('Data up to 20 Nov 2026, 13:30')).toBeInTheDocument()
+    expect(container.querySelector('.freshness-pending')).toBeNull()
+  })
+
+  it('holds the headline and the day selector in their slots while the forecast loads', async () => {
+    mockFetch(routes({ '/api/v1/forecasts/days': never, '/api/v1/forecasts': never }))
+    const { container } = renderApp()
+    await screen.findByText('Loading forecast')
+    const section = screen.getByRole('heading', { name: 'Day-ahead forecast' }).parentElement
+    const hero = section?.querySelector(':scope > .forecast-hero')
+    expect(hero).toHaveClass('skeleton-hero')
+    expect(section?.querySelector('.forecast-controls > .skeleton-controls')).not.toBeNull()
+    expect(container.querySelector('.headline-figure')?.textContent).toBe('')
+  })
+
+  it('shows the day selector beside the held headline once the days are known', async () => {
+    mockFetch(routes({ '/api/v1/forecasts': never }))
+    const { container } = renderApp()
+    expect(await screen.findByLabelText('Delivery day')).toHaveValue('2026-11-21')
+    expect(container.querySelector('.skeleton-controls')).toBeNull()
+    expect(container.querySelector('.skeleton-hero')).not.toBeNull()
+    await waitFor(() => {
+      expect(screen.getByText('Loading forecast')).toBeInTheDocument()
+    })
+  })
+})
+
 describe('Page layout', () => {
   it('names the section in one h2 and sets the peak apart from the sentence', async () => {
     mockFetch(routes())
@@ -85,8 +140,11 @@ describe('Page layout', () => {
       /^Data up to 20 Nov 2026, \d\d:\d\d \(more than 6 hours old\)$/,
     )
     expect(screen.getAllByText(/Data up to/)).toHaveLength(1)
-    // Without a line of its own, the header lines the theme switch up with the title.
-    expect(container.querySelector('.freshness-group')).toBeNull()
+    // Without a time of its own, the header holds the place of the line empty and hidden.
+    expect(container.querySelector('.site-meta .freshness-pending')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    )
   })
 
   it('composes the first start as the forecast section without a freshness line', async () => {
@@ -102,6 +160,10 @@ describe('Page layout', () => {
       expect(container.querySelector('.empty-state')).toHaveTextContent(NO_DATA)
     })
     expect(screen.getByRole('heading', { level: 2, name: 'Day-ahead forecast' })).toBeVisible()
-    expect(container.querySelector('.freshness-group')).toBeNull()
+    expect(screen.queryByText(/Data up to/)).toBeNull()
+    expect(container.querySelector('.site-meta .freshness-pending')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    )
   })
 })

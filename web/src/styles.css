@@ -183,14 +183,26 @@ a:hover {
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px 48px;
-  padding: 32px 0 20px;
+  padding: 32px 0 0;
+}
+
+/* The heavy rule of the first section is the only divider below the header. Without
+   sections (a failed status), a thin rule is drawn at the top of the main area instead, in
+   the place it would have below the header, so the header keeps one height on every path. */
+main:not(:has(.section, .loading-page))::before {
+  content: '';
+  display: block;
+  padding-top: 20px;
   border-bottom: 1px solid var(--color-rule);
 }
 
-/* The heavy rule of the first section is the only divider below the header. */
-.page:has(.section) .site-header {
-  padding-bottom: 0;
-  border-bottom: 0;
+/* At least a screen high, so the footer stays below the fold when a short state such as the
+   first start or a failure takes the place of the tall loading placeholders. Its own block
+   context keeps the top margin of its first child inside, so it starts right below the
+   header whatever comes first. */
+main {
+  display: flow-root;
+  min-height: 100vh;
 }
 
 .site-header h1 {
@@ -246,6 +258,16 @@ a:hover {
 .freshness {
   font-size: var(--text-sm);
   color: var(--color-muted);
+}
+
+/* The place of the data time where the header shows none: as wide and high as the usual
+   line, never seen or read. */
+.freshness-pending {
+  visibility: hidden;
+}
+
+.freshness-pending::before {
+  content: 'Data up to 28 Nov 2026, 23:45';
 }
 
 .freshness-stale {
@@ -394,7 +416,7 @@ a:hover {
   position: relative;
 }
 
-.section-title.eyebrow:has(+ .forecast-hero)::after {
+.section-title.eyebrow:has(+ .forecast-hero:not(.skeleton-hero))::after {
   content: '';
   position: absolute;
   z-index: -1;
@@ -407,7 +429,7 @@ a:hover {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .forecast-hero {
+  .forecast-hero:not(.skeleton-hero) {
     animation: settle 400ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
   }
 }
@@ -944,13 +966,27 @@ tr.narrow-only {
   border-left-color: var(--color-error);
 }
 
-/* Floors just below the usual height of each section's content while it loads. The
-   forecast floor also covers the headline, key figures and day controls, which wait for
-   the data. */
-.loading-forecast {
-  min-height: 600px;
+/* The loading notice floats over the quiet blocks, so it moves nothing when it comes or
+   goes. */
+.loading-forecast,
+.loading-backtest,
+.loading-context {
+  position: relative;
 }
 
+.loading-forecast > .notice-loading,
+.loading-backtest > .notice-loading,
+.loading-context > .notice-loading {
+  position: absolute;
+  z-index: 1;
+  top: 96px;
+  left: 24px;
+  max-width: calc(100% - 48px);
+  margin: 0;
+}
+
+/* Floors just below the usual height of each section's content while it loads. The
+   forecast blocks have the size of the final content, so that section needs no floor. */
 .loading-backtest {
   min-height: 480px;
 }
@@ -985,21 +1021,66 @@ tr.narrow-only {
   }
 }
 
+/* The section headings while the status loads, as high as the real ones. */
+.skeleton-heading {
+  display: flex;
+  align-items: center;
+  height: calc(22px * 1.25);
+}
+
+.skeleton-heading-forecast {
+  height: calc(13px * 1.4);
+}
+
 .skeleton-title {
   width: 180px;
-  height: 22px;
-  margin-bottom: 4px;
+  height: 18px;
+}
+
+.skeleton-heading-forecast .skeleton-title {
+  height: 14px;
+}
+
+/* Headline lines in the size of their text: in em of the lead and of the figure. */
+.skeleton-hero .headline {
+  max-width: 100%;
 }
 
 .skeleton-lead {
-  width: min(420px, 70%);
-  height: 28px;
+  width: 16.5em;
+  max-width: 100%;
+  height: 1.2em;
 }
 
 .skeleton-figure {
-  width: min(560px, 85%);
-  height: clamp(44px, 5.2vw, 88px);
+  width: 6.5em;
+  max-width: 100%;
+  height: 1em;
+}
+
+/* The introduction of the context section, two lines of body text. */
+.skeleton-prose {
+  display: flex;
+  flex-direction: column;
+  height: 48px;
   margin-top: 8px;
+}
+
+/* The day selector row: two buttons and the day list. */
+.skeleton-controls {
+  width: min(340px, 100%);
+  height: var(--control);
+}
+
+.skeleton-for-forecast .skeleton-legend {
+  height: 21px;
+  margin-top: 0;
+}
+
+.skeleton-day-errors {
+  width: min(480px, 80%);
+  height: 21px;
+  margin: 22px 0 11px;
 }
 
 .skeleton-legend {
@@ -1028,8 +1109,10 @@ tr.narrow-only {
   box-shadow: var(--shadow-1);
 }
 
+/* The frame of the final chart: canvas, the "Show data" button and the border. */
 .skeleton-chart-forecast {
-  height: 380px;
+  height: calc(380px + 44px + 2px);
+  margin-top: 10px;
   box-shadow:
     inset 0 3px 0 var(--color-rule),
     var(--shadow-1);
@@ -1065,14 +1148,6 @@ tr.narrow-only {
   margin-top: 40px;
   padding-top: 14px;
   border-top: 2px solid var(--color-rule);
-}
-
-/* The key figures wrap under the headline only where they do not fit beside it, below about
-   970 to 1010 px depending on the day name; the floor grows with them there. */
-@media (max-width: 1000px) {
-  .loading-forecast {
-    min-height: 740px;
-  }
 }
 
 .site-footer {
@@ -1173,7 +1248,21 @@ tr.narrow-only {
   }
 
   .skeleton-chart-forecast {
-    height: 300px;
+    height: calc(300px + 52px + 2px);
+  }
+
+  /* The legend wraps to two rows and the line under the chart to two lines. */
+  .skeleton-for-forecast .skeleton-legend {
+    height: 48px;
+  }
+
+  .skeleton-day-errors {
+    height: 42px;
+    margin-bottom: 15px;
+  }
+
+  .skeleton-prose {
+    height: 96px;
   }
 
   .day-selector {
@@ -1198,16 +1287,19 @@ tr.narrow-only {
     gap: 2px;
   }
 
-  .loading-forecast {
-    min-height: 720px;
-  }
-
   .loading-backtest {
     min-height: 1060px;
   }
 
   .loading-context {
     min-height: 1020px;
+  }
+}
+
+/* On the narrowest screens the forecast legend takes three rows. */
+@media (max-width: 420px) {
+  .skeleton-for-forecast .skeleton-legend {
+    height: 75px;
   }
 }
 

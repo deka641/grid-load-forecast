@@ -1,5 +1,6 @@
 import { isApiError, isNoData } from '../api/client'
 import { useSharedReason } from '../api/failures'
+import { KeyFigures } from './KeyFigures'
 import { NO_DATA, describeError } from './messages'
 
 type Reserve = 'forecast' | 'backtest' | 'context'
@@ -8,16 +9,49 @@ function Block({ kind }: { kind: string }) {
   return <span className={`skeleton-block skeleton-${kind}`} />
 }
 
+/**
+ * The place of the forecast headline and its key figures while the forecast loads, in the
+ * slot and with the classes of the real ones, so nothing below moves when they arrive.
+ */
+export function HeroSkeleton() {
+  return (
+    <div className="forecast-hero skeleton-hero" aria-hidden="true">
+      <p className="headline">
+        <span className="headline-lead">
+          <Block kind="lead" />
+        </span>
+        <span className="headline-figure">
+          <Block kind="figure" />
+        </span>
+      </p>
+      <KeyFigures backtest={null} />
+    </div>
+  )
+}
+
+/** The place of the day selector row while the list of days loads. */
+export function ControlsSkeleton() {
+  return <Block kind="controls" />
+}
+
+/** The heading of a section while the status loads, with the height of the real one. */
+function HeadingSkeleton({ reserve }: { reserve: Reserve }) {
+  return (
+    <span className={`skeleton-heading skeleton-heading-${reserve}`}>
+      <Block kind="title" />
+    </span>
+  )
+}
+
 /** Quiet blocks in the place and about the size of what a section shows once loaded. */
 function Skeleton({ reserve }: { reserve: Reserve }) {
   return (
     <div className={`skeleton skeleton-for-${reserve}`} aria-hidden="true">
       {reserve === 'forecast' ? (
         <>
-          <Block kind="lead" />
-          <Block kind="figure" />
           <Block kind="legend" />
           <Block kind="chart skeleton-chart-forecast" />
+          <Block kind="day-errors" />
         </>
       ) : null}
       {reserve === 'backtest' ? (
@@ -43,12 +77,12 @@ function Skeleton({ reserve }: { reserve: Reserve }) {
   )
 }
 
-const SECTIONS: readonly Reserve[] = ['forecast', 'backtest', 'context']
-
 /**
  * `reserve` keeps about the final height of a section's content free while it loads, with
- * quiet blocks in the final layout, so the page does not jump when the charts arrive.
- * `page` does the same for all three sections while the status loads.
+ * quiet blocks in the final layout, so the page does not jump when the charts arrive. The
+ * notice floats over the blocks and takes no space of its own.
+ * `page` does the same for all three sections while the status loads, in the geometry they
+ * have while their own data loads.
  */
 export function Loading({ what, reserve }: { what: string; reserve?: Reserve | 'page' }) {
   const notice = (
@@ -62,11 +96,30 @@ export function Loading({ what, reserve }: { what: string; reserve?: Reserve | '
   if (reserve === 'page') {
     return (
       <div className="loading-page">
-        {notice}
-        {SECTIONS.map((section) => (
-          <div key={section} className={`skeleton-section loading-${section}`} aria-hidden="true">
-            <Block kind="title" />
-            <Skeleton reserve={section} />
+        <div className="skeleton-section">
+          <HeadingSkeleton reserve="forecast" />
+          <HeroSkeleton />
+          <div className="forecast-controls">
+            <ControlsSkeleton />
+          </div>
+          <div className="loading-forecast">
+            {notice}
+            <Skeleton reserve="forecast" />
+          </div>
+        </div>
+        {(['backtest', 'context'] as const).map((section) => (
+          <div key={section} className="skeleton-section" aria-hidden="true">
+            <HeadingSkeleton reserve={section} />
+            {/* The context section shows its introduction while its own data loads. */}
+            {section === 'context' ? (
+              <span className="skeleton-prose">
+                <Block kind="line" />
+                <Block kind="line skeleton-line-short" />
+              </span>
+            ) : null}
+            <div className={`loading-${section}`}>
+              <Skeleton reserve={section} />
+            </div>
           </div>
         ))}
       </div>
