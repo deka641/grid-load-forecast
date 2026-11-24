@@ -6,19 +6,37 @@ The project uses [Semantic Versioning](https://semver.org/) in its 0.x form: a m
 
 ## [Unreleased]
 
+### Added
+
+- The dashboard section on accuracy says in one sentence how far the model misses an hour on average and how that compares with the baseline and, on the hours SMARD covers, with the SMARD forecast. The sentence is computed from the stored backtest, so it follows the weekly update.
+- The OpenAPI document describes every field of a forecast point (LightGBM, baseline, SMARD forecast, actual load) with its unit and when it is null.
+
+### Changed
+
+- The README and the forecast explanation read the backtest figures around the forecast timing: the forecast is computed at 12:05 at the earliest, after the day-ahead auction has closed, so it serves as an independent reference and not as an input to bids.
+- The command line reference lists all options of `scripts/backtest.py`, including the rows file that the metric cross-check reads.
+
+### Fixed
+
+- The dashboard note under the backtest table said the model is scored with the load values as stored today; it is the model's inputs that use them.
+
+### Security
+
+- SECURITY.md names the two high vulnerabilities in the Caddy binary of the web image that no Caddy release fixes yet.
+
 ## [0.1.2] - 2026-11-23
 
 ### Added
 
-- The backtest report gives, per forecast, the mean bias, the 95th percentile and the largest absolute hourly error and the share of hours that miss by more than 5 %, next to MAE and MAPE. Over the backtest year the model misses by 4,134 MWh or more in one hour in twenty and by more than 5 % in 18.3 % of hours, figures that show the size of the rare large misses that the mean error hides. The README and the forecast explanation say how to read these figures and what the forecast is suited for.
-- `scripts/backtest.py --last-day YYYY-MM-DD` fixes the end of the backtest window, and the report records a SHA-256 fingerprint of its input data. With the same input data, which the fingerprint confirms, the documented commands reproduce the committed report; later SMARD corrections can change the figures slightly, and a rerun shows whether a different result comes from different data.
+- The backtest report gives, per forecast, the mean bias, the 95th percentile and the largest absolute hourly error and the share of hours that miss by more than 5 %, next to MAE and MAPE. Over the backtest year the model misses by 4,134 MWh or more in one hour in twenty and by more than 5 % in 18.3 % of hours, figures that matter more for sizing positions and reserves than the mean error. The README and the forecast explanation say how to read these figures and what the forecast is suited for.
+- `scripts/backtest.py --last-day YYYY-MM-DD` fixes the end of the backtest window, and the report records a SHA-256 fingerprint of its input data. The committed report can be reproduced with the documented commands, and a rerun shows whether a different result comes from different data.
 - The dashboard names delivery days for which no forecast was issued, for example after the pipeline was stopped, instead of skipping them silently in the day selector. The operations guide explains when a delivery day is forecast and that a missed day is not forecast later.
 - While the dashboard loads, each section shows placeholder blocks in the layout of its content instead of a single line of text.
 
 ### Changed
 
 - The price chart tells a source gap from prices that are not yet due. Hours whose prices SMARD should already have published but has not are shaded lighter, labelled "No price published by SMARD" and named in the summary with the number of hours covered, instead of being shown as "Not yet published" or as an unlabelled hole. The chart shows all published prices up to the end of today, not only the hours for which generation data exists.
-- The backtest caveats are stated with their direction: the model's inputs are the load values as stored today, including later corrections it would not have had at the cutoff, which can favour the model; the SMARD forecast is scored with the values SMARD publishes now, which may favour SMARD. The dashboard note under the backtest table names both.
+- The backtest caveats are stated with their direction: the model is scored with load values as stored today, including later corrections it would not have had at the cutoff, which can favour the model; the SMARD forecast is scored with the values SMARD publishes now, which may favour SMARD. The dashboard note under the backtest table names both.
 - The documentation states that regional public holidays are not modelled, so the forecast treats days such as Corpus Christi as ordinary working days.
 - The forecast chart marks the peak hour named in the headline, uses whole 5 GW steps on its axis, draws its lines in one after another (not with reduced motion), and shows the hour under the pointer on the axis. The tooltip stays at the top of the chart on the side away from the pointer, so it no longer covers the lines being read. The forecast peak is larger and the chart frames have rounded, raised surfaces.
 - Each client address may hold at most half of the API's 100 MiB budget for responses being built or waiting to be sent, cached responses included. One address that requests large responses and does not read them could previously fill the budget and get every other client's data requests refused.
